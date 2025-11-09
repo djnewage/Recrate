@@ -71,6 +71,7 @@ const useStore = create((set, get) => ({
     try {
       await apiService.addTracksToCrate(crateId, trackIds);
       await get().loadCrate(crateId);
+      await get().loadCrates(); // Refresh the crates list to update track counts
       return true;
     } catch (error) {
       set({ cratesError: error.message });

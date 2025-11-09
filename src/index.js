@@ -1,6 +1,7 @@
 const config = require("./utils/config");
 const logger = require("./utils/logger");
 const { SeratoParser } = require("./serato/parser");
+const { SeratoWriter } = require("./serato/writer");
 const AudioStreamer = require("./audio/streamer");
 const APIServer = require("./api/server");
 
@@ -10,7 +11,7 @@ const APIServer = require("./api/server");
 class RecrateService {
   constructor() {
     this.parser = null;
-    this.writer = null; // Not implemented yet - read-only mode
+    this.writer = null;
     this.streamer = null;
     this.apiServer = null;
     this.watcher = null;
@@ -31,6 +32,11 @@ class RecrateService {
       this.parser = new SeratoParser(config.serato.path, config.cache);
       await this.parser.verifySeratoPath();
       logger.success("Serato parser initialized");
+
+      // Initialize writer
+      logger.info("Initializing Serato writer...");
+      this.writer = new SeratoWriter(config.serato.path, this.parser);
+      logger.success("Serato writer initialized");
 
       // Initialize audio streamer
       logger.info("Initializing audio streamer...");
@@ -137,15 +143,19 @@ class RecrateService {
     );
     logger.info("");
     logger.info("Available endpoints:");
-    logger.info(`  GET  /api/library         - List all tracks`);
-    logger.info(`  GET  /api/library/:id     - Get track details`);
-    logger.info(`  GET  /api/crates          - List all crates`);
-    logger.info(`  GET  /api/crates/:id      - Get crate details`);
-    logger.info(`  GET  /api/stream/:id      - Stream audio`);
-    logger.info(`  GET  /api/artwork/:id     - Get artwork`);
-    logger.info(`  GET  /api/search?q=query  - Search tracks`);
+    logger.info(`  GET    /api/library              - List all tracks`);
+    logger.info(`  GET    /api/library/:id          - Get track details`);
+    logger.info(`  GET    /api/crates               - List all crates`);
+    logger.info(`  GET    /api/crates/:id           - Get crate details`);
+    logger.info(`  POST   /api/crates               - Create new crate`);
+    logger.info(`  POST   /api/crates/:id/tracks    - Add tracks to crate`);
+    logger.info(`  DELETE /api/crates/:id/tracks/:trackId - Remove track`);
+    logger.info(`  DELETE /api/crates/:id           - Delete crate`);
+    logger.info(`  GET    /api/stream/:id           - Stream audio`);
+    logger.info(`  GET    /api/artwork/:id          - Get artwork`);
+    logger.info(`  GET    /api/search?q=query       - Search tracks`);
     logger.info("");
-    logger.info("Mode: Read-only (crate writing not yet implemented)");
+    logger.info("Mode: Read-write (⚠️  Crate modifications will affect Serato library)");
     logger.info("=".repeat(60));
     logger.info("");
   }
