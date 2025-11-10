@@ -1,11 +1,14 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Audio } from 'expo-av';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import apiService from '../services/api';
 
 const MiniPlayer = () => {
+  const navigation = useNavigation();
   const { currentTrack, isPlaying, pauseTrack, resumeTrack, stopTrack } =
     useStore();
   const [sound, setSound] = React.useState(null);
@@ -99,6 +102,10 @@ const MiniPlayer = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleOpenPlayer = () => {
+    navigation.navigate('Player', { track: currentTrack });
+  };
+
   if (!currentTrack) {
     return null;
   }
@@ -114,14 +121,18 @@ const MiniPlayer = () => {
         />
       </View>
       <View style={styles.content}>
-        <View style={styles.info}>
+        <TouchableOpacity
+          style={styles.info}
+          onPress={handleOpenPlayer}
+          activeOpacity={0.7}
+        >
           <Text style={styles.title} numberOfLines={1}>
             {currentTrack.title}
           </Text>
           <Text style={styles.artist} numberOfLines={1}>
             {currentTrack.artist}
           </Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.controls}>
           <Text style={styles.time}>
             {formatTime(position)} / {formatTime(duration)}
@@ -130,15 +141,17 @@ const MiniPlayer = () => {
             style={styles.button}
             onPress={togglePlayPause}
           >
-            <Text style={styles.buttonText}>
-              {isPlaying ? '⏸' : '▶'}
-            </Text>
+            <Ionicons
+              name={isPlaying ? 'pause' : 'play'}
+              size={20}
+              color={COLORS.text}
+            />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.button}
             onPress={handleStop}
           >
-            <Text style={styles.buttonText}>⏹</Text>
+            <Ionicons name="stop" size={20} color={COLORS.text} />
           </TouchableOpacity>
         </View>
       </View>
@@ -196,10 +209,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  buttonText: {
-    fontSize: FONT_SIZES.lg,
-    color: COLORS.text,
   },
 });
 

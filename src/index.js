@@ -29,7 +29,10 @@ class RecrateService {
     try {
       // Initialize parser
       logger.info("Initializing Serato parser...");
-      this.parser = new SeratoParser(config.serato.path, config.cache);
+      if (config.serato.musicPath) {
+        logger.info(`Music path: ${config.serato.musicPath}`);
+      }
+      this.parser = new SeratoParser(config.serato.path, config.serato.musicPath, config.cache);
       await this.parser.verifySeratoPath();
       logger.success("Serato parser initialized");
 

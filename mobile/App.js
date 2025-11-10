@@ -1,8 +1,9 @@
 import React from 'react';
-import { StatusBar, SafeAreaView, StyleSheet, Text } from 'react-native';
+import { StatusBar, SafeAreaView, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from './src/constants/theme';
 
 // Screens
@@ -10,6 +11,7 @@ import ConnectionScreen from './src/screens/ConnectionScreen';
 import LibraryScreen from './src/screens/LibraryScreen';
 import CratesScreen from './src/screens/CratesScreen';
 import CrateDetailScreen from './src/screens/CrateDetailScreen';
+import PlayerScreen from './src/screens/PlayerScreen';
 
 // Components
 import MiniPlayer from './src/components/MiniPlayer';
@@ -69,8 +71,8 @@ function TabNavigator({ navigation }) {
         name="Library"
         component={LibraryScreen}
         options={{
-          tabBarIcon: ({ color }) => (
-            <TabIcon icon="📚" color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="library" size={size} color={color} />
           ),
         }}
       />
@@ -78,8 +80,8 @@ function TabNavigator({ navigation }) {
         name="Crates"
         component={CratesStack}
         options={{
-          tabBarIcon: ({ color }) => (
-            <TabIcon icon="📦" color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="albums" size={size} color={color} />
           ),
         }}
       />
@@ -87,19 +89,12 @@ function TabNavigator({ navigation }) {
         name="Settings"
         component={ConnectionScreen}
         options={{
-          tabBarIcon: ({ color }) => (
-            <TabIcon icon="⚙️" color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="settings" size={size} color={color} />
           ),
         }}
       />
     </Tab.Navigator>
-  );
-}
-
-// Simple tab icon component
-function TabIcon({ icon }) {
-  return (
-    <Text style={{ fontSize: 24 }}>{icon}</Text>
   );
 }
 
@@ -113,7 +108,24 @@ function RootNavigator() {
     >
       <RootStack.Screen name="Connection" component={ConnectionScreen} />
       <RootStack.Screen name="Main" component={TabNavigator} />
+      <RootStack.Screen
+        name="Player"
+        component={PlayerScreen}
+        options={{
+          presentation: 'modal',
+        }}
+      />
     </RootStack.Navigator>
+  );
+}
+
+// Wrapper component to include MiniPlayer inside NavigationContainer
+function AppContent() {
+  return (
+    <View style={{ flex: 1 }}>
+      <RootNavigator />
+      <MiniPlayer />
+    </View>
   );
 }
 
@@ -123,9 +135,8 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
       <SafeAreaView style={styles.container}>
         <NavigationContainer>
-          <RootNavigator />
+          <AppContent />
         </NavigationContainer>
-        <MiniPlayer />
       </SafeAreaView>
     </>
   );

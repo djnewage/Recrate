@@ -1,6 +1,9 @@
 const path = require("path");
 const os = require("os");
-require("dotenv").config();
+require("dotenv").config({
+  path: path.join(__dirname, "..", "..", ".env"),
+  override: true
+});
 
 /**
  * Auto-detect Serato installation path based on OS
@@ -28,6 +31,7 @@ const config = {
   // Serato configuration
   serato: {
     path: process.env.SERATO_PATH || detectSeratoPath(),
+    musicPath: process.env.MUSIC_PATH || null,
     databaseFile: "database V2",
     cratesDir: "Subcrates",
   },

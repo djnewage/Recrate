@@ -40,7 +40,7 @@ const LibraryScreen = ({ navigation }) => {
     if (selectedTracks.length > 0) {
       toggleTrackSelection(track.id);
     } else {
-      playTrack(track);
+      navigation.navigate('Player', { track });
     }
   };
 
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: SPACING.lg,
-    paddingTop: SPACING.xl * 2,
+    paddingTop: SPACING.xl * 3,
   },
   title: {
     fontSize: FONT_SIZES.xxl,
