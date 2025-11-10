@@ -18,7 +18,7 @@ recrate/
 │   ├── server/          # Node.js backend service
 │   ├── mobile/          # React Native mobile app (Expo)
 │   ├── shared/          # Shared constants and types
-│   └── desktop/         # (Coming soon) Electron desktop app
+│   └── desktop/         # Electron desktop app ✅
 ├── *.md                 # Documentation files
 └── package.json         # Root workspace configuration
 ```
@@ -55,6 +55,24 @@ npm run dev:mobile
 cd packages/mobile
 npm start
 ```
+
+### Run the Desktop App
+
+```bash
+# From root
+npm run dev:desktop
+
+# Or from packages/desktop
+cd packages/desktop
+npm start
+```
+
+**Desktop App Features:**
+- Auto-starts backend server
+- Shows QR code for mobile connection
+- System tray integration
+- Settings management
+- Zero terminal knowledge required!
 
 ### Test the API
 

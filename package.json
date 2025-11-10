@@ -9,9 +9,12 @@
   "scripts": {
     "dev:server": "npm run dev -w @recrate/server",
     "dev:mobile": "npm run start -w @recrate/mobile",
+    "dev:desktop": "npm run dev -w @recrate/desktop",
     "start:server": "npm run start -w @recrate/server",
     "start:mobile": "npm run start -w @recrate/mobile",
+    "start:desktop": "npm run start -w @recrate/desktop",
     "build:server": "npm run build -w @recrate/server",
+    "build:desktop": "npm run build -w @recrate/desktop",
     "test": "npm run test --workspaces --if-present",
     "clean": "rm -rf node_modules packages/*/node_modules"
   },

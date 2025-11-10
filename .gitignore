@@ -60,3 +60,4 @@ packages/desktop/resources/server/
 # Temp files
 *.tmp
 .temp/
+packages/assets/

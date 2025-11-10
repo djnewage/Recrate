@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recrate</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      overflow: hidden;
+    }
+
+    #app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      flex: 1;
+      padding: 40px;
+      overflow-y: auto;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 30px;
+    }
+
+    .status-running {
+      background: #48bb78;
+    }
+
+    .status-stopped {
+      background: #f56565;
+    }
+
+    .qr-container {
+      background: white;
+      padding: 30px;
+      border-radius: 20px;
+      text-align: center;
+      margin: 30px 0;
+    }
+
+    .qr-code {
+      margin: 20px auto;
+    }
+
+    .url-display {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 15px;
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+      margin: 20px 0;
+      word-break: break-all;
+    }
+
+    button {
+      background: white;
+      color: #667eea;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin: 10px 0;
+      transition: transform 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.secondary {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+
+    .settings-screen {
+      display: none;
+    }
+
+    .settings-screen.active {
+      display: block;
+    }
+
+    .form-group {
+      margin: 20px 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+    }
+
+    .path-input {
+      display: flex;
+      gap: 10px;
+    }
+
+    .path-input input {
+      flex: 1;
+    }
+
+    .path-input button {
+      width: auto;
+      padding: 12px 20px;
+    }
+
+    .logs {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      border-radius: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      margin-top: 20px;
+    }
+
+    .log-entry {
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <!-- Status Screen -->
+      <div id="status-screen" class="status-screen active">
+        <h1>🎧 Recrate</h1>
+
+        <div style="text-align: center;">
+          <span id="status-badge" class="status-badge status-stopped">
+            ⭕ Server Stopped
+          </span>
+        </div>
+
+        <div id="server-info" style="display: none;">
+          <div class="qr-container">
+            <h3 style="color: #667eea; margin-bottom: 10px;">
+              Scan with your phone
+            </h3>
+            <canvas id="qr-code" class="qr-code"></canvas>
+          </div>
+
+          <div class="url-display" id="server-url">
+            http://192.168.1.100:3000
+          </div>
+
+          <div style="text-align: center; margin-top: 20px;">
+            <p style="font-size: 14px; opacity: 0.8;">
+              1. Open Recrate on your phone<br>
+              2. Scan QR code or enter URL above<br>
+              3. Start organizing your crates!
+            </p>
+          </div>
+        </div>
+
+        <button id="toggle-server-btn" onclick="toggleServer()">
+          Start Server
+        </button>
+
+        <button class="secondary" onclick="showSettings()">
+          Settings
+        </button>
+
+        <div id="logs" class="logs" style="display: none;"></div>
+      </div>
+
+      <!-- Settings Screen -->
+      <div id="settings-screen" class="settings-screen">
+        <h1>⚙️ Settings</h1>
+
+        <div class="form-group">
+          <label>Serato Library Path</label>
+          <div class="path-input">
+            <input type="text" id="serato-path" readonly>
+            <button onclick="selectSeratoPath()">Browse</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Music Files Path</label>
+          <div class="path-input">
+            <input type="text" id="music-path" readonly>
+            <button onclick="selectMusicPath()">Browse</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Port</label>
+          <input type="number" id="port" value="3000">
+        </div>
+
+        <button onclick="saveSettings()">
+          Save Settings
+        </button>
+
+        <button class="secondary" onclick="showStatus()">
+          Back
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script>
+    // Use window.electronAPI directly to avoid redeclaration issues
+    const api = window.electronAPI;
+    let serverStatus = 'stopped';
+    let serverUrl = '';
+
+    // Initialize
+    async function init() {
+      await loadConfig();
+      await updateServerStatus();
+
+      // Poll for status every 2 seconds
+      setInterval(async () => {
+        await updateServerStatus();
+      }, 2000);
+
+      // Listen for server status changes
+      api.onServerStatus((status) => {
+        serverStatus = status.status;
+        serverUrl = status.url;
+        updateUI();
+
+        // Show error if present
+        if (status.error) {
+          alert('Server Error: ' + status.error);
+        }
+      });
+
+      // Listen for logs
+      api.onServerLog((log) => {
+        addLog(log);
+      });
+
+      // Listen for errors
+      api.onServerError((error) => {
+        addLog('ERROR: ' + error);
+      });
+    }
+
+    // Load config
+    async function loadConfig() {
+      const config = await api.getConfig();
+      document.getElementById('serato-path').value = config.seratoPath;
+      document.getElementById('music-path').value = config.musicPath;
+      document.getElementById('port').value = config.port;
+    }
+
+    // Update server status
+    async function updateServerStatus() {
+      const status = await api.getServerStatus();
+      serverStatus = status.status;
+      serverUrl = status.url;
+      updateUI();
+    }
+
+    // Update UI based on status
+    function updateUI() {
+      const badge = document.getElementById('status-badge');
+      const info = document.getElementById('server-info');
+      const btn = document.getElementById('toggle-server-btn');
+
+      if (serverStatus === 'running') {
+        badge.textContent = '✅ Server Running';
+        badge.className = 'status-badge status-running';
+        info.style.display = 'block';
+        btn.textContent = 'Stop Server';
+
+        // Update URL
+        document.getElementById('server-url').textContent = serverUrl;
+
+        // Generate QR code
+        generateQR(serverUrl);
+      } else {
+        badge.textContent = '⭕ Server Stopped';
+        badge.className = 'status-badge status-stopped';
+        info.style.display = 'none';
+        btn.textContent = 'Start Server';
+      }
+    }
+
+    // Generate QR code
+    function generateQR(url) {
+      const canvas = document.getElementById('qr-code');
+      const qr = qrcode(0, 'M');
+      qr.addData(url);
+      qr.make();
+
+      const size = 200;
+      const moduleCount = qr.getModuleCount();
+      const cellSize = size / moduleCount;
+
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      for (let row = 0; row < moduleCount; row++) {
+        for (let col = 0; col < moduleCount; col++) {
+          ctx.fillStyle = qr.isDark(row, col) ? '#000000' : '#ffffff';
+          ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    // Toggle server
+    async function toggleServer() {
+      if (serverStatus === 'running') {
+        await api.stopServer();
+      } else {
+        await api.startServer();
+      }
+      setTimeout(updateServerStatus, 1000);
+    }
+
+    // Show settings
+    function showSettings() {
+      document.getElementById('status-screen').classList.remove('active');
+      document.getElementById('settings-screen').classList.add('active');
+    }
+
+    // Show status
+    function showStatus() {
+      document.getElementById('settings-screen').classList.remove('active');
+      document.getElementById('status-screen').classList.add('active');
+    }
+
+    // Select Serato path
+    async function selectSeratoPath() {
+      const path = await api.selectDirectory('Select Serato Library Folder');
+      if (path) {
+        document.getElementById('serato-path').value = path;
+      }
+    }
+
+    // Select music path
+    async function selectMusicPath() {
+      const path = await api.selectDirectory('Select Music Folder');
+      if (path) {
+        document.getElementById('music-path').value = path;
+      }
+    }
+
+    // Save settings
+    async function saveSettings() {
+      const config = {
+        seratoPath: document.getElementById('serato-path').value,
+        musicPath: document.getElementById('music-path').value,
+        port: parseInt(document.getElementById('port').value),
+        autoStart: true
+      };
+
+      await api.saveConfig(config);
+      alert('Settings saved! Restart the server for changes to take effect.');
+      showStatus();
+    }
+
+    // Add log entry
+    function addLog(log) {
+      const logsDiv = document.getElementById('logs');
+      logsDiv.style.display = 'block';
+
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.textContent = log;
+      logsDiv.appendChild(entry);
+
+      // Auto-scroll
+      logsDiv.scrollTop = logsDiv.scrollHeight;
+
+      // Keep only last 50 logs
+      while (logsDiv.children.length > 50) {
+        logsDiv.removeChild(logsDiv.firstChild);
+      }
+    }
+
+    // Initialize on load
+    init();
+  </script>
+</body>
+</html>
