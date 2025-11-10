@@ -2,29 +2,52 @@
 
 Last Updated: November 10, 2025
 
+## 📦 Project Structure
+
+**Monorepo Setup:** ✅ Complete
+
+The project has been restructured as an npm workspaces monorepo:
+
+```
+recrate/
+├── packages/
+│   ├── server/          # Backend Node.js service
+│   ├── mobile/          # React Native mobile app (Expo)
+│   └── shared/          # Shared constants and types
+└── package.json         # Root workspace configuration
+```
+
+**Benefits:**
+- Unified dependency management
+- Shared code between packages
+- Simplified development workflow
+- Prepared for future Electron desktop app
+
+---
+
 ## ✅ Completed Features
 
 ### Backend Service (Node.js)
 
 #### Core Utilities
-- ✅ **Configuration Management** (`src/utils/config.js`)
+- ✅ **Configuration Management** (`packages/server/src/utils/config.js`)
   - Environment variable loading with override support
   - Auto-detection of Serato paths based on OS
   - Configurable music path support (MUSIC_PATH env var)
   - Server, cache, and discovery configuration
 
-- ✅ **Logging System** (`src/utils/logger.js`)
+- ✅ **Logging System** (`packages/server/src/utils/logger.js`)
   - Color-coded console output
   - Log levels: info, success, warn, error, debug
   - Timestamp support
 
-- ✅ **LRU Cache** (`src/utils/cache.js`)
+- ✅ **LRU Cache** (`packages/server/src/utils/cache.js`)
   - Time-based expiration (TTL)
   - Size-based eviction
   - Get/Set/Delete/Clear operations
 
 #### Serato Integration
-- ✅ **Serato Parser** (`src/serato/parser.js`)
+- ✅ **Serato Parser** (`packages/server/src/serato/parser.js`)
   - Binary database V2 file parsing
   - Crate file (.crate) parsing
   - Directory scanning fallback for audio files
@@ -34,7 +57,7 @@ Last Updated: November 10, 2025
   - Optimized extraction (skip for database tracks)
   - Support for MP3, FLAC, WAV, AAC, M4A, OGG, AIFF
 
-- ✅ **Serato Writer** (`src/serato/writer.js`)
+- ✅ **Serato Writer** (`packages/server/src/serato/writer.js`)
   - Create new crates
   - Add tracks to crates
   - Remove tracks from crates
@@ -42,7 +65,7 @@ Last Updated: November 10, 2025
   - Atomic writes with backup
 
 #### Audio Services
-- ✅ **Metadata Extractor** (`src/audio/metadata.js`)
+- ✅ **Metadata Extractor** (`packages/server/src/audio/metadata.js`)
   - Extract ID3 tags from audio files
   - Support for title, artist, album, genre, year
   - BPM and Key extraction

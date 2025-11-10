@@ -1,83 +1,67 @@
-# Recrate - Complete Project Package
+# Recrate - DJ Library Management System
 
-## 🎉 What You Have
+## 🎯 Overview
 
-A complete full-stack DJ app specification ready for implementation:
+**Recrate** is a full-stack application that enables DJs to stream their Serato music library to mobile devices and manage crates remotely.
 
-### 1. 📱 React Native Mobile App Prototype
-
-**File:** `DJLibraryApp.jsx`
-
-A fully interactive UI prototype with:
-
-- ✅ Library browsing with search and sorting
-- ✅ Crate management
-- ✅ Bulk operations (select multiple tracks)
-- ✅ Add tracks to crates
-- ✅ Create new crates
-- ✅ Mini player
-- ✅ Modern purple/pink gradient theme
-
-**To use:** Open in React component viewer or convert to React Native
+**Current Status:** ~85% MVP Complete ✅
 
 ---
 
-### 2. 🖥️ Node.js Backend Service Specification
+## 📦 Monorepo Structure
 
-**Folder:** `Recrate-service/`
+This project uses **npm workspaces** for monorepo management:
 
-Complete backend implementation guide with:
-
-- ✅ Full project structure
-- ✅ Detailed API documentation
-- ✅ Implementation specifications for every module
-- ✅ Step-by-step build guide
-- ✅ Master checklist for Claude Code
-
-**Key Files:**
-
-- `PROJECT_SUMMARY.md` - Start here! Quick overview
-- `BUILD_GUIDE.md` - Step-by-step implementation guide
-- `CLAUDE_CODE_CHECKLIST.md` - Master checklist
-- `docs/API.md` - Complete API specification
-- `docs/IMPLEMENTATION_*.md` - Detailed specs for each module
-
----
-
-## 🚀 Quick Start Guide
-
-### For the Mobile App (React Native):
-
-```bash
-# 1. Create new React Native project
-npx react-native init CrateLinkApp
-
-# 2. Install dependencies
-npm install react-navigation lucide-react-native zustand
-
-# 3. Convert DJLibraryApp.jsx to React Native
-#    (Replace web imports with RN equivalents)
-
-# 4. Add API integration pointing to backend
+```
+recrate/
+├── packages/
+│   ├── server/          # Node.js backend service
+│   ├── mobile/          # React Native mobile app (Expo)
+│   ├── shared/          # Shared constants and types
+│   └── desktop/         # (Coming soon) Electron desktop app
+├── *.md                 # Documentation files
+└── package.json         # Root workspace configuration
 ```
 
-### For the Backend (Node.js):
+---
+
+## 🚀 Quick Start
+
+### Install All Dependencies
 
 ```bash
-# 1. Navigate to the service directory
-cd Recrate-service
-
-# 2. Install dependencies
+# From root directory
 npm install
+```
 
-# 3. Use Claude Code to implement the files
-#    Follow BUILD_GUIDE.md and CLAUDE_CODE_CHECKLIST.md
+### Run the Server
 
-# 4. Start the server
+```bash
+# From root
+npm run dev:server
+
+# Or from packages/server
+cd packages/server
 npm start
+```
 
-# 5. Test endpoints
+### Run the Mobile App
+
+```bash
+# From root
+npm run dev:mobile
+
+# Or from packages/mobile
+cd packages/mobile
+npm start
+```
+
+### Test the API
+
+```bash
 curl http://localhost:3000/health
+curl http://localhost:3000/api/library
+curl http://localhost:3000/api/crates
 ```
 
 ---
@@ -257,13 +241,13 @@ Everything you need is here:
 
 ## 📞 Quick Reference
 
-**Mobile App Prototype:** `DJLibraryApp.jsx`
-**Backend Project:** `Recrate-service/`
-**Start Here:** `Recrate-service/PROJECT_SUMMARY.md`
-**Build Guide:** `Recrate-service/BUILD_GUIDE.md`
-**API Docs:** `Recrate-service/docs/API.md`
+**Server:** `packages/server/`
+**Mobile App:** `packages/mobile/`
+**Shared Code:** `packages/shared/`
+**Documentation:** Root `*.md` files
+**Implementation Status:** `IMPLEMENTATION_STATUS.md`
+**Electron Guide:** `ELECTRON_DESKTOP_APP_GUIDE.md`
 
 ---
 
-**Ready to build your DJ app? Let's go! 🎧🚀**
-# Recrate
+**Ready to DJ with Recrate! 🎧🚀**
