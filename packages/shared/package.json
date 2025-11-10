@@ -1,0 +1,13 @@
+{
+  "name": "@recrate/shared",
+  "version": "1.0.0",
+  "description": "Shared constants and types for Recrate",
+  "main": "index.js",
+  "exports": {
+    "./constants": "./constants.js",
+    "./types": "./types.js"
+  },
+  "keywords": ["recrate", "shared", "types", "constants"],
+  "author": "",
+  "license": "MIT"
+}

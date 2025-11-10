@@ -1,0 +1,58 @@
+{
+  "name": "@recrate/desktop",
+  "version": "1.0.0",
+  "description": "Recrate Desktop - Electron app for managing Serato library",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "@recrate/server": "*",
+    "@recrate/shared": "*",
+    "qrcode": "^1.5.3",
+    "electron-store": "^8.1.0",
+    "electron-log": "^5.0.0"
+  },
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "build": {
+    "appId": "com.recrate.desktop",
+    "productName": "Recrate",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "assets/**/*",
+      "resources/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "icon": "assets/icons/icon.icns",
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "icon": "assets/icons/icon.ico",
+      "target": ["nsis", "portable"]
+    },
+    "linux": {
+      "icon": "assets/icons/icon.png",
+      "target": ["AppImage", "deb"]
+    },
+    "extraResources": [
+      {
+        "from": "../server",
+        "to": "server",
+        "filter": ["src/**/*", "package.json"]
+      }
+    ]
+  },
+  "author": "",
+  "license": "MIT"
+}

@@ -2,29 +2,52 @@
 
 Last Updated: November 10, 2025
 
+## 📦 Project Structure
+
+**Monorepo Setup:** ✅ Complete
+
+The project has been restructured as an npm workspaces monorepo:
+
+```
+recrate/
+├── packages/
+│   ├── server/          # Backend Node.js service
+│   ├── mobile/          # React Native mobile app (Expo)
+│   └── shared/          # Shared constants and types
+└── package.json         # Root workspace configuration
+```
+
+**Benefits:**
+- Unified dependency management
+- Shared code between packages
+- Simplified development workflow
+- Prepared for future Electron desktop app
+
+---
+
 ## ✅ Completed Features
 
 ### Backend Service (Node.js)
 
 #### Core Utilities
-- ✅ **Configuration Management** (`src/utils/config.js`)
+- ✅ **Configuration Management** (`packages/server/src/utils/config.js`)
   - Environment variable loading with override support
   - Auto-detection of Serato paths based on OS
   - Configurable music path support (MUSIC_PATH env var)
   - Server, cache, and discovery configuration
 
-- ✅ **Logging System** (`src/utils/logger.js`)
+- ✅ **Logging System** (`packages/server/src/utils/logger.js`)
   - Color-coded console output
   - Log levels: info, success, warn, error, debug
   - Timestamp support
 
-- ✅ **LRU Cache** (`src/utils/cache.js`)
+- ✅ **LRU Cache** (`packages/server/src/utils/cache.js`)
   - Time-based expiration (TTL)
   - Size-based eviction
   - Get/Set/Delete/Clear operations
 
 #### Serato Integration
-- ✅ **Serato Parser** (`src/serato/parser.js`)
+- ✅ **Serato Parser** (`packages/server/src/serato/parser.js`)
   - Binary database V2 file parsing
   - Crate file (.crate) parsing
   - Directory scanning fallback for audio files
@@ -34,7 +57,7 @@ Last Updated: November 10, 2025
   - Optimized extraction (skip for database tracks)
   - Support for MP3, FLAC, WAV, AAC, M4A, OGG, AIFF
 
-- ✅ **Serato Writer** (`src/serato/writer.js`)
+- ✅ **Serato Writer** (`packages/server/src/serato/writer.js`)
   - Create new crates
   - Add tracks to crates
   - Remove tracks from crates
@@ -42,7 +65,7 @@ Last Updated: November 10, 2025
   - Atomic writes with backup
 
 #### Audio Services
-- ✅ **Metadata Extractor** (`src/audio/metadata.js`)
+- ✅ **Metadata Extractor** (`packages/server/src/audio/metadata.js`)
   - Extract ID3 tags from audio files
   - Support for title, artist, album, genre, year
   - BPM and Key extraction
@@ -208,6 +231,40 @@ Last Updated: November 10, 2025
 
 ---
 
+### Desktop App (Electron) ✨ NEW!
+
+#### Core Application
+- ✅ **Main Process** (`packages/desktop/main.js`)
+  - Window management
+  - System tray integration
+  - Server process spawning
+  - Configuration persistence with electron-store
+  - Auto-start server on launch
+  - Graceful shutdown handling
+
+- ✅ **Preload Script** (`packages/desktop/preload.js`)
+  - Secure IPC bridge between main and renderer
+  - Context isolation enabled
+  - Safe API exposure to renderer
+
+- ✅ **Renderer UI** (`packages/desktop/index.html`)
+  - Beautiful gradient purple/pink theme
+  - QR code generation for mobile connection
+  - Server status display
+  - Settings screen with path selection
+  - Real-time server logs display
+  - Start/Stop server controls
+
+#### Features
+- ✅ Auto-detect Serato library path
+- ✅ System tray with status indicator
+- ✅ Zero configuration for users
+- ✅ Runs server in background
+- ✅ Shows QR code for instant mobile pairing
+- ✅ Cross-platform support (Mac, Windows, Linux)
+
+---
+
 ## 🚧 Not Yet Implemented
 
 ### Backend
@@ -231,6 +288,13 @@ Last Updated: November 10, 2025
 - ❌ Settings screen
 - ❌ About screen
 
+### Desktop App
+- ❌ App icons (using placeholders)
+- ❌ Server binary bundling for production
+- ❌ Code signing for distribution
+- ❌ Auto-updater
+- ❌ Build & package for distribution (.dmg, .exe, .AppImage)
+
 ---
 
 ## 📈 Progress Summary
@@ -249,13 +313,36 @@ Last Updated: November 10, 2025
 - Crate management: ✅ Done
 - Advanced features: ❌ Pending
 
-### Overall: ~85% MVP Complete
+### Desktop App: ~60% Complete
+- Core Electron app: ✅ Done
+- UI and controls: ✅ Done
+- Server integration: ✅ Done
+- Build & distribution: ❌ Pending
+
+### Overall: ~75% Complete (with Desktop)
 
 ---
 
 ## 🎉 Recent Achievements
 
-### Latest Session (Nov 10, 2025 - Crate Management)
+### Latest Session (Nov 10, 2025 - Electron Desktop App)
+- ✅ Created Electron desktop application
+- ✅ Implemented main process with server management
+- ✅ Implemented preload script for secure IPC
+- ✅ Created beautiful renderer UI with QR code
+- ✅ Added system tray integration
+- ✅ Auto-start server functionality
+- ✅ Settings screen with path selection
+- ✅ Real-time server logs display
+- ✅ Updated monorepo with desktop package
+
+### Previous Session (Nov 10, 2025 - Monorepo Setup)
+- ✅ Restructured project to monorepo
+- ✅ Created packages/server, packages/mobile, packages/shared
+- ✅ Set up npm workspaces
+- ✅ Updated all documentation
+
+### Earlier Session (Nov 10, 2025 - Crate Management)
 - ✅ Implemented complete crate management in mobile app
 - ✅ Added `removeTrackFromCrate` action to store
 - ✅ Added `deleteCrate` action to store
