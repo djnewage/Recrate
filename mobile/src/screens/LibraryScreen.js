@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: SPACING.lg,
-    paddingTop: SPACING.xl * 2,
+    paddingTop: SPACING.xl,
   },
   headerTop: {
     flexDirection: 'row',
