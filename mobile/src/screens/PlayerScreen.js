@@ -325,21 +325,6 @@ const PlayerScreen = ({ route, navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Next Song Section */}
-      <View style={styles.nextSongContainer}>
-        <View style={styles.nextSongHeader}>
-          <Text style={styles.nextSongTitle}>Next Song</Text>
-          <TouchableOpacity>
-            <Text style={styles.viewAllText}>View All</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.nextSongItem}>
-          <View style={styles.nextSongArtwork}>
-            <Ionicons name="musical-note" size={24} color="rgba(255, 255, 255, 0.3)" />
-          </View>
-        </View>
-      </View>
-
       {/* Crates Selection Modal */}
       <Modal
         visible={showCratesModal}
@@ -422,7 +407,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.xl * 2.5,
+    paddingTop: SPACING.xl,
     paddingBottom: SPACING.md,
   },
   headerButton: {
@@ -556,36 +541,6 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nextSongContainer: {
-    paddingHorizontal: SPACING.xl,
-    marginBottom: SPACING.xl,
-  },
-  nextSongHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  nextSongTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  viewAllText: {
-    fontSize: FONT_SIZES.sm,
-    color: 'rgba(255, 255, 255, 0.6)',
-  },
-  nextSongItem: {
-    height: 60,
-  },
-  nextSongArtwork: {
-    width: 60,
-    height: 60,
-    borderRadius: BORDER_RADIUS.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },

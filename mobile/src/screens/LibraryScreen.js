@@ -29,15 +29,23 @@ const LibraryScreen = ({ navigation }) => {
   } = useStore();
 
   const [sortBy, setSortBy] = useState('title');
+  const [isEditMode, setIsEditMode] = useState(false);
 
   useEffect(() => {
     loadLibrary();
   }, []);
 
+  // Exit edit mode when selection is cleared
+  useEffect(() => {
+    if (selectedTracks.length === 0 && isEditMode) {
+      setIsEditMode(false);
+    }
+  }, [selectedTracks.length]);
+
   const displayTracks = searchQuery ? searchResults : tracks;
 
   const handleTrackPress = (track) => {
-    if (selectedTracks.length > 0) {
+    if (isEditMode || selectedTracks.length > 0) {
       toggleTrackSelection(track.id);
     } else {
       navigation.navigate('Player', { track });
@@ -45,7 +53,17 @@ const LibraryScreen = ({ navigation }) => {
   };
 
   const handleTrackLongPress = (track) => {
+    if (!isEditMode) {
+      setIsEditMode(true);
+    }
     toggleTrackSelection(track.id);
+  };
+
+  const handleEditPress = () => {
+    setIsEditMode(!isEditMode);
+    if (isEditMode) {
+      clearSelection();
+    }
   };
 
   const handleAddToCrate = () => {
@@ -77,12 +95,23 @@ const LibraryScreen = ({ navigation }) => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Library</Text>
-        <Text style={styles.subtitle}>
-          {tracks.length} tracks
-          {selectedTracks.length > 0 &&
-            ` • ${selectedTracks.length} selected`}
-        </Text>
+        <View style={styles.headerTop}>
+          <Text style={styles.title}>Library</Text>
+          <Text style={styles.trackCount}>{tracks.length} tracks</Text>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={handleEditPress}
+          >
+            <Text style={styles.editButtonText}>
+              {isEditMode ? 'Cancel' : 'Edit'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {selectedTracks.length > 0 && (
+          <Text style={styles.subtitle}>
+            {selectedTracks.length} selected
+          </Text>
+        )}
       </View>
 
       {/* Search Bar */}
@@ -166,6 +195,7 @@ const LibraryScreen = ({ navigation }) => {
             />
           )}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={true}
         />
       )}
     </View>
@@ -179,17 +209,40 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: SPACING.lg,
-    paddingTop: SPACING.xl * 3,
+    paddingTop: SPACING.xl,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   title: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: SPACING.xs,
+  },
+  trackCount: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textSecondary,
+    flex: 1,
+    textAlign: 'right',
+    marginRight: SPACING.md,
   },
   subtitle: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
+  editButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+  },
+  editButtonText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   searchContainer: {
     flexDirection: 'row',

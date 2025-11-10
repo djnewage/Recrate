@@ -79,6 +79,29 @@ const useStore = create((set, get) => ({
     }
   },
 
+  removeTrackFromCrate: async (crateId, trackId) => {
+    try {
+      await apiService.removeTrackFromCrate(crateId, trackId);
+      await get().loadCrate(crateId);
+      await get().loadCrates(); // Refresh the crates list to update track counts
+      return true;
+    } catch (error) {
+      set({ cratesError: error.message });
+      return false;
+    }
+  },
+
+  deleteCrate: async (crateId) => {
+    try {
+      await apiService.deleteCrate(crateId);
+      await get().loadCrates(); // Refresh the crates list
+      return true;
+    } catch (error) {
+      set({ cratesError: error.message });
+      return false;
+    }
+  },
+
   // Selection actions
   toggleTrackSelection: (trackId) => {
     const { selectedTracks } = get();
