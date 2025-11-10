@@ -195,6 +195,7 @@ const LibraryScreen = ({ navigation }) => {
             />
           )}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={true}
         />
       )}
     </View>
