@@ -96,14 +96,8 @@ const LibraryScreen = ({ navigation }) => {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.title}>Library</Text>
-            <Text style={styles.subtitle}>
-              {tracks.length} tracks
-              {selectedTracks.length > 0 &&
-                ` • ${selectedTracks.length} selected`}
-            </Text>
-          </View>
+          <Text style={styles.title}>Library</Text>
+          <Text style={styles.trackCount}>{tracks.length} tracks</Text>
           <TouchableOpacity
             style={styles.editButton}
             onPress={handleEditPress}
@@ -113,6 +107,11 @@ const LibraryScreen = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
         </View>
+        {selectedTracks.length > 0 && (
+          <Text style={styles.subtitle}>
+            {selectedTracks.length} selected
+          </Text>
+        )}
       </View>
 
       {/* Search Bar */}
@@ -214,17 +213,24 @@ const styles = StyleSheet.create({
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   title: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: SPACING.xs,
+  },
+  trackCount: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textSecondary,
+    flex: 1,
+    textAlign: 'right',
+    marginRight: SPACING.md,
   },
   subtitle: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
   },
   editButton: {
     paddingHorizontal: SPACING.md,
