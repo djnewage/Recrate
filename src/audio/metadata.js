@@ -30,7 +30,7 @@ class MetadataExtractor {
         bpm: metadata.common.bpm || null,
         key: metadata.common.key || null,
         format: metadata.format.container || path.extname(filePath).substring(1).toUpperCase(),
-        hasArtwork: metadata.common.picture && metadata.common.picture.length > 0,
+        hasArtwork: !!(metadata.common.picture && metadata.common.picture.length > 0),
       };
     } catch (error) {
       logger.warn(`Failed to extract metadata for ${filePath}:`, error.message);

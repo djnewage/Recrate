@@ -10,16 +10,16 @@ import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
 import useStore from '../store/useStore';
 import TrackItem from '../components/TrackItem';
 
-const CrateDetailScreen = ({ route }) => {
+const CrateDetailScreen = ({ route, navigation }) => {
   const { crateId } = route.params;
-  const { selectedCrate, isLoadingCrates, loadCrate, playTrack } = useStore();
+  const { selectedCrate, isLoadingCrates, loadCrate } = useStore();
 
   useEffect(() => {
     loadCrate(crateId);
   }, [crateId]);
 
   const handleTrackPress = (track) => {
-    playTrack(track);
+    navigation.navigate('Player', { track });
   };
 
   if (isLoadingCrates || !selectedCrate) {

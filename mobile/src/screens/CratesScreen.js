@@ -10,6 +10,7 @@ import {
   TextInput,
   Modal,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 
@@ -27,9 +28,12 @@ const CratesScreen = ({ navigation, route }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCrateName, setNewCrateName] = useState('');
 
-  useEffect(() => {
-    loadCrates();
-  }, []);
+  // Reload crates whenever the screen gains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadCrates();
+    }, [])
+  );
 
   useEffect(() => {
     // If coming from Library with selected tracks
