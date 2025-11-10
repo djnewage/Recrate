@@ -219,9 +219,10 @@ Last Updated: November 10, 2025
 - ❌ Playlist import/export
 
 ### Mobile App
-- ❌ Create new crates from mobile
-- ❌ Add tracks to crates from mobile
-- ❌ Remove tracks from crates
+- ✅ Create new crates from mobile
+- ✅ Add tracks to crates from mobile
+- ✅ Remove tracks from crates
+- ✅ Delete crates from mobile
 - ❌ Bulk operations
 - ❌ Offline mode
 - ❌ Download tracks for offline playback
@@ -241,20 +242,29 @@ Last Updated: November 10, 2025
 - Streaming: ✅ Done
 - Real-time features: ❌ Pending
 
-### Mobile App: ~70% Complete
+### Mobile App: ~80% Complete
 - Core screens: ✅ Done
 - Player: ✅ Done
 - Basic navigation: ✅ Done
-- Crate management: ❌ Pending
+- Crate management: ✅ Done
 - Advanced features: ❌ Pending
 
-### Overall: ~80% MVP Complete
+### Overall: ~85% MVP Complete
 
 ---
 
 ## 🎉 Recent Achievements
 
-### Latest Session (Nov 10, 2025)
+### Latest Session (Nov 10, 2025 - Crate Management)
+- ✅ Implemented complete crate management in mobile app
+- ✅ Added `removeTrackFromCrate` action to store
+- ✅ Added `deleteCrate` action to store
+- ✅ Long-press to remove tracks from crates in CrateDetailScreen
+- ✅ Long-press to delete crates in CratesScreen
+- ✅ Confirmation dialogs for destructive actions
+- ✅ Auto-refresh after crate modifications
+
+### Previous Session (Nov 10, 2025)
 - ✅ Fixed metadata extraction to read from audio files
 - ✅ Added configurable music path support
 - ✅ Fixed dotenv configuration override

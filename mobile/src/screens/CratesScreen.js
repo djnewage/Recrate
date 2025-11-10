@@ -21,6 +21,7 @@ const CratesScreen = ({ navigation, route }) => {
     loadCrates,
     createCrate,
     addTracksToCrate,
+    deleteCrate,
     selectedTracks,
     clearSelection,
   } = useStore();
@@ -85,10 +86,33 @@ const CratesScreen = ({ navigation, route }) => {
     }
   };
 
+  const handleDeleteCrate = (crate) => {
+    Alert.alert(
+      'Delete Crate',
+      `Are you sure you want to delete "${crate.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await deleteCrate(crate.id);
+            if (success) {
+              Alert.alert('Success', 'Crate deleted successfully');
+            } else {
+              Alert.alert('Error', 'Failed to delete crate');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderCrateItem = ({ item }) => (
     <TouchableOpacity
       style={styles.crateItem}
       onPress={() => handleCratePress(item)}
+      onLongPress={() => handleDeleteCrate(item)}
       activeOpacity={0.7}
     >
       <View style={styles.crateIcon} />

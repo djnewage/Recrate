@@ -5,6 +5,8 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
+  Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
 import useStore from '../store/useStore';
@@ -12,7 +14,7 @@ import TrackItem from '../components/TrackItem';
 
 const CrateDetailScreen = ({ route, navigation }) => {
   const { crateId } = route.params;
-  const { selectedCrate, isLoadingCrates, loadCrate } = useStore();
+  const { selectedCrate, isLoadingCrates, loadCrate, removeTrackFromCrate } = useStore();
 
   useEffect(() => {
     loadCrate(crateId);
@@ -20,6 +22,26 @@ const CrateDetailScreen = ({ route, navigation }) => {
 
   const handleTrackPress = (track) => {
     navigation.navigate('Player', { track });
+  };
+
+  const handleRemoveTrack = (track) => {
+    Alert.alert(
+      'Remove Track',
+      `Remove "${track.title}" from this crate?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await removeTrackFromCrate(crateId, track.id);
+            if (!success) {
+              Alert.alert('Error', 'Failed to remove track from crate');
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (isLoadingCrates || !selectedCrate) {
@@ -54,7 +76,11 @@ const CrateDetailScreen = ({ route, navigation }) => {
           data={selectedCrate.tracks}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TrackItem track={item} onPress={handleTrackPress} />
+            <TrackItem
+              track={item}
+              onPress={handleTrackPress}
+              onLongPress={() => handleRemoveTrack(item)}
+            />
           )}
           contentContainerStyle={styles.list}
         />
