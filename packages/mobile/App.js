@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StatusBar, SafeAreaView, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
 import { COLORS } from './src/constants/theme';
 
 // Screens
@@ -130,11 +131,29 @@ function AppContent() {
 }
 
 export default function App() {
+  const navigationRef = useRef();
+
+  const linking = {
+    prefixes: ['recrate://'],
+    config: {
+      screens: {
+        Connection: {
+          path: 'connect',
+          parse: {
+            ip: (ip) => ip,
+            port: (port) => port,
+          },
+        },
+        Main: 'main',
+      },
+    },
+  };
+
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
       <SafeAreaView style={styles.container}>
-        <NavigationContainer>
+        <NavigationContainer ref={navigationRef} linking={linking}>
           <AppContent />
         </NavigationContainer>
       </SafeAreaView>

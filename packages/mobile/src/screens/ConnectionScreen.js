@@ -15,7 +15,7 @@ import apiService from '../services/api';
 
 const SERVER_URL_KEY = '@recrate_server_url';
 
-export default function ConnectionScreen({ navigation }) {
+export default function ConnectionScreen({ navigation, route }) {
   const [serverUrl, setServerUrl] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -23,6 +23,18 @@ export default function ConnectionScreen({ navigation }) {
   useEffect(() => {
     loadSavedServerUrl();
   }, []);
+
+  // Handle deep link parameters
+  useEffect(() => {
+    if (route?.params?.ip && route?.params?.port) {
+      const url = `http://${route.params.ip}:${route.params.port}`;
+      setServerUrl(url);
+      // Auto-connect when deep link parameters are present
+      setTimeout(() => {
+        testConnection(url);
+      }, 500);
+    }
+  }, [route?.params?.ip, route?.params?.port]);
 
   const loadSavedServerUrl = async () => {
     try {
