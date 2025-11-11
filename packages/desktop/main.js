@@ -30,6 +30,48 @@ function getLocalIP() {
   return 'localhost';
 }
 
+/**
+ * Detect if Tailscale is installed and running
+ * Returns Tailscale IP (100.x.x.x) or null
+ */
+function getTailscaleIP() {
+  const interfaces = os.networkInterfaces();
+
+  for (const [name, addrs] of Object.entries(interfaces)) {
+    for (const addr of addrs) {
+      // Tailscale IPs always start with 100.x.x.x
+      if (addr.family === 'IPv4' && addr.address.startsWith('100.')) {
+        log.info('Tailscale detected:', addr.address);
+        return addr.address;
+      }
+    }
+  }
+
+  log.info('Tailscale not detected');
+  return null;
+}
+
+/**
+ * Check if Tailscale is installed (not just running)
+ */
+function isTailscaleInstalled() {
+  const { execSync } = require('child_process');
+
+  try {
+    if (process.platform === 'darwin' || process.platform === 'linux') {
+      execSync('which tailscale', { stdio: 'ignore' });
+      return true;
+    } else if (process.platform === 'win32') {
+      execSync('where tailscale', { stdio: 'ignore' });
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
 // Auto-detect Serato path
 function detectSeratoPath() {
   const homeDir = os.homedir();
@@ -218,15 +260,22 @@ function startServer() {
       serverStatus = 'running';
       updateTrayMenu();
 
+      // Get Tailscale info
+      const localIP = getLocalIP();
+      const tailscaleIP = getTailscaleIP();
+      const tailscaleInstalled = isTailscaleInstalled();
+
       // Send status to renderer (with delay to ensure window is ready)
       const sendStatus = () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('server-status', {
             status: 'running',
-            url: `http://${getLocalIP()}:${serverPort}`,
+            localURL: `http://${localIP}:${serverPort}`,
+            tailscaleURL: tailscaleIP ? `http://${tailscaleIP}:${serverPort}` : null,
+            tailscaleInstalled,
             config
           });
-          log.info('Sent running status to renderer');
+          log.info('Sent running status to renderer with Tailscale info');
         }
       };
 
@@ -338,6 +387,21 @@ ipcMain.handle('get-server-status', () => {
 
 ipcMain.handle('open-external', (event, url) => {
   require('electron').shell.openExternal(url);
+});
+
+ipcMain.handle('get-tailscale-info', () => {
+  const tailscaleIP = getTailscaleIP();
+  const installed = isTailscaleInstalled();
+
+  return {
+    installed,
+    running: tailscaleIP !== null,
+    ip: tailscaleIP
+  };
+});
+
+ipcMain.handle('open-tailscale-url', () => {
+  require('electron').shell.openExternal('https://tailscale.com/download');
 });
 
 // App lifecycle

@@ -5,7 +5,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
+import NetInfo from '@react-native-community/netinfo';
 import { COLORS } from './src/constants/theme';
+import { useConnectionStore } from './src/store/connectionStore';
 
 // Screens
 import ConnectionScreen from './src/screens/ConnectionScreen';
@@ -148,6 +150,31 @@ export default function App() {
       },
     },
   };
+
+  // Auto-reconnect on network change
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      console.log('Network state changed:', state.type, 'Connected:', state.isConnected);
+
+      if (state.isConnected) {
+        // Network came back - try to reconnect
+        const { isConnected, lastSuccessfulIP, testConnection, setConnected } =
+          useConnectionStore.getState();
+
+        if (!isConnected && lastSuccessfulIP) {
+          console.log('Attempting to reconnect to:', lastSuccessfulIP);
+          testConnection(lastSuccessfulIP).then((works) => {
+            if (works) {
+              setConnected(true);
+              console.log('Reconnected successfully!');
+            }
+          });
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   return (
     <>

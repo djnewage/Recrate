@@ -10,6 +10,25 @@ const api = axios.create({
   },
 });
 
+// Add request interceptor to dynamically set base URL from connection store
+api.interceptors.request.use(
+  async (config) => {
+    // Dynamically import to avoid circular dependencies
+    const { useConnectionStore } = await import('../store/connectionStore');
+    const { serverURL } = useConnectionStore.getState();
+
+    // Use serverURL from connection store if available
+    if (serverURL) {
+      config.baseURL = serverURL;
+    }
+
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // API Service
 export const apiService = {
   // Set base URL dynamically
@@ -83,13 +102,31 @@ export const apiService = {
     return response.data;
   },
 
-  // Streaming URLs
+  // Streaming URLs (synchronous, so we'll use the current base URL)
   getStreamUrl: (trackId) => {
-    return `${API_CONFIG.BASE_URL}${ENDPOINTS.STREAM}/${trackId}`;
+    // Try to get from connection store first
+    try {
+      // Use require for synchronous import
+      const { useConnectionStore } = require('../store/connectionStore');
+      const { serverURL } = useConnectionStore.getState();
+      const baseURL = serverURL || API_CONFIG.BASE_URL;
+      return `${baseURL}${ENDPOINTS.STREAM}/${trackId}`;
+    } catch {
+      return `${API_CONFIG.BASE_URL}${ENDPOINTS.STREAM}/${trackId}`;
+    }
   },
 
   getArtworkUrl: (trackId) => {
-    return `${API_CONFIG.BASE_URL}${ENDPOINTS.ARTWORK}/${trackId}`;
+    // Try to get from connection store first
+    try {
+      // Use require for synchronous import
+      const { useConnectionStore } = require('../store/connectionStore');
+      const { serverURL } = useConnectionStore.getState();
+      const baseURL = serverURL || API_CONFIG.BASE_URL;
+      return `${baseURL}${ENDPOINTS.ARTWORK}/${trackId}`;
+    } catch {
+      return `${API_CONFIG.BASE_URL}${ENDPOINTS.ARTWORK}/${trackId}`;
+    }
   },
 };
 
