@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.recrate.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,6 +25,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "99558d9b-96b2-4206-963e-38a26a0bb971"
+      }
+    },
+    "owner": "djnewage"
   }
 }
