@@ -323,22 +323,54 @@
     // Generate QR code
     function generateQR(url) {
       const canvas = document.getElementById('qr-code');
-      const qr = qrcode(0, 'M');
-      qr.addData(url);
-      qr.make();
 
-      const size = 200;
-      const moduleCount = qr.getModuleCount();
-      const cellSize = size / moduleCount;
+      // Parse the URL to extract IP and port
+      try {
+        const urlObj = new URL(url);
+        const ip = urlObj.hostname;
+        const port = urlObj.port || '3000';
 
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
+        // Create deep link URL for mobile app
+        const deepLinkUrl = `recrate://connect?ip=${ip}&port=${port}`;
 
-      for (let row = 0; row < moduleCount; row++) {
-        for (let col = 0; col < moduleCount; col++) {
-          ctx.fillStyle = qr.isDark(row, col) ? '#000000' : '#ffffff';
-          ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+        const qr = qrcode(0, 'M');
+        qr.addData(deepLinkUrl);
+        qr.make();
+
+        const size = 200;
+        const moduleCount = qr.getModuleCount();
+        const cellSize = size / moduleCount;
+
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        for (let row = 0; row < moduleCount; row++) {
+          for (let col = 0; col < moduleCount; col++) {
+            ctx.fillStyle = qr.isDark(row, col) ? '#000000' : '#ffffff';
+            ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+          }
+        }
+      } catch (error) {
+        console.error('Error generating QR code:', error);
+        // Fallback to original URL if parsing fails
+        const qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+
+        const size = 200;
+        const moduleCount = qr.getModuleCount();
+        const cellSize = size / moduleCount;
+
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        for (let row = 0; row < moduleCount; row++) {
+          for (let col = 0; col < moduleCount; col++) {
+            ctx.fillStyle = qr.isDark(row, col) ? '#000000' : '#ffffff';
+            ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+          }
         }
       }
     }
