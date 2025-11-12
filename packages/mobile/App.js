@@ -15,6 +15,7 @@ import LibraryScreen from './src/screens/LibraryScreen';
 import CratesScreen from './src/screens/CratesScreen';
 import CrateDetailScreen from './src/screens/CrateDetailScreen';
 import PlayerScreen from './src/screens/PlayerScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 
 // Components
 import MiniPlayer from './src/components/MiniPlayer';
@@ -90,7 +91,7 @@ function TabNavigator({ navigation }) {
       />
       <Tab.Screen
         name="Settings"
-        component={ConnectionScreen}
+        component={SettingsScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings" size={size} color={color} />

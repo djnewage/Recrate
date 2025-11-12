@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
+import TextTicker from 'react-native-text-ticker';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 
@@ -208,7 +209,7 @@ const PlayerScreen = ({ route, navigation }) => {
             />
           ) : (
             <View style={styles.artworkPlaceholder}>
-              <Ionicons name="musical-notes" size={80} color="rgba(255, 255, 255, 0.3)" />
+              <Ionicons name="musical-notes" size={60} color="rgba(255, 255, 255, 0.3)" />
             </View>
           )}
         </View>
@@ -217,9 +218,19 @@ const PlayerScreen = ({ route, navigation }) => {
       {/* Track Info with Actions */}
       <View style={styles.trackInfoContainer}>
         <View style={styles.trackInfo}>
-          <Text style={styles.trackTitle} numberOfLines={2}>
+          <TextTicker
+            style={styles.trackTitle}
+            duration={20000}
+            loop
+            bounce={false}
+            repeatSpacer={50}
+            marqueeDelay={3000}
+            useNativeDriver
+            animationType="scroll"
+            shouldAnimateTreshold={20}
+          >
             {track.title}
-          </Text>
+          </TextTicker>
           <Text style={styles.trackArtist} numberOfLines={1}>
             {track.artist}
           </Text>
@@ -429,9 +440,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   artworkShadow: {
-    width: width * 0.7,
-    height: width * 0.7,
-    borderRadius: (width * 0.7) / 2,
+    width: width * 0.55,
+    height: width * 0.55,
+    borderRadius: (width * 0.55) / 2,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -444,14 +455,14 @@ const styles = StyleSheet.create({
   artwork: {
     width: '100%',
     height: '100%',
-    borderRadius: (width * 0.7) / 2,
+    borderRadius: (width * 0.55) / 2,
     borderWidth: 3,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   artworkPlaceholder: {
     width: '100%',
     height: '100%',
-    borderRadius: (width * 0.7) / 2,
+    borderRadius: (width * 0.55) / 2,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -464,16 +475,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.xl,
     marginBottom: SPACING.lg,
+    minHeight: 80,
   },
   trackInfo: {
     flex: 1,
     paddingRight: SPACING.md,
+    overflow: 'visible',
   },
   trackTitle: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: SPACING.xs,
+    height: 28,
   },
   trackArtist: {
     fontSize: FONT_SIZES.md,

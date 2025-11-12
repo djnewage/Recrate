@@ -18,7 +18,9 @@ const LibraryScreen = ({ navigation }) => {
     tracks,
     selectedTracks,
     isLoadingLibrary,
+    libraryPagination,
     loadLibrary,
+    loadMoreTracks,
     toggleTrackSelection,
     clearSelection,
     playTrack,
@@ -91,13 +93,38 @@ const LibraryScreen = ({ navigation }) => {
 
   const sortedTracks = sortTracks(displayTracks);
 
+  const handleEndReached = () => {
+    // Only trigger pagination for library view, not search results
+    if (!searchQuery && libraryPagination.hasMore && !isLoadingLibrary) {
+      loadMoreTracks();
+    }
+  };
+
+  const renderFooter = () => {
+    if (!libraryPagination.hasMore || searchQuery) {
+      return null;
+    }
+
+    return (
+      <View style={styles.footerContainer}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
+        <Text style={styles.footerText}>Loading more tracks...</Text>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <Text style={styles.title}>Library</Text>
-          <Text style={styles.trackCount}>{tracks.length} tracks</Text>
+          <Text style={styles.trackCount}>
+            {tracks.length}
+            {libraryPagination.total > 0 && libraryPagination.total !== tracks.length
+              ? ` of ${libraryPagination.total}`
+              : ''} tracks
+          </Text>
           <TouchableOpacity
             style={styles.editButton}
             onPress={handleEditPress}
@@ -177,7 +204,7 @@ const LibraryScreen = ({ navigation }) => {
       )}
 
       {/* Track List */}
-      {isLoadingLibrary ? (
+      {isLoadingLibrary && tracks.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading library...</Text>
@@ -196,6 +223,9 @@ const LibraryScreen = ({ navigation }) => {
           )}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={true}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={renderFooter}
         />
       )}
     </View>
@@ -327,6 +357,16 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xl * 3,
+  },
+  footerContainer: {
+    paddingVertical: SPACING.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerText: {
+    marginTop: SPACING.sm,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
   },
 });
 

@@ -9,6 +9,7 @@ const createLibraryRoutes = require('./routes/library');
 const createCrateRoutes = require('./routes/crates');
 const { createStreamingRoutes, createArtworkRoutes } = require('./routes/streaming');
 const createSearchRoutes = require('./routes/search');
+const createConfigRoutes = require('./routes/config');
 
 /**
  * API Server - Express server with WebSocket support
@@ -45,6 +46,7 @@ class APIServer {
     this.app.use('/api/stream', createStreamingRoutes(this.streamer));
     this.app.use('/api/artwork', createArtworkRoutes(this.streamer));
     this.app.use('/api/search', createSearchRoutes(this.parser));
+    this.app.use('/api/config', createConfigRoutes(this.parser));
 
     // 404 handler
     this.app.use((req, res) => {

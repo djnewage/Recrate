@@ -8,6 +8,14 @@ const useStore = create((set, get) => ({
   isLoadingLibrary: false,
   libraryError: null,
 
+  // Pagination state
+  libraryPagination: {
+    total: 0,
+    limit: 100,
+    offset: 0,
+    hasMore: false,
+  },
+
   // Crates state
   crates: [],
   selectedCrate: null,
@@ -25,14 +33,65 @@ const useStore = create((set, get) => ({
   isSearching: false,
 
   // Library actions
-  loadLibrary: async (params = {}) => {
+  loadLibrary: async (params = {}, append = false) => {
     set({ isLoadingLibrary: true, libraryError: null });
     try {
-      const data = await apiService.getLibrary(params);
-      set({ tracks: data.tracks, isLoadingLibrary: false });
+      const { libraryPagination } = get();
+      const requestParams = {
+        limit: libraryPagination.limit,
+        offset: append ? libraryPagination.offset : 0,
+        ...params,
+      };
+
+      const data = await apiService.getLibrary(requestParams);
+
+      set({
+        tracks: append ? [...get().tracks, ...data.tracks] : data.tracks,
+        isLoadingLibrary: false,
+        libraryPagination: {
+          total: data.pagination.total,
+          limit: data.pagination.limit,
+          offset: data.pagination.offset,
+          hasMore: data.pagination.hasMore,
+        },
+      });
     } catch (error) {
       set({ libraryError: error.message, isLoadingLibrary: false });
     }
+  },
+
+  loadMoreTracks: async () => {
+    const { libraryPagination, isLoadingLibrary } = get();
+
+    // Don't load if already loading or no more tracks
+    if (isLoadingLibrary || !libraryPagination.hasMore) {
+      return;
+    }
+
+    // Calculate next offset
+    const nextOffset = libraryPagination.offset + libraryPagination.limit;
+
+    // Update offset and load with append
+    set({
+      libraryPagination: {
+        ...libraryPagination,
+        offset: nextOffset,
+      },
+    });
+
+    await get().loadLibrary({}, true);
+  },
+
+  resetLibrary: () => {
+    set({
+      tracks: [],
+      libraryPagination: {
+        total: 0,
+        limit: 100,
+        offset: 0,
+        hasMore: false,
+      },
+    });
   },
 
   // Crates actions
