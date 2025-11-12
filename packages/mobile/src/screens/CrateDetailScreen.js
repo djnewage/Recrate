@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
@@ -19,6 +20,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
   const [selectedTrackIds, setSelectedTrackIds] = useState([]);
   const [sortBy, setSortBy] = useState('title');
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadCrate(crateId);
@@ -129,6 +131,24 @@ const CrateDetailScreen = ({ route, navigation }) => {
     }
   };
 
+  const filterTracks = (tracks) => {
+    if (!tracks) return [];
+    if (!searchQuery.trim()) return tracks;
+
+    const query = searchQuery.toLowerCase();
+    return tracks.filter((track) => {
+      const title = (track.title || '').toLowerCase();
+      const artist = (track.artist || '').toLowerCase();
+      const album = (track.album || '').toLowerCase();
+      const key = (track.key || '').toLowerCase();
+
+      return title.includes(query) ||
+             artist.includes(query) ||
+             album.includes(query) ||
+             key.includes(query);
+    });
+  };
+
   const sortTracks = (tracksToSort) => {
     if (!tracksToSort) return [];
 
@@ -154,7 +174,9 @@ const CrateDetailScreen = ({ route, navigation }) => {
     });
   };
 
-  const sortedTracks = sortTracks(selectedCrate?.tracks);
+  // Filter first, then sort
+  const filteredTracks = filterTracks(selectedCrate?.tracks);
+  const sortedTracks = sortTracks(filteredTracks);
 
   if (isLoadingCrates || !selectedCrate) {
     return (
@@ -174,7 +196,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
             <View style={styles.headerTitleRow}>
               <Text style={styles.title}>{selectedCrate.name}</Text>
               <Text style={styles.subtitle}>
-                • {selectedCrate.tracks?.length || 0} tracks
+                • {searchQuery ? `${sortedTracks.length} of ${selectedCrate.tracks?.length || 0}` : `${selectedCrate.tracks?.length || 0}`} tracks
               </Text>
             </View>
             {selectedTrackIds.length > 0 && (
@@ -202,6 +224,25 @@ const CrateDetailScreen = ({ route, navigation }) => {
             </TouchableOpacity>
           </View>
         </View>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder={`Search in ${selectedCrate.name}...`}
+          placeholderTextColor={COLORS.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery !== '' && (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => setSearchQuery('')}
+          >
+            <Text style={styles.clearButtonText}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Sort Options */}
@@ -315,6 +356,29 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
     marginTop: SPACING.xs,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+  },
+  clearButton: {
+    position: 'absolute',
+    right: SPACING.lg + SPACING.md,
+    padding: SPACING.sm,
+  },
+  clearButtonText: {
+    fontSize: FONT_SIZES.lg,
+    color: COLORS.textSecondary,
   },
   loadingContainer: {
     flex: 1,

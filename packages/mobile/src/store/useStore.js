@@ -376,9 +376,14 @@ const useStore = create((set, get) => ({
         await TrackPlayer.skip(startIndex);
       }
 
+      // Start playback automatically
+      await TrackPlayer.play();
+
       set({
         queue: tracks,
         currentQueueIndex: startIndex,
+        currentTrack: tracks[startIndex],
+        isPlaying: true,
       });
     } catch (error) {
       console.error('Error setting queue:', error);
