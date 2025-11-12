@@ -1,5 +1,7 @@
 import { create } from 'zustand';
+import TrackPlayer, { RepeatMode } from 'react-native-track-player';
 import apiService from '../services/api';
+import * as TrackPlayerService from '../services/TrackPlayerService';
 
 const useStore = create((set, get) => ({
   // Library state
@@ -25,7 +27,12 @@ const useStore = create((set, get) => ({
   // Player state
   currentTrack: null,
   isPlaying: false,
+  isBuffering: false,
   playerError: null,
+  queue: [],
+  currentQueueIndex: -1,
+  repeatMode: 'off', // 'off', 'track', 'queue'
+  shuffleEnabled: false,
 
   // Search state
   searchQuery: '',
@@ -201,20 +208,162 @@ const useStore = create((set, get) => ({
   },
 
   // Player actions
-  playTrack: (track) => {
-    set({ currentTrack: track, isPlaying: true });
+  playTrack: async (track) => {
+    try {
+      set({ playerError: null, isBuffering: true });
+
+      const success = await TrackPlayerService.playTrack(track);
+
+      if (success) {
+        set({
+          currentTrack: track,
+          isPlaying: true,
+          isBuffering: false,
+          queue: [track],
+          currentQueueIndex: 0,
+        });
+      } else {
+        set({
+          playerError: 'Failed to play track',
+          isBuffering: false,
+        });
+      }
+    } catch (error) {
+      console.error('Error playing track:', error);
+      set({
+        playerError: error.message,
+        isPlaying: false,
+        isBuffering: false,
+      });
+    }
   },
 
-  pauseTrack: () => {
-    set({ isPlaying: false });
+  pauseTrack: async () => {
+    try {
+      await TrackPlayer.pause();
+      set({ isPlaying: false });
+    } catch (error) {
+      console.error('Error pausing track:', error);
+    }
   },
 
-  resumeTrack: () => {
-    set({ isPlaying: true });
+  resumeTrack: async () => {
+    try {
+      await TrackPlayer.play();
+      set({ isPlaying: true });
+    } catch (error) {
+      console.error('Error resuming track:', error);
+    }
   },
 
-  stopTrack: () => {
-    set({ currentTrack: null, isPlaying: false });
+  stopTrack: async () => {
+    try {
+      await TrackPlayer.reset();
+      set({
+        currentTrack: null,
+        isPlaying: false,
+        queue: [],
+        currentQueueIndex: -1,
+      });
+    } catch (error) {
+      console.error('Error stopping track:', error);
+    }
+  },
+
+  seekTo: async (positionSeconds) => {
+    try {
+      await TrackPlayer.seekTo(positionSeconds);
+    } catch (error) {
+      console.error('Error seeking:', error);
+    }
+  },
+
+  playNext: async () => {
+    try {
+      const { queue, currentQueueIndex, repeatMode } = get();
+
+      if (queue.length === 0) return;
+
+      let nextIndex = currentQueueIndex + 1;
+
+      // Handle end of queue
+      if (nextIndex >= queue.length) {
+        if (repeatMode === 'queue') {
+          nextIndex = 0;
+        } else {
+          // End of queue
+          set({ isPlaying: false });
+          return;
+        }
+      }
+
+      await TrackPlayer.skipToNext();
+      set({ currentQueueIndex: nextIndex });
+    } catch (error) {
+      console.error('Error playing next:', error);
+    }
+  },
+
+  playPrevious: async () => {
+    try {
+      const { queue, currentQueueIndex } = get();
+
+      if (queue.length === 0) return;
+
+      let prevIndex = currentQueueIndex - 1;
+
+      // Handle beginning of queue
+      if (prevIndex < 0) {
+        prevIndex = 0;
+      }
+
+      await TrackPlayer.skipToPrevious();
+      set({ currentQueueIndex: prevIndex });
+    } catch (error) {
+      console.error('Error playing previous:', error);
+    }
+  },
+
+  toggleRepeat: async () => {
+    const { repeatMode } = get();
+    const modes = ['off', 'queue', 'track'];
+    const currentIndex = modes.indexOf(repeatMode);
+    const nextMode = modes[(currentIndex + 1) % modes.length];
+
+    // Set TrackPlayer repeat mode
+    if (nextMode === 'track') {
+      await TrackPlayer.setRepeatMode(RepeatMode.Track);
+    } else if (nextMode === 'queue') {
+      await TrackPlayer.setRepeatMode(RepeatMode.Queue);
+    } else {
+      await TrackPlayer.setRepeatMode(RepeatMode.Off);
+    }
+
+    set({ repeatMode: nextMode });
+  },
+
+  toggleShuffle: () => {
+    const { shuffleEnabled } = get();
+    // Note: Shuffle logic would need to be implemented in queue management
+    set({ shuffleEnabled: !shuffleEnabled });
+  },
+
+  setQueue: async (tracks, startIndex = 0) => {
+    try {
+      await TrackPlayer.reset();
+      await TrackPlayerService.addTracksToQueue(tracks);
+
+      if (startIndex > 0) {
+        await TrackPlayer.skip(startIndex);
+      }
+
+      set({
+        queue: tracks,
+        currentQueueIndex: startIndex,
+      });
+    } catch (error) {
+      console.error('Error setting queue:', error);
+    }
   },
 }));
 

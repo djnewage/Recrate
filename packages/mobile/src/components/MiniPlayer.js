@@ -1,98 +1,28 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Audio } from 'expo-av';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useProgress } from 'react-native-track-player';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
-import apiService from '../services/api';
 
 const MiniPlayer = () => {
   const navigation = useNavigation();
   const { currentTrack, isPlaying, pauseTrack, resumeTrack, stopTrack } =
     useStore();
-  const [sound, setSound] = React.useState(null);
-  const [position, setPosition] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
 
-  // Configure audio mode on mount
-  React.useEffect(() => {
-    configureAudio();
-  }, []);
+  // Get real playback progress from TrackPlayer
+  const { position, duration } = useProgress();
 
-  const configureAudio = async () => {
-    try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: false,
-      });
-    } catch (error) {
-      console.error('Error configuring audio:', error);
-    }
-  };
-
-  React.useEffect(() => {
-    return sound
-      ? () => {
-          sound.unloadAsync();
-        }
-      : undefined;
-  }, [sound]);
-
-  React.useEffect(() => {
-    if (currentTrack && isPlaying) {
-      loadAndPlaySound();
-    } else if (sound && !isPlaying) {
-      sound.pauseAsync();
-    }
-  }, [currentTrack, isPlaying]);
-
-  const loadAndPlaySound = async () => {
-    if (sound) {
-      await sound.unloadAsync();
-    }
-
-    try {
-      const streamUrl = apiService.getStreamUrl(currentTrack.id);
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: streamUrl },
-        { shouldPlay: true },
-        onPlaybackStatusUpdate
-      );
-      setSound(newSound);
-    } catch (error) {
-      console.error('Error loading sound:', error);
-    }
-  };
-
-  const onPlaybackStatusUpdate = (status) => {
-    if (status.isLoaded) {
-      setPosition(status.positionMillis / 1000);
-      setDuration(status.durationMillis / 1000);
-
-      if (status.didJustFinish) {
-        stopTrack();
-      }
-    }
-  };
-
-  const togglePlayPause = async () => {
+  const togglePlayPause = () => {
     if (isPlaying) {
       pauseTrack();
     } else {
       resumeTrack();
-      if (sound) {
-        await sound.playAsync();
-      }
     }
   };
 
-  const handleStop = async () => {
-    if (sound) {
-      await sound.unloadAsync();
-      setSound(null);
-    }
+  const handleStop = () => {
     stopTrack();
   };
 

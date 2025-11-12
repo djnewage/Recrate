@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import TextTicker from 'react-native-text-ticker';
+import { useProgress } from 'react-native-track-player';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 
@@ -25,10 +26,11 @@ const PlayerScreen = ({ route, navigation }) => {
   const [selectedCrates, setSelectedCrates] = useState([]);
   const [isAddingToCrates, setIsAddingToCrates] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
-  const [isShuffleOn, setIsShuffleOn] = useState(false);
-  const [repeatMode, setRepeatMode] = useState('off'); // off, all, one
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(track.duration || 192); // Default 3:12
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekPosition, setSeekPosition] = useState(0);
+
+  // Get real playback progress from TrackPlayer
+  const { position, duration } = useProgress();
 
   const {
     crates,
@@ -39,6 +41,13 @@ const PlayerScreen = ({ route, navigation }) => {
     playTrack,
     pauseTrack,
     resumeTrack,
+    seekTo,
+    playNext,
+    playPrevious,
+    toggleRepeat,
+    toggleShuffle,
+    repeatMode,
+    shuffleEnabled,
   } = useStore();
 
   // Check if this is the currently playing track
@@ -54,22 +63,6 @@ const PlayerScreen = ({ route, navigation }) => {
       loadCrates();
     }
   }, [showCratesModal]);
-
-  // Simulate playback progress
-  useEffect(() => {
-    let interval;
-    if (isCurrentTrack && isPlaying) {
-      interval = setInterval(() => {
-        setCurrentTime((prev) => {
-          if (prev >= duration) {
-            return 0;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isCurrentTrack, isPlaying, duration]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -87,33 +80,26 @@ const PlayerScreen = ({ route, navigation }) => {
     }
   };
 
-  const toggleShuffle = () => {
-    setIsShuffleOn(!isShuffleOn);
-  };
-
-  const toggleRepeat = () => {
-    const modes = ['off', 'all', 'one'];
-    const currentIndex = modes.indexOf(repeatMode);
-    const nextIndex = (currentIndex + 1) % modes.length;
-    setRepeatMode(modes[nextIndex]);
-  };
-
   const toggleFavorite = () => {
     setIsFavorite(!isFavorite);
   };
 
   const handleSliderChange = (value) => {
-    setCurrentTime(value);
+    setIsSeeking(true);
+    setSeekPosition(value);
+  };
+
+  const handleSliderComplete = async (value) => {
+    await seekTo(value);
+    setIsSeeking(false);
   };
 
   const handlePrevious = () => {
-    // TODO: Implement previous track functionality
-    console.log('Previous track');
+    playPrevious();
   };
 
   const handleNext = () => {
-    // TODO: Implement next track functionality
-    console.log('Next track');
+    playNext();
   };
 
   const handleAddToCrates = async () => {
@@ -272,16 +258,17 @@ const PlayerScreen = ({ route, navigation }) => {
         <Slider
           style={styles.slider}
           minimumValue={0}
-          maximumValue={duration}
-          value={currentTime}
+          maximumValue={duration || 1}
+          value={isSeeking ? seekPosition : position}
           onValueChange={handleSliderChange}
+          onSlidingComplete={handleSliderComplete}
           minimumTrackTintColor="#FFFFFF"
           maximumTrackTintColor="rgba(255, 255, 255, 0.3)"
           thumbTintColor="#FFFFFF"
         />
         <View style={styles.timeContainer}>
-          <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-          <Text style={styles.timeText}>{formatTime(duration)}</Text>
+          <Text style={styles.timeText}>{formatTime(isSeeking ? seekPosition : position)}</Text>
+          <Text style={styles.timeText}>{formatTime(duration || 0)}</Text>
         </View>
       </View>
 
@@ -294,7 +281,7 @@ const PlayerScreen = ({ route, navigation }) => {
           <Ionicons
             name="shuffle"
             size={24}
-            color={isShuffleOn ? "#FFFFFF" : "rgba(255, 255, 255, 0.6)"}
+            color={shuffleEnabled ? "#FFFFFF" : "rgba(255, 255, 255, 0.6)"}
           />
         </TouchableOpacity>
 
@@ -329,7 +316,7 @@ const PlayerScreen = ({ route, navigation }) => {
           onPress={toggleRepeat}
         >
           <Ionicons
-            name={repeatMode === 'one' ? "repeat-outline" : "repeat"}
+            name={repeatMode === 'track' ? "repeat-outline" : "repeat"}
             size={24}
             color={repeatMode !== 'off' ? "#FFFFFF" : "rgba(255, 255, 255, 0.6)"}
           />

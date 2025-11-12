@@ -8,6 +8,8 @@ import * as Linking from 'expo-linking';
 import NetInfo from '@react-native-community/netinfo';
 import { COLORS } from './src/constants/theme';
 import { useConnectionStore } from './src/store/connectionStore';
+import useStore from './src/store/useStore';
+import * as TrackPlayerService from './src/services/TrackPlayerService';
 
 // Screens
 import ConnectionScreen from './src/screens/ConnectionScreen';
@@ -151,6 +153,37 @@ export default function App() {
       },
     },
   };
+
+  // Initialize TrackPlayer on app mount
+  useEffect(() => {
+    let isInitialized = false;
+
+    async function initializeTrackPlayer() {
+      try {
+        const success = await TrackPlayerService.setupPlayer();
+
+        if (success) {
+          // Setup event handlers with Zustand store
+          TrackPlayerService.setupEventHandlers(useStore);
+          isInitialized = true;
+          console.log('TrackPlayer initialized successfully');
+        } else {
+          console.error('Failed to initialize TrackPlayer');
+        }
+      } catch (error) {
+        console.error('Error initializing TrackPlayer:', error);
+      }
+    }
+
+    initializeTrackPlayer();
+
+    return () => {
+      if (isInitialized) {
+        // Cleanup on app unmount (optional)
+        TrackPlayerService.cleanup().catch(console.error);
+      }
+    };
+  }, []);
 
   // Auto-reconnect on network change
   useEffect(() => {
