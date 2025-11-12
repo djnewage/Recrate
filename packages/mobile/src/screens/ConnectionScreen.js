@@ -7,8 +7,11 @@ import {
   ActivityIndicator,
   ScrollView,
   Linking,
+  Modal,
 } from 'react-native';
 import { useConnectionStore, CONNECTION_TYPES } from '../store/connectionStore';
+import QRScanner from '../components/QRScanner';
+import ConnectionDebug from '../components/ConnectionDebug';
 
 const ConnectionScreen = ({ navigation }) => {
   const {
@@ -23,6 +26,10 @@ const ConnectionScreen = ({ navigation }) => {
 
   const [manualURL, setManualURL] = useState('');
   const [showManual, setShowManual] = useState(false);
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     if (isConnected) {
@@ -40,14 +47,37 @@ const ConnectionScreen = ({ navigation }) => {
   const handleManualConnect = async () => {
     if (!manualURL) return;
 
+    setIsConnecting(true);
+    setConnectionError(null);
+
     const success = await connectManually(manualURL);
+
+    setIsConnecting(false);
+
     if (!success) {
-      alert('Could not connect to server. Please check the URL and try again.');
+      const errorMsg = manualURL.includes('100.')
+        ? 'Could not connect via Tailscale. Make sure Tailscale is connected on this device and you can access the server in Safari.'
+        : 'Could not connect to server. Please check the URL and try again.';
+
+      setConnectionError(errorMsg);
     }
   };
 
   const openTailscaleSetup = () => {
     Linking.openURL('https://tailscale.com/kb/1017/install');
+  };
+
+  const handleQRScan = async (url) => {
+    console.log('[ConnectionScreen] QR code scanned:', url);
+    setShowQRScanner(false);
+
+    // Extract just the base URL (remove /health if present)
+    const baseURL = url.replace('/health', '');
+
+    const success = await connectManually(baseURL);
+    if (!success) {
+      alert('Could not connect to server. Please make sure the server is running.');
+    }
   };
 
   const ConnectionBadge = ({ type }) => {
@@ -160,16 +190,42 @@ const ConnectionScreen = ({ navigation }) => {
           </View>
         )}
 
+        {/* QR Code Scanner Button */}
+        {!isConnected && (
+          <TouchableOpacity
+            onPress={() => setShowQRScanner(true)}
+            style={{
+              backgroundColor: '#667eea',
+              padding: 18,
+              borderRadius: 12,
+              marginBottom: 15,
+            }}
+          >
+            <Text
+              style={{
+                color: '#fff',
+                fontSize: 16,
+                fontWeight: '600',
+                textAlign: 'center',
+              }}
+            >
+              📷 Scan QR Code
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Auto Connect Button */}
         {!isConnected && (
           <TouchableOpacity
             onPress={handleAutoConnect}
             disabled={isSearching}
             style={{
-              backgroundColor: isSearching ? '#666' : '#667eea',
+              backgroundColor: isSearching ? '#666' : 'rgba(102, 126, 234, 0.3)',
               padding: 18,
               borderRadius: 12,
               marginBottom: 15,
+              borderWidth: 2,
+              borderColor: 'rgba(102, 126, 234, 0.5)',
             }}
           >
             {isSearching ? (
@@ -196,7 +252,7 @@ const ConnectionScreen = ({ navigation }) => {
                   textAlign: 'center',
                 }}
               >
-                🔍 Find My Server
+                🔍 Auto-Detect Server
               </Text>
             )}
           </TouchableOpacity>
@@ -262,10 +318,44 @@ const ConnectionScreen = ({ navigation }) => {
             <Text style={{ color: '#fff', fontSize: 16, marginBottom: 10 }}>
               Server IP Address:
             </Text>
+
+            {/* Quick fill buttons */}
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+              <TouchableOpacity
+                onPress={() => setManualURL('https://tristans-macbook-pro.tailca1b53.ts.net')}
+                style={{
+                  backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                  padding: 10,
+                  borderRadius: 6,
+                  flex: 1,
+                }}
+              >
+                <Text style={{ color: '#667eea', fontSize: 12, textAlign: 'center' }}>
+                  Tailscale
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setManualURL('192.168.1.131')}
+                style={{
+                  backgroundColor: 'rgba(66, 153, 225, 0.2)',
+                  padding: 10,
+                  borderRadius: 6,
+                  flex: 1,
+                }}
+              >
+                <Text style={{ color: '#4299e1', fontSize: 12, textAlign: 'center' }}>
+                  Local
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             <TextInput
               value={manualURL}
-              onChangeText={setManualURL}
-              placeholder="192.168.1.100:3000"
+              onChangeText={(text) => {
+                setManualURL(text);
+                setConnectionError(null);
+              }}
+              placeholder="https://your-server.ts.net or 192.168.1.131"
               placeholderTextColor="#666"
               style={{
                 backgroundColor: 'rgba(255,255,255,0.1)',
@@ -278,11 +368,32 @@ const ConnectionScreen = ({ navigation }) => {
               }}
               autoCapitalize="none"
               autoCorrect={false}
+              editable={!isConnecting}
             />
+
+            {/* Connection Error */}
+            {connectionError && (
+              <View
+                style={{
+                  backgroundColor: 'rgba(245, 101, 101, 0.1)',
+                  borderColor: '#f56565',
+                  borderWidth: 1,
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 15,
+                }}
+              >
+                <Text style={{ color: '#f56565', fontSize: 14 }}>
+                  ❌ {connectionError}
+                </Text>
+              </View>
+            )}
+
             <TouchableOpacity
               onPress={handleManualConnect}
+              disabled={isConnecting || !manualURL}
               style={{
-                backgroundColor: '#9f7aea',
+                backgroundColor: isConnecting || !manualURL ? '#666' : '#9f7aea',
                 padding: 15,
                 borderRadius: 8,
               }}
@@ -295,7 +406,7 @@ const ConnectionScreen = ({ navigation }) => {
                   textAlign: 'center',
                 }}
               >
-                Connect
+                {isConnecting ? 'Connecting... (up to 15s)' : 'Connect'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -354,6 +465,28 @@ const ConnectionScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
+        {/* Debug Toggle */}
+        {!isConnected && (
+          <TouchableOpacity
+            onPress={() => setShowDebug(!showDebug)}
+            style={{
+              padding: 10,
+              marginTop: 20,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.2)',
+              borderStyle: 'dashed',
+            }}
+          >
+            <Text style={{ color: '#999', fontSize: 12, textAlign: 'center' }}>
+              {showDebug ? '🔧 Hide Debug Tools' : '🔧 Show Debug Tools'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Connection Debug Component */}
+        {showDebug && <ConnectionDebug />}
+
         {/* Help Text */}
         <Text
           style={{
@@ -366,6 +499,18 @@ const ConnectionScreen = ({ navigation }) => {
           Make sure your desktop app is running
         </Text>
       </View>
+
+      {/* QR Scanner Modal */}
+      <Modal
+        visible={showQRScanner}
+        animationType="slide"
+        onRequestClose={() => setShowQRScanner(false)}
+      >
+        <QRScanner
+          onScan={handleQRScan}
+          onClose={() => setShowQRScanner(false)}
+        />
+      </Modal>
     </ScrollView>
   );
 };

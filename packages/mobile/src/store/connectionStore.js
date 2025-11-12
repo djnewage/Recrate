@@ -24,18 +24,42 @@ export const useConnectionStore = create((set, get) => ({
 
   // Test connection to a URL
   testConnection: async (url) => {
+    console.log(`[ConnectionStore] Testing connection to: ${url}/health`);
+
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => {
+        console.error(`[ConnectionStore] Request timed out after 30 seconds`);
+        controller.abort();
+      }, 30000); // Increased to 30 seconds for slow cellular
 
       const response = await fetch(`${url}/health`, {
-        signal: controller.signal,
         method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache',
+        },
+        signal: controller.signal,
+        // Important for iOS VPN routing
+        credentials: 'omit',
+        // Add keepalive for better cellular performance
+        keepalive: true,
       });
 
       clearTimeout(timeoutId);
-      return response.ok;
+
+      console.log(`[ConnectionStore] Response status: ${response.status}, ok: ${response.ok}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[ConnectionStore] Response data:`, data);
+        return true;
+      } else {
+        console.error(`[ConnectionStore] HTTP error: ${response.status}`);
+        return false;
+      }
     } catch (error) {
+      console.error(`[ConnectionStore] Connection failed:`, error.name, error.message);
       return false;
     }
   },
@@ -113,25 +137,17 @@ export const useConnectionStore = create((set, get) => ({
 
   // Scan Tailscale IP range
   scanTailscaleRange: async () => {
-    // Try common Tailscale IPs
-    // In production, you'd use mDNS or Tailscale API
-    // For now, try the most common pattern
-    const baseIPs = ['100.101.102', '100.100.100', '100.64.0'];
+    // Try the HTTPS Tailscale URL
+    const tailscaleURL = 'https://tristans-macbook-pro.tailca1b53.ts.net';
+    console.log('Trying Tailscale HTTPS URL:', tailscaleURL);
 
-    for (const base of baseIPs) {
-      for (let i = 1; i < 255; i++) {
-        const ip = `http://${base}.${i}:3000`;
-        const works = await get().testConnection(ip);
-        if (works) {
-          console.log('Found Tailscale server:', ip);
-          return ip;
-        }
-
-        // Only try first 10 IPs for speed
-        if (i > 10) break;
-      }
+    const works = await get().testConnection(tailscaleURL);
+    if (works) {
+      console.log('Found Tailscale server via HTTPS');
+      return tailscaleURL;
     }
 
+    console.log('Tailscale HTTPS connection failed');
     return null;
   },
 
@@ -160,28 +176,59 @@ export const useConnectionStore = create((set, get) => ({
 
   // Manual connection
   connectManually: async (url) => {
+    console.log(`[ConnectionStore] Manual connect attempt with: "${url}"`);
+
+    // Clean the URL
+    url = url.trim();
+
+    // Remove trailing slashes
+    url = url.replace(/\/+$/, '');
+
+    // Remove /health if present
+    url = url.replace('/health', '');
+
     // Ensure URL has http://
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = `http://${url}`;
+      console.log(`[ConnectionStore] Added http://, now: ${url}`);
     }
 
-    // Ensure URL has port
-    if (!url.includes(':3000')) {
+    // Ensure URL has port (check if port is already in URL)
+    // Don't add :3000 for HTTPS URLs (they use standard port :443)
+    const hasPort = url.match(/:\d+$/);
+    const isHttps = url.startsWith('https://');
+    if (!hasPort && !isHttps) {
       url = `${url}:3000`;
+      console.log(`[ConnectionStore] Added port, final URL: ${url}`);
     }
 
+    console.log(`[ConnectionStore] Final URL for testing: ${url}`);
     const works = await get().testConnection(url);
+
     if (works) {
+      console.log(`[ConnectionStore] ✅ Manual connection successful!`);
       await AsyncStorage.setItem('lastServerIP', url);
+
+      // Determine connection type based on IP
+      let connType = CONNECTION_TYPES.MANUAL;
+      if (url.includes('100.')) {
+        connType = CONNECTION_TYPES.TAILSCALE;
+        console.log(`[ConnectionStore] Detected Tailscale connection`);
+      } else if (url.includes('192.168.') || url.includes('10.0.') || url.includes('localhost')) {
+        connType = CONNECTION_TYPES.LOCAL;
+        console.log(`[ConnectionStore] Detected local network connection`);
+      }
+
       set({
         serverURL: url,
-        connectionType: CONNECTION_TYPES.MANUAL,
+        connectionType: connType,
         isConnected: true,
         lastSuccessfulIP: url,
       });
       return true;
     }
 
+    console.log(`[ConnectionStore] ❌ Manual connection failed`);
     return false;
   },
 

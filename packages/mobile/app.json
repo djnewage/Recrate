@@ -15,13 +15,28 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.recrate.app"
+      "bundleIdentifier": "com.recrate.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Recrate needs camera access to scan QR codes for connecting to your server.",
+        "NSLocalNetworkUsageDescription": "Recrate needs local network access to connect to your music server on your home network and via Tailscale VPN.",
+        "NSBonjourServices": ["_http._tcp"],
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        }
+      },
+      "entitlements": {
+        "com.apple.developer.networking.vpn.api": ["allow-vpn"],
+        "com.apple.developer.networking.networkextension": ["app-proxy-provider", "packet-tunnel-provider"],
+        "com.apple.developer.networking.multipath": true
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a1a"
       },
+      "permissions": ["CAMERA"],
       "edgeToEdgeEnabled": true
     },
     "web": {
