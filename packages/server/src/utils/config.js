@@ -25,21 +25,39 @@ function detectSeratoPath() {
 }
 
 /**
+ * Parse command-line arguments
+ */
+function parseArgs() {
+  const args = {};
+  for (let i = 2; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if (arg.startsWith('--')) {
+      const [key, value] = arg.substring(2).split('=');
+      args[key] = value;
+    }
+  }
+  return args;
+}
+
+const cmdArgs = parseArgs();
+
+/**
  * Configuration object
+ * Priority: Command-line args > Environment variables > Defaults
  */
 const config = {
   // Serato configuration
   serato: {
-    path: process.env.SERATO_PATH || detectSeratoPath(),
-    musicPath: process.env.MUSIC_PATH || null,
+    path: cmdArgs['serato-path'] || process.env.SERATO_PATH || detectSeratoPath(),
+    musicPath: cmdArgs['music-path'] || process.env.MUSIC_PATH || null,
     databaseFile: "database V2",
     cratesDir: "Subcrates",
   },
 
   // Server configuration
   server: {
-    port: parseInt(process.env.PORT, 10) || 3000,
-    host: process.env.HOST || "0.0.0.0",
+    port: parseInt(cmdArgs['port'], 10) || parseInt(process.env.PORT, 10) || 3000,
+    host: cmdArgs['host'] || process.env.HOST || "0.0.0.0",
   },
 
   // Cache configuration

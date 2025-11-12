@@ -156,6 +156,66 @@
     .log-entry {
       margin: 5px 0;
     }
+
+    .connection-card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 15px;
+      padding: 20px;
+      margin: 15px 0;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .setup-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px dashed rgba(255, 255, 255, 0.3);
+    }
+
+    .connection-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .connection-icon {
+      font-size: 24px;
+    }
+
+    .connection-title {
+      font-size: 18px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .status-active {
+      background: #48bb78;
+    }
+
+    .status-inactive {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .connection-url {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 15px;
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      margin: 10px 0;
+      word-break: break-all;
+      cursor: pointer;
+    }
+
+    .connection-url:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .connection-hint {
+      font-size: 13px;
+      opacity: 0.7;
+      text-align: center;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -172,22 +232,69 @@
         </div>
 
         <div id="server-info" style="display: none;">
-          <div class="qr-container">
-            <h3 style="color: #667eea; margin-bottom: 10px;">
-              Scan with your phone
-            </h3>
-            <canvas id="qr-code" class="qr-code"></canvas>
+          <!-- Local Connection -->
+          <div class="connection-card">
+            <div class="connection-header">
+              <span class="connection-icon">🏠</span>
+              <span class="connection-title">Local Network</span>
+            </div>
+            <div class="qr-container">
+              <canvas id="qr-code" class="qr-code"></canvas>
+            </div>
+            <div class="connection-url" id="local-url">http://192.168.1.100:3000</div>
+            <div class="connection-hint">
+              Use this when phone and laptop are on same WiFi
+            </div>
           </div>
 
-          <div class="url-display" id="server-url">
-            http://192.168.1.100:3000
+          <!-- Remote Connection (Tailscale) -->
+          <div id="remote-connection" class="connection-card" style="display: none;">
+            <div class="connection-header">
+              <span class="connection-icon">🌐</span>
+              <span class="connection-title">Remote Access</span>
+              <span class="status-badge status-active">Active</span>
+            </div>
+            <div class="qr-container">
+              <canvas id="qr-code-remote" class="qr-code"></canvas>
+            </div>
+            <div class="connection-url" id="remote-url">
+              http://100.101.102.103:3000
+            </div>
+            <div class="connection-hint">
+              ✨ Works anywhere - gym, coffee shop, on the go!
+            </div>
           </div>
 
-          <div style="text-align: center; margin-top: 20px;">
+          <!-- Tailscale Setup Required -->
+          <div
+            id="tailscale-setup"
+            class="connection-card setup-card"
+            style="display: none;"
+          >
+            <div class="connection-header">
+              <span class="connection-icon">🌐</span>
+              <span class="connection-title">Remote Access</span>
+              <span class="status-badge status-inactive">Not Setup</span>
+            </div>
+            <p style="margin: 15px 0; opacity: 0.9;">
+              Install Tailscale to access your library from anywhere
+            </p>
+            <ul style="text-align: left; margin: 15px 0; padding-left: 20px;">
+              <li>Works on 5G, any WiFi network</li>
+              <li>Secure & encrypted connection</li>
+              <li>Free for personal use</li>
+              <li>Takes 5 minutes to setup</li>
+            </ul>
+            <button onclick="setupTailscale()">Setup Remote Access</button>
+          </div>
+
+          <!-- Instructions -->
+          <div style="text-align: center; margin-top: 30px;">
             <p style="font-size: 14px; opacity: 0.8;">
-              1. Open Recrate on your phone<br>
-              2. Scan QR code or enter URL above<br>
-              3. Start organizing your crates!
+              📱 On your phone:<br />
+              1. Open Recrate app<br />
+              2. Scan QR code or enter URL<br />
+              3. Start organizing!
             </p>
           </div>
         </div>
@@ -257,10 +364,10 @@
       }, 2000);
 
       // Listen for server status changes
-      api.onServerStatus((status) => {
+      api.onServerStatus(async (status) => {
         serverStatus = status.status;
-        serverUrl = status.url;
-        updateUI();
+        serverUrl = status.localURL || status.url; // Support both new and old format
+        await updateUI(status);
 
         // Show error if present
         if (status.error) {
@@ -296,7 +403,7 @@
     }
 
     // Update UI based on status
-    function updateUI() {
+    async function updateUI(statusData) {
       const badge = document.getElementById('status-badge');
       const info = document.getElementById('server-info');
       const btn = document.getElementById('toggle-server-btn');
@@ -307,11 +414,33 @@
         info.style.display = 'block';
         btn.textContent = 'Stop Server';
 
-        // Update URL
-        document.getElementById('server-url').textContent = serverUrl;
+        // Get Tailscale info
+        const tailscaleInfo = await api.getTailscaleInfo();
 
-        // Generate QR code
-        generateQR(serverUrl);
+        // Update local connection
+        const localURL = statusData?.localURL || serverUrl;
+        document.getElementById('local-url').textContent = localURL;
+        generateQR(localURL, 'qr-code');
+
+        // Handle remote connection display
+        const remoteCard = document.getElementById('remote-connection');
+        const setupCard = document.getElementById('tailscale-setup');
+
+        if (tailscaleInfo.running && tailscaleInfo.ip) {
+          // Tailscale is working - show remote connection
+          remoteCard.style.display = 'block';
+          setupCard.style.display = 'none';
+
+          const remoteURL = statusData?.tailscaleURL || `http://${tailscaleInfo.ip}:3000`;
+          document.getElementById('remote-url').textContent = remoteURL;
+
+          // Generate QR code for remote URL
+          generateQR(remoteURL, 'qr-code-remote');
+        } else {
+          // Tailscale not setup - show setup card
+          remoteCard.style.display = 'none';
+          setupCard.style.display = 'block';
+        }
       } else {
         badge.textContent = '⭕ Server Stopped';
         badge.className = 'status-badge status-stopped';
@@ -321,8 +450,9 @@
     }
 
     // Generate QR code
-    function generateQR(url) {
-      const canvas = document.getElementById('qr-code');
+    function generateQR(url, canvasId = 'qr-code') {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
 
       // Parse the URL to extract IP and port
       try {
@@ -443,6 +573,33 @@
       // Keep only last 50 logs
       while (logsDiv.children.length > 50) {
         logsDiv.removeChild(logsDiv.firstChild);
+      }
+    }
+
+    // Setup Tailscale
+    async function setupTailscale() {
+      const tailscaleInfo = await api.getTailscaleInfo();
+
+      if (!tailscaleInfo.installed) {
+        // Not installed - open download page
+        await api.openTailscaleUrl();
+
+        alert(
+          'Opening Tailscale download page...\n\n' +
+          'After installing:\n' +
+          '1. Sign in with Google or GitHub\n' +
+          '2. Restart Recrate\n' +
+          '3. Remote access will be enabled!'
+        );
+      } else if (!tailscaleInfo.running) {
+        // Installed but not running
+        alert(
+          'Tailscale is installed but not running.\n\n' +
+          'Please start Tailscale from:\n' +
+          'Mac: Menu bar icon\n' +
+          'Windows: System tray\n\n' +
+          'Then restart Recrate.'
+        );
       }
     }
 
