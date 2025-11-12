@@ -130,17 +130,17 @@ const CratesScreen = ({ navigation, route }) => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Crates</Text>
-        <Text style={styles.subtitle}>{crates.length} crates</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.title}>Crates</Text>
+          <Text style={styles.subtitle}>{crates.length} crates</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => setShowCreateModal(true)}
+        >
+          <Text style={styles.createButtonText}>Create</Text>
+        </TouchableOpacity>
       </View>
-
-      {/* Create Button */}
-      <TouchableOpacity
-        style={styles.createButton}
-        onPress={() => setShowCreateModal(true)}
-      >
-        <Text style={styles.createButtonText}>+ Create New Crate</Text>
-      </TouchableOpacity>
 
       {/* Crates List */}
       {isLoadingCrates ? (
@@ -212,26 +212,31 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: SPACING.lg,
-    paddingTop: SPACING.xl * 2,
+    paddingTop: SPACING.xl,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   title: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: SPACING.xs,
   },
   subtitle: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
   },
   createButton: {
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.primary,
-    alignItems: 'center',
   },
   createButtonText: {
     fontSize: FONT_SIZES.md,

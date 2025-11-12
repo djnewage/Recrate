@@ -31,6 +31,7 @@ const LibraryScreen = ({ navigation }) => {
   } = useStore();
 
   const [sortBy, setSortBy] = useState('title');
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
   const [isEditMode, setIsEditMode] = useState(false);
 
   useEffect(() => {
@@ -46,10 +47,18 @@ const LibraryScreen = ({ navigation }) => {
 
   const displayTracks = searchQuery ? searchResults : tracks;
 
-  const handleTrackPress = (track) => {
+  const handleTrackPress = async (track) => {
     if (isEditMode || selectedTracks.length > 0) {
       toggleTrackSelection(track.id);
     } else {
+      // Find the index of the tapped track in the current list
+      const trackIndex = sortedTracks.findIndex(t => t.id === track.id);
+
+      // Set queue with all tracks, starting at the tapped track
+      const { setQueue, playTrack } = useStore.getState();
+      await setQueue(sortedTracks, trackIndex);
+
+      // Navigate to player
       navigation.navigate('Player', { track });
     }
   };
@@ -76,18 +85,37 @@ const LibraryScreen = ({ navigation }) => {
     navigation.navigate('Crates', { selectedTracks });
   };
 
+  const handleSortPress = (field) => {
+    if (sortBy === field) {
+      // Toggle direction if same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Reset to ascending if different field
+      setSortBy(field);
+      setSortDirection('asc');
+    }
+  };
+
   const sortTracks = (tracksToSort) => {
     return [...tracksToSort].sort((a, b) => {
+      let comparison = 0;
+
       switch (sortBy) {
         case 'title':
-          return (a.title || '').localeCompare(b.title || '');
+          comparison = (a.title || '').localeCompare(b.title || '');
+          break;
         case 'artist':
-          return (a.artist || '').localeCompare(b.artist || '');
+          comparison = (a.artist || '').localeCompare(b.artist || '');
+          break;
         case 'bpm':
-          return (b.bpm || 0) - (a.bpm || 0);
+          comparison = (a.bpm || 0) - (b.bpm || 0);
+          break;
         default:
           return 0;
       }
+
+      // Reverse if descending
+      return sortDirection === 'desc' ? -comparison : comparison;
     });
   };
 
@@ -169,7 +197,7 @@ const LibraryScreen = ({ navigation }) => {
               styles.sortButton,
               sortBy === option && styles.sortButtonActive,
             ]}
-            onPress={() => setSortBy(option)}
+            onPress={() => handleSortPress(option)}
           >
             <Text
               style={[
@@ -178,6 +206,7 @@ const LibraryScreen = ({ navigation }) => {
               ]}
             >
               {option.charAt(0).toUpperCase() + option.slice(1)}
+              {sortBy === option && (sortDirection === 'asc' ? ' ↑' : ' ↓')}
             </Text>
           </TouchableOpacity>
         ))}

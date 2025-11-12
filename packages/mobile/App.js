@@ -41,11 +41,16 @@ function CratesStack() {
         headerShown: false,
       }}
     >
-      <Stack.Screen name="CratesList" component={CratesScreen} />
+      <Stack.Screen name="Crates" component={CratesScreen} />
       <Stack.Screen
         name="CrateDetail"
         component={CrateDetailScreen}
-        options={{ headerShown: true, title: 'Crate' }}
+        options={{
+          headerShown: true,
+          title: '',
+          headerBackVisible: true,
+          headerBackTitleVisible: false,
+        }}
       />
     </Stack.Navigator>
   );

@@ -3,6 +3,7 @@ import TrackPlayer, {
   Capability,
   Event,
   RepeatMode,
+  State,
 } from 'react-native-track-player';
 import apiService from './api';
 
@@ -109,35 +110,57 @@ export async function playTrack(track) {
  * Setup event handlers that connect to Zustand store
  */
 export function setupEventHandlers(store) {
-  // Track playback state changes
+  // Track playback state changes (from both app and remote controls)
   TrackPlayer.addEventListener(Event.PlaybackState, async ({ state }) => {
-    const isPlaying = state === 'playing';
-    const isBuffering = state === 'buffering' || state === 'loading';
+    console.log('Playback state changed:', state);
 
+    const isPlaying = state === State.Playing;
+    const isBuffering = state === State.Buffering || state === State.Loading;
+    const isPaused = state === State.Paused;
+
+    // Update store to sync UI with actual playback state
     store.setState({
-      isPlaying,
-      isBuffering,
+      isPlaying: isPlaying,
+      isBuffering: isBuffering,
     });
   });
 
   // Track changed (next/previous)
   TrackPlayer.addEventListener(Event.PlaybackTrackChanged, async (event) => {
-    if (event.nextTrack !== undefined) {
+    console.log('Track changed event:', event);
+
+    if (event.nextTrack !== undefined && event.nextTrack !== null) {
       const track = await TrackPlayer.getTrack(event.nextTrack);
+      console.log('New track from TrackPlayer:', track);
+
       if (track) {
-        // Convert back to Recrate track format
-        store.setState({
-          currentTrack: {
-            id: track.id,
-            title: track.title,
-            artist: track.artist,
-            bpm: track.bpm,
-            key: track.key,
-            album: track.album,
-            duration: track.duration,
-            hasArtwork: !!track.artwork,
-          },
-        });
+        // Get the queue from store to find the full track object
+        const { queue } = store.getState();
+        const fullTrack = queue.find(t => t.id === track.id);
+
+        if (fullTrack) {
+          // Use the full track object from queue
+          store.setState({
+            currentTrack: fullTrack,
+            currentQueueIndex: event.nextTrack,
+          });
+          console.log('Updated currentTrack to:', fullTrack.title);
+        } else {
+          // Fallback: convert from TrackPlayer format
+          store.setState({
+            currentTrack: {
+              id: track.id,
+              title: track.title,
+              artist: track.artist,
+              bpm: track.bpm,
+              key: track.key,
+              album: track.album,
+              duration: track.duration,
+              hasArtwork: !!track.artwork,
+            },
+            currentQueueIndex: event.nextTrack,
+          });
+        }
       }
     }
   });
@@ -165,6 +188,61 @@ export function setupEventHandlers(store) {
         isPlaying: false,
       });
     }
+  });
+
+  // Remote control events (lock screen, notification, control center)
+  TrackPlayer.addEventListener(Event.RemotePlay, async () => {
+    console.log('Remote play pressed');
+    await TrackPlayer.play();
+  });
+
+  TrackPlayer.addEventListener(Event.RemotePause, async () => {
+    console.log('Remote pause pressed');
+    await TrackPlayer.pause();
+  });
+
+  TrackPlayer.addEventListener(Event.RemoteNext, async () => {
+    console.log('Remote next pressed');
+    try {
+      await TrackPlayer.skipToNext();
+    } catch (error) {
+      console.log('No next track available');
+    }
+  });
+
+  TrackPlayer.addEventListener(Event.RemotePrevious, async () => {
+    console.log('Remote previous pressed');
+    try {
+      await TrackPlayer.skipToPrevious();
+    } catch (error) {
+      console.log('No previous track available');
+    }
+  });
+
+  TrackPlayer.addEventListener(Event.RemoteStop, async () => {
+    console.log('Remote stop pressed');
+    await TrackPlayer.reset();
+    store.setState({
+      currentTrack: null,
+      isPlaying: false,
+    });
+  });
+
+  TrackPlayer.addEventListener(Event.RemoteSeek, async ({ position }) => {
+    console.log('Remote seek to position:', position);
+    await TrackPlayer.seekTo(position);
+  });
+
+  TrackPlayer.addEventListener(Event.RemoteJumpForward, async ({ interval }) => {
+    console.log('Remote jump forward:', interval);
+    const currentPosition = await TrackPlayer.getPosition();
+    await TrackPlayer.seekTo(currentPosition + (interval || 15));
+  });
+
+  TrackPlayer.addEventListener(Event.RemoteJumpBackward, async ({ interval }) => {
+    console.log('Remote jump backward:', interval);
+    const currentPosition = await TrackPlayer.getPosition();
+    await TrackPlayer.seekTo(Math.max(0, currentPosition - (interval || 15)));
   });
 
   console.log('TrackPlayer event handlers setup complete');

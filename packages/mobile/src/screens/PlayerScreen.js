@@ -21,7 +21,7 @@ import useStore from '../store/useStore';
 const { width } = Dimensions.get('window');
 
 const PlayerScreen = ({ route, navigation }) => {
-  const { track } = route.params;
+  const { track: initialTrack } = route.params;
   const [showCratesModal, setShowCratesModal] = useState(false);
   const [selectedCrates, setSelectedCrates] = useState([]);
   const [isAddingToCrates, setIsAddingToCrates] = useState(false);
@@ -49,6 +49,9 @@ const PlayerScreen = ({ route, navigation }) => {
     repeatMode,
     shuffleEnabled,
   } = useStore();
+
+  // Use currentTrack from store if available, otherwise use initial track from params
+  const track = currentTrack || initialTrack;
 
   // Check if this is the currently playing track
   const isCurrentTrack = currentTrack?.id === track.id;

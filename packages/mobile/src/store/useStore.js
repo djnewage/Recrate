@@ -212,6 +212,25 @@ const useStore = create((set, get) => ({
     try {
       set({ playerError: null, isBuffering: true });
 
+      const { queue } = get();
+
+      // If there's already a queue, just play from it
+      if (queue.length > 1) {
+        const trackIndex = queue.findIndex(t => t.id === track.id);
+        if (trackIndex >= 0) {
+          await TrackPlayer.skip(trackIndex);
+          await TrackPlayer.play();
+          set({
+            currentTrack: track,
+            isPlaying: true,
+            isBuffering: false,
+            currentQueueIndex: trackIndex,
+          });
+          return;
+        }
+      }
+
+      // Otherwise, play single track
       const success = await TrackPlayerService.playTrack(track);
 
       if (success) {

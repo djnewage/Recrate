@@ -17,6 +17,8 @@ const CrateDetailScreen = ({ route, navigation }) => {
   const { selectedCrate, isLoadingCrates, loadCrate, removeTrackFromCrate } = useStore();
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedTrackIds, setSelectedTrackIds] = useState([]);
+  const [sortBy, setSortBy] = useState('title');
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
 
   useEffect(() => {
     loadCrate(crateId);
@@ -29,10 +31,16 @@ const CrateDetailScreen = ({ route, navigation }) => {
     }
   }, [selectedTrackIds.length]);
 
-  const handleTrackPress = (track) => {
+  const handleTrackPress = async (track) => {
     if (isEditMode || selectedTrackIds.length > 0) {
       toggleTrackSelection(track.id);
     } else {
+      // Set queue with all crate tracks (sorted)
+      if (sortedTracks && sortedTracks.length > 0) {
+        const trackIndex = sortedTracks.findIndex(t => t.id === track.id);
+        const { setQueue } = useStore.getState();
+        await setQueue(sortedTracks, trackIndex);
+      }
       navigation.navigate('Player', { track });
     }
   };
@@ -110,6 +118,44 @@ const CrateDetailScreen = ({ route, navigation }) => {
     );
   };
 
+  const handleSortPress = (field) => {
+    if (sortBy === field) {
+      // Toggle direction if same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Reset to ascending if different field
+      setSortBy(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortTracks = (tracksToSort) => {
+    if (!tracksToSort) return [];
+
+    return [...tracksToSort].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'title':
+          comparison = (a.title || '').localeCompare(b.title || '');
+          break;
+        case 'artist':
+          comparison = (a.artist || '').localeCompare(b.artist || '');
+          break;
+        case 'bpm':
+          comparison = (a.bpm || 0) - (b.bpm || 0);
+          break;
+        default:
+          return 0;
+      }
+
+      // Reverse if descending
+      return sortDirection === 'desc' ? -comparison : comparison;
+    });
+  };
+
+  const sortedTracks = sortTracks(selectedCrate?.tracks);
+
   if (isLoadingCrates || !selectedCrate) {
     return (
       <View style={styles.loadingContainer}>
@@ -125,12 +171,17 @@ const CrateDetailScreen = ({ route, navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.headerInfo}>
-            <Text style={styles.title}>{selectedCrate.name}</Text>
-            <Text style={styles.subtitle}>
-              {selectedCrate.tracks?.length || 0} tracks
-              {selectedTrackIds.length > 0 &&
-                ` • ${selectedTrackIds.length} selected`}
-            </Text>
+            <View style={styles.headerTitleRow}>
+              <Text style={styles.title}>{selectedCrate.name}</Text>
+              <Text style={styles.subtitle}>
+                • {selectedCrate.tracks?.length || 0} tracks
+              </Text>
+            </View>
+            {selectedTrackIds.length > 0 && (
+              <Text style={styles.selectedText}>
+                {selectedTrackIds.length} selected
+              </Text>
+            )}
           </View>
           <View style={styles.headerButtons}>
             {isEditMode && selectedTrackIds.length > 0 && (
@@ -153,6 +204,30 @@ const CrateDetailScreen = ({ route, navigation }) => {
         </View>
       </View>
 
+      {/* Sort Options */}
+      <View style={styles.sortContainer}>
+        {['title', 'artist', 'bpm'].map((option) => (
+          <TouchableOpacity
+            key={option}
+            style={[
+              styles.sortButton,
+              sortBy === option && styles.sortButtonActive,
+            ]}
+            onPress={() => handleSortPress(option)}
+          >
+            <Text
+              style={[
+                styles.sortButtonText,
+                sortBy === option && styles.sortButtonTextActive,
+              ]}
+            >
+              {option.charAt(0).toUpperCase() + option.slice(1)}
+              {sortBy === option && (sortDirection === 'asc' ? ' ↑' : ' ↓')}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* Tracks List */}
       {selectedCrate.tracks?.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -163,7 +238,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
         </View>
       ) : (
         <FlatList
-          data={selectedCrate.tracks}
+          data={sortedTracks}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <TrackItem
@@ -187,16 +262,22 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: SPACING.lg,
-    paddingTop: SPACING.xl,
+    paddingTop: SPACING.md,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   headerInfo: {
     flex: 1,
     marginRight: SPACING.md,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flexWrap: 'wrap',
   },
   headerButtons: {
     flexDirection: 'row',
@@ -225,11 +306,15 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xxl,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: SPACING.xs,
   },
   subtitle: {
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
+  },
+  selectedText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
   },
   loadingContainer: {
     flex: 1,
@@ -258,6 +343,29 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
     textAlign: 'center',
+  },
+  sortContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  sortButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+  },
+  sortButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  sortButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  sortButtonTextActive: {
+    color: COLORS.text,
+    fontWeight: '600',
   },
   list: {
     paddingHorizontal: SPACING.lg,
