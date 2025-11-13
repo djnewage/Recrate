@@ -10,6 +10,7 @@ import {
   TextInput,
   Modal,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
@@ -113,9 +114,11 @@ const CratesScreen = ({ navigation, route }) => {
       style={styles.crateItem}
       onPress={() => handleCratePress(item)}
       onLongPress={() => handleDeleteCrate(item)}
-      activeOpacity={0.7}
+      activeOpacity={0.6}
     >
-      <View style={styles.crateIcon} />
+      <View style={styles.crateIcon}>
+        <Ionicons name="folder" size={24} color="#8B5CF6" />
+      </View>
       <View style={styles.crateInfo}>
         <Text style={styles.crateName}>{item.name}</Text>
         <Text style={styles.crateCount}>
@@ -160,6 +163,7 @@ const CratesScreen = ({ navigation, route }) => {
           data={crates}
           keyExtractor={(item) => item.id}
           renderItem={renderCrateItem}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.list}
         />
       )}
@@ -271,40 +275,46 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   list: {
-    paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xl * 3,
   },
   crateItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.md,
-    backgroundColor: COLORS.surface,
-    marginBottom: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: 'transparent',
   },
   crateIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.primary,
-    marginRight: SPACING.md,
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   crateInfo: {
     flex: 1,
   },
   crateName: {
-    fontSize: FONT_SIZES.md,
+    fontSize: 16,
     fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: SPACING.xs / 2,
+    color: '#ffffff',
+    marginBottom: 4,
   },
   crateCount: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#999999',
   },
   arrow: {
-    fontSize: FONT_SIZES.xxl,
-    color: COLORS.textSecondary,
+    fontSize: 24,
+    color: '#999999',
+  },
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginLeft: 70, // 16px padding + 42px icon + 12px gap
   },
   modalOverlay: {
     flex: 1,

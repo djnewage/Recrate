@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
-import TrackItem from '../components/TrackItem';
+import TrackRow from '../components/TrackRow';
 
 const LibraryScreen = ({ navigation }) => {
   const {
@@ -83,6 +83,19 @@ const LibraryScreen = ({ navigation }) => {
       return;
     }
     navigation.navigate('Crates', { selectedTracks });
+  };
+
+  const handleTrackMenu = (track) => {
+    // TODO: Implement action sheet menu
+    Alert.alert(
+      track.title,
+      'Menu options coming soon',
+      [
+        { text: 'Play Now', onPress: () => handleTrackPress(track) },
+        { text: 'Add to Crate', onPress: () => navigation.navigate('Crates', { selectedTracks: [track.id] }) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   };
 
   const handleSortPress = (field) => {
@@ -243,13 +256,15 @@ const LibraryScreen = ({ navigation }) => {
           data={sortedTracks}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TrackItem
+            <TrackRow
               track={item}
               onPress={handleTrackPress}
               onLongPress={handleTrackLongPress}
+              onMenuPress={handleTrackMenu}
               isSelected={selectedTracks.includes(item.id)}
             />
           )}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={true}
           onEndReached={handleEndReached}
@@ -267,8 +282,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl,
+    padding: SPACING.md,
+    paddingTop: SPACING.md,
   },
   headerTop: {
     flexDirection: 'row',
@@ -276,12 +291,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     color: COLORS.text,
   },
   trackCount: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
     flex: 1,
     textAlign: 'right',
@@ -293,33 +308,33 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
   },
   editButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.surface,
   },
   editButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.primary,
     fontWeight: '600',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   searchInput: {
     flex: 1,
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    fontSize: FONT_SIZES.md,
+    padding: SPACING.sm,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.text,
   },
   clearButton: {
     position: 'absolute',
-    right: SPACING.lg + SPACING.md,
+    right: SPACING.md + SPACING.sm,
     padding: SPACING.sm,
   },
   clearButtonText: {
@@ -328,13 +343,13 @@ const styles = StyleSheet.create({
   },
   sortContainer: {
     flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
     gap: SPACING.sm,
   },
   sortButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.surface,
   },
@@ -384,8 +399,12 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   list: {
-    paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xl * 3,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginLeft: 70, // 16px padding + 42px badge + 12px gap
   },
   footerContainer: {
     paddingVertical: SPACING.lg,

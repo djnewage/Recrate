@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
-import TrackItem from '../components/TrackItem';
+import TrackRow from '../components/TrackRow';
 
 const CrateDetailScreen = ({ route, navigation }) => {
   const { crateId } = route.params;
@@ -116,6 +116,19 @@ const CrateDetailScreen = ({ route, navigation }) => {
             }
           },
         },
+      ]
+    );
+  };
+
+  const handleTrackMenu = (track) => {
+    // TODO: Implement action sheet menu
+    Alert.alert(
+      track.title,
+      'Menu options coming soon',
+      [
+        { text: 'Play Now', onPress: () => handleTrackPress(track) },
+        { text: 'Remove from Crate', style: 'destructive', onPress: () => handleRemoveTrack(track) },
+        { text: 'Cancel', style: 'cancel' },
       ]
     );
   };
@@ -282,13 +295,15 @@ const CrateDetailScreen = ({ route, navigation }) => {
           data={sortedTracks}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TrackItem
+            <TrackRow
               track={item}
               onPress={handleTrackPress}
-              onLongPress={() => !isEditMode && handleRemoveTrack(item)}
+              onLongPress={handleTrackLongPress}
+              onMenuPress={handleTrackMenu}
               isSelected={selectedTrackIds.includes(item.id)}
             />
           )}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.list}
         />
       )}
@@ -302,7 +317,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
-    padding: SPACING.lg,
+    padding: SPACING.md,
     paddingTop: SPACING.md,
   },
   headerTop: {
@@ -325,13 +340,13 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   headerButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.surface,
   },
   headerButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.primary,
     fontWeight: '600',
   },
@@ -339,17 +354,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#EF4444',
   },
   removeButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.text,
     fontWeight: '600',
   },
   title: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     color: COLORS.text,
   },
   subtitle: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
   },
   selectedText: {
@@ -360,20 +375,20 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   searchInput: {
     flex: 1,
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    fontSize: FONT_SIZES.md,
+    padding: SPACING.sm,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.text,
   },
   clearButton: {
     position: 'absolute',
-    right: SPACING.lg + SPACING.md,
+    right: SPACING.md + SPACING.sm,
     padding: SPACING.sm,
   },
   clearButtonText: {
@@ -410,13 +425,13 @@ const styles = StyleSheet.create({
   },
   sortContainer: {
     flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
     gap: SPACING.sm,
   },
   sortButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.surface,
   },
@@ -432,8 +447,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   list: {
-    paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xl * 3,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginLeft: 70, // 16px padding + 42px badge + 12px gap
   },
 });
 

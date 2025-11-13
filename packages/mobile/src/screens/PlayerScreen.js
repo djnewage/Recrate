@@ -167,7 +167,7 @@ const PlayerScreen = ({ route, navigation }) => {
 
   return (
     <LinearGradient
-      colors={['#2d1b1e', '#1a0f10', '#0a0506']}
+      colors={['#1E1B4B', '#312E81', '#1F2937']}
       style={styles.container}
     >
       {/* Header */}
@@ -227,7 +227,7 @@ const PlayerScreen = ({ route, navigation }) => {
           <View style={styles.metadata}>
             {track.bpm && (
               <View style={styles.metadataItem}>
-                <Text style={styles.metadataValue}>
+                <Text style={[styles.metadataValue, { color: '#06B6D4' }]}>
                   {Math.round(track.bpm)} BPM
                 </Text>
               </View>
@@ -237,7 +237,7 @@ const PlayerScreen = ({ route, navigation }) => {
             )}
             {track.key && (
               <View style={styles.metadataItem}>
-                <Text style={styles.metadataValue}>
+                <Text style={[styles.metadataValue, { color: '#EC4899' }]}>
                   {track.key}
                 </Text>
               </View>
@@ -265,9 +265,9 @@ const PlayerScreen = ({ route, navigation }) => {
           value={isSeeking ? seekPosition : position}
           onValueChange={handleSliderChange}
           onSlidingComplete={handleSliderComplete}
-          minimumTrackTintColor="#FFFFFF"
-          maximumTrackTintColor="rgba(255, 255, 255, 0.3)"
-          thumbTintColor="#FFFFFF"
+          minimumTrackTintColor="#8B5CF6"
+          maximumTrackTintColor="rgba(139, 92, 246, 0.3)"
+          thumbTintColor="#EC4899"
         />
         <View style={styles.timeContainer}>
           <Text style={styles.timeText}>{formatTime(isSeeking ? seekPosition : position)}</Text>
@@ -284,7 +284,7 @@ const PlayerScreen = ({ route, navigation }) => {
           <Ionicons
             name="shuffle"
             size={24}
-            color={shuffleEnabled ? "#FFFFFF" : "rgba(255, 255, 255, 0.6)"}
+            color={shuffleEnabled ? "#8B5CF6" : "rgba(255, 255, 255, 0.6)"}
           />
         </TouchableOpacity>
 
@@ -321,7 +321,7 @@ const PlayerScreen = ({ route, navigation }) => {
           <Ionicons
             name={repeatMode === 'track' ? "repeat-outline" : "repeat"}
             size={24}
-            color={repeatMode !== 'off' ? "#FFFFFF" : "rgba(255, 255, 255, 0.6)"}
+            color={repeatMode !== 'off' ? "#8B5CF6" : "rgba(255, 255, 255, 0.6)"}
           />
         </TouchableOpacity>
       </View>
@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: FONT_SIZES.sm,
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: 'rgba(139, 92, 246, 0.8)',
   },
   controls: {
     flexDirection: 'row',
@@ -544,9 +544,17 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(139, 92, 246, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#8B5CF6',
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
   },
   modalOverlay: {
     flex: 1,
