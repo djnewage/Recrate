@@ -26,23 +26,23 @@
 
     .container {
       flex: 1;
-      padding: 40px;
+      padding: 16px;
       overflow-y: auto;
     }
 
     h1 {
-      font-size: 32px;
-      margin-bottom: 10px;
+      font-size: 20px;
+      margin-bottom: 8px;
       text-align: center;
     }
 
     .status-badge {
       display: inline-block;
-      padding: 8px 16px;
+      padding: 6px 12px;
       border-radius: 20px;
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 600;
-      margin-bottom: 30px;
+      margin-bottom: 16px;
     }
 
     .status-running {
@@ -55,23 +55,23 @@
 
     .qr-container {
       background: white;
-      padding: 30px;
-      border-radius: 20px;
+      padding: 16px;
+      border-radius: 12px;
       text-align: center;
-      margin: 30px 0;
+      margin: 16px 0;
     }
 
     .qr-code {
-      margin: 20px auto;
+      margin: 12px auto;
     }
 
     .url-display {
       background: rgba(255, 255, 255, 0.1);
-      padding: 15px;
-      border-radius: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
       font-family: 'Courier New', monospace;
-      font-size: 16px;
-      margin: 20px 0;
+      font-size: 13px;
+      margin: 12px 0;
       word-break: break-all;
     }
 
@@ -79,9 +79,9 @@
       background: white;
       color: #667eea;
       border: none;
-      padding: 15px 30px;
-      border-radius: 10px;
-      font-size: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       width: 100%;
@@ -111,18 +111,19 @@
     }
 
     .form-group {
-      margin: 20px 0;
+      margin: 16px 0;
     }
 
     label {
       display: block;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       font-weight: 600;
+      font-size: 13px;
     }
 
     input {
       width: 100%;
-      padding: 12px;
+      padding: 10px;
       border-radius: 8px;
       border: none;
       font-size: 14px;
@@ -159,9 +160,9 @@
 
     .connection-card {
       background: rgba(255, 255, 255, 0.1);
-      border-radius: 15px;
-      padding: 20px;
-      margin: 15px 0;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 12px 0;
       border: 2px solid rgba(255, 255, 255, 0.2);
     }
 
@@ -173,16 +174,16 @@
     .connection-header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 15px;
+      gap: 8px;
+      margin-bottom: 12px;
     }
 
     .connection-icon {
-      font-size: 24px;
+      font-size: 20px;
     }
 
     .connection-title {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 600;
       flex: 1;
     }
@@ -223,47 +224,37 @@
     <div class="container">
       <!-- Status Screen -->
       <div id="status-screen" class="status-screen active">
-        <h1>🎧 Recrate</h1>
-
-        <div style="text-align: center;">
+        <!-- Compact Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.1); padding: 12px 16px; border-radius: 12px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">🎧</span>
+            <span style="font-size: 18px; font-weight: 700;">Recrate</span>
+          </div>
           <span id="status-badge" class="status-badge status-stopped">
             ⭕ Server Stopped
           </span>
         </div>
 
         <div id="server-info" style="display: none;">
-          <!-- Local Connection -->
+          <!-- Smart QR Code (switches between local/remote) -->
           <div class="connection-card">
             <div class="connection-header">
-              <span class="connection-icon">🏠</span>
-              <span class="connection-title">Local Network</span>
+              <span id="connection-icon" class="connection-icon">🏠</span>
+              <span id="connection-title" class="connection-title">Scan to Connect</span>
             </div>
             <div class="qr-container">
+              <!-- Both canvases kept in DOM, toggle visibility -->
               <canvas id="qr-code" class="qr-code"></canvas>
+              <canvas id="qr-code-remote" class="qr-code" style="display: none;"></canvas>
             </div>
-            <div class="connection-url" id="local-url">http://192.168.1.100:3000</div>
-            <div class="connection-hint">
-              Use this when phone and laptop are on same WiFi
+            <div id="smart-url" class="connection-url" onclick="copyURL()" style="cursor: pointer;">http://loading...</div>
+            <div id="connection-hint" class="connection-hint" style="text-align: center; font-size: 12px; opacity: 0.8; margin-top: 8px;">
+              Tap URL to copy
             </div>
           </div>
 
-          <!-- Remote Connection (Tailscale) -->
-          <div id="remote-connection" class="connection-card" style="display: none;">
-            <div class="connection-header">
-              <span class="connection-icon">🌐</span>
-              <span class="connection-title">Remote Access</span>
-              <span class="status-badge status-active">Active</span>
-            </div>
-            <div class="qr-container">
-              <canvas id="qr-code-remote" class="qr-code"></canvas>
-            </div>
-            <div class="connection-url" id="remote-url">
-              http://100.101.102.103:3000
-            </div>
-            <div class="connection-hint">
-              ✨ Works anywhere - gym, coffee shop, on the go!
-            </div>
-          </div>
+          <!-- Keep remote-connection div for backward compatibility but hide it -->
+          <div id="remote-connection" style="display: none;"></div>
 
           <!-- Tailscale Setup Required -->
           <div
@@ -417,29 +408,59 @@
         // Get Tailscale info
         const tailscaleInfo = await api.getTailscaleInfo();
 
-        // Update local connection
-        const localURL = statusData?.localURL || serverUrl;
-        document.getElementById('local-url').textContent = localURL;
-        generateQR(localURL, 'qr-code');
-
-        // Handle remote connection display
-        const remoteCard = document.getElementById('remote-connection');
+        // Get canvas elements
+        const qrLocal = document.getElementById('qr-code');
+        const qrRemote = document.getElementById('qr-code-remote');
+        const smartUrl = document.getElementById('smart-url');
+        const connectionIcon = document.getElementById('connection-icon');
+        const connectionTitle = document.getElementById('connection-title');
+        const connectionHint = document.getElementById('connection-hint');
         const setupCard = document.getElementById('tailscale-setup');
 
-        if (tailscaleInfo.running && tailscaleInfo.ip) {
-          // Tailscale is working - show remote connection
-          remoteCard.style.display = 'block';
-          setupCard.style.display = 'none';
+        // Prepare URLs
+        const localURL = statusData?.localURL || serverUrl;
 
-          const remoteURL = statusData?.tailscaleURL || `http://${tailscaleInfo.ip}:3000`;
-          document.getElementById('remote-url').textContent = remoteURL;
+        if (tailscaleInfo.running && tailscaleInfo.ip) {
+          // Tailscale is working - show REMOTE QR code
+          // Priority: HTTPS URL > HTTP with IP > fallback
+          const remoteURL = statusData?.tailscaleHTTPSURL ||
+                            tailscaleInfo.httpsURL ||
+                            statusData?.tailscaleURL ||
+                            `http://${tailscaleInfo.ip}:3000`;
+
+          // Toggle canvas visibility - show remote, hide local
+          qrLocal.style.display = 'none';
+          qrRemote.style.display = 'block';
+
+          // Update UI text
+          smartUrl.textContent = remoteURL;
+          connectionIcon.textContent = '🌐';
+          connectionTitle.textContent = 'Remote Access';
+          connectionHint.textContent = '✨ Works anywhere - Tap to copy';
+
+          // Hide setup card
+          setupCard.style.display = 'none';
 
           // Generate QR code for remote URL
           generateQR(remoteURL, 'qr-code-remote');
         } else {
-          // Tailscale not setup - show setup card
-          remoteCard.style.display = 'none';
+          // No Tailscale - show LOCAL QR code
+
+          // Toggle canvas visibility - show local, hide remote
+          qrLocal.style.display = 'block';
+          qrRemote.style.display = 'none';
+
+          // Update UI text
+          smartUrl.textContent = localURL;
+          connectionIcon.textContent = '🏠';
+          connectionTitle.textContent = 'Local Network';
+          connectionHint.textContent = 'Same WiFi - Tap to copy';
+
+          // Show setup card
           setupCard.style.display = 'block';
+
+          // Generate QR code for local URL
+          generateQR(localURL, 'qr-code');
         }
       } else {
         badge.textContent = '⭕ Server Stopped';
@@ -467,7 +488,7 @@
         qr.addData(deepLinkUrl);
         qr.make();
 
-        const size = 200;
+        const size = 160;
         const moduleCount = qr.getModuleCount();
         const cellSize = size / moduleCount;
 
@@ -488,7 +509,7 @@
         qr.addData(url);
         qr.make();
 
-        const size = 200;
+        const size = 160;
         const moduleCount = qr.getModuleCount();
         const cellSize = size / moduleCount;
 
@@ -574,6 +595,24 @@
       while (logsDiv.children.length > 50) {
         logsDiv.removeChild(logsDiv.firstChild);
       }
+    }
+
+    // Copy URL to clipboard
+    function copyURL() {
+      const urlElement = document.getElementById('smart-url');
+      const url = urlElement.textContent;
+
+      navigator.clipboard.writeText(url).then(() => {
+        // Show feedback
+        const originalText = urlElement.textContent;
+        urlElement.textContent = '✅ Copied!';
+
+        setTimeout(() => {
+          urlElement.textContent = originalText;
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+      });
     }
 
     // Setup Tailscale

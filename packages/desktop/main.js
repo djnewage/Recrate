@@ -190,8 +190,8 @@ function detectSeratoPath() {
 // Create main window
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 500,
-    height: 700,
+    width: 350,
+    height: 520,
     resizable: false,
     webPreferences: {
       nodeIntegration: false,
