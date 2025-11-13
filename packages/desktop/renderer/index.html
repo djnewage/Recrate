@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recrate</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-title">
+        <img src="assets/appicon.png" class="header-icon" alt="Recrate">
+        <span>Recrate</span>
+      </div>
+      <div id="status-badge" class="status-badge stopped">
+        <span>⭕</span>
+        <span>Stopped</span>
+      </div>
+    </div>
+
+    <!-- QR Code Section -->
+    <div id="qr-section" class="qr-section hidden">
+      <div class="qr-title">📱 Scan to Connect</div>
+
+      <div class="qr-code-container">
+        <canvas id="qr-code" class="qr-code"></canvas>
+      </div>
+
+      <div id="connection-url" class="connection-url" onclick="copyURL()">
+        http://loading...
+      </div>
+
+      <div id="connection-type" class="connection-type">
+        <span id="connection-icon">🏠</span>
+        <span id="connection-label">Loading...</span>
+      </div>
+    </div>
+
+    <!-- Library Stats -->
+    <div id="stats-section" class="stats-section hidden">
+      <div class="stats-title">📊 Library</div>
+      <ul class="stats-list">
+        <li id="stat-tracks">• Loading tracks...</li>
+        <li id="stat-crates">• Loading crates...</li>
+        <li id="stat-updated">• Checking status...</li>
+      </ul>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading-state" class="loading">
+      Checking server status...
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn-primary" onclick="openSettings()">
+        <span>⚙️</span>
+        <span>Settings</span>
+      </button>
+      <button id="toggle-btn" class="btn-secondary" onclick="toggleServer()">
+        <span>⏳</span>
+        <span>Loading...</span>
+      </button>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
