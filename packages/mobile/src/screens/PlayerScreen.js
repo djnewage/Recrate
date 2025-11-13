@@ -13,21 +13,24 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
+import TextTicker from 'react-native-text-ticker';
+import { useProgress } from 'react-native-track-player';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 
 const { width } = Dimensions.get('window');
 
 const PlayerScreen = ({ route, navigation }) => {
-  const { track } = route.params;
+  const { track: initialTrack } = route.params;
   const [showCratesModal, setShowCratesModal] = useState(false);
   const [selectedCrates, setSelectedCrates] = useState([]);
   const [isAddingToCrates, setIsAddingToCrates] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
-  const [isShuffleOn, setIsShuffleOn] = useState(false);
-  const [repeatMode, setRepeatMode] = useState('off'); // off, all, one
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(track.duration || 192); // Default 3:12
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekPosition, setSeekPosition] = useState(0);
+
+  // Get real playback progress from TrackPlayer
+  const { position, duration } = useProgress();
 
   const {
     crates,
@@ -38,7 +41,17 @@ const PlayerScreen = ({ route, navigation }) => {
     playTrack,
     pauseTrack,
     resumeTrack,
+    seekTo,
+    playNext,
+    playPrevious,
+    toggleRepeat,
+    toggleShuffle,
+    repeatMode,
+    shuffleEnabled,
   } = useStore();
+
+  // Use currentTrack from store if available, otherwise use initial track from params
+  const track = currentTrack || initialTrack;
 
   // Check if this is the currently playing track
   const isCurrentTrack = currentTrack?.id === track.id;
@@ -53,22 +66,6 @@ const PlayerScreen = ({ route, navigation }) => {
       loadCrates();
     }
   }, [showCratesModal]);
-
-  // Simulate playback progress
-  useEffect(() => {
-    let interval;
-    if (isCurrentTrack && isPlaying) {
-      interval = setInterval(() => {
-        setCurrentTime((prev) => {
-          if (prev >= duration) {
-            return 0;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isCurrentTrack, isPlaying, duration]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -86,33 +83,26 @@ const PlayerScreen = ({ route, navigation }) => {
     }
   };
 
-  const toggleShuffle = () => {
-    setIsShuffleOn(!isShuffleOn);
-  };
-
-  const toggleRepeat = () => {
-    const modes = ['off', 'all', 'one'];
-    const currentIndex = modes.indexOf(repeatMode);
-    const nextIndex = (currentIndex + 1) % modes.length;
-    setRepeatMode(modes[nextIndex]);
-  };
-
   const toggleFavorite = () => {
     setIsFavorite(!isFavorite);
   };
 
   const handleSliderChange = (value) => {
-    setCurrentTime(value);
+    setIsSeeking(true);
+    setSeekPosition(value);
+  };
+
+  const handleSliderComplete = async (value) => {
+    await seekTo(value);
+    setIsSeeking(false);
   };
 
   const handlePrevious = () => {
-    // TODO: Implement previous track functionality
-    console.log('Previous track');
+    playPrevious();
   };
 
   const handleNext = () => {
-    // TODO: Implement next track functionality
-    console.log('Next track');
+    playNext();
   };
 
   const handleAddToCrates = async () => {
@@ -177,7 +167,7 @@ const PlayerScreen = ({ route, navigation }) => {
 
   return (
     <LinearGradient
-      colors={['#2d1b1e', '#1a0f10', '#0a0506']}
+      colors={['#1E1B4B', '#312E81', '#1F2937']}
       style={styles.container}
     >
       {/* Header */}
@@ -208,7 +198,7 @@ const PlayerScreen = ({ route, navigation }) => {
             />
           ) : (
             <View style={styles.artworkPlaceholder}>
-              <Ionicons name="musical-notes" size={80} color="rgba(255, 255, 255, 0.3)" />
+              <Ionicons name="musical-notes" size={60} color="rgba(255, 255, 255, 0.3)" />
             </View>
           )}
         </View>
@@ -217,9 +207,19 @@ const PlayerScreen = ({ route, navigation }) => {
       {/* Track Info with Actions */}
       <View style={styles.trackInfoContainer}>
         <View style={styles.trackInfo}>
-          <Text style={styles.trackTitle} numberOfLines={2}>
+          <TextTicker
+            style={styles.trackTitle}
+            duration={20000}
+            loop
+            bounce={false}
+            repeatSpacer={50}
+            marqueeDelay={3000}
+            useNativeDriver
+            animationType="scroll"
+            shouldAnimateTreshold={20}
+          >
             {track.title}
-          </Text>
+          </TextTicker>
           <Text style={styles.trackArtist} numberOfLines={1}>
             {track.artist}
           </Text>
@@ -227,7 +227,7 @@ const PlayerScreen = ({ route, navigation }) => {
           <View style={styles.metadata}>
             {track.bpm && (
               <View style={styles.metadataItem}>
-                <Text style={styles.metadataValue}>
+                <Text style={[styles.metadataValue, { color: '#06B6D4' }]}>
                   {Math.round(track.bpm)} BPM
                 </Text>
               </View>
@@ -237,7 +237,7 @@ const PlayerScreen = ({ route, navigation }) => {
             )}
             {track.key && (
               <View style={styles.metadataItem}>
-                <Text style={styles.metadataValue}>
+                <Text style={[styles.metadataValue, { color: '#EC4899' }]}>
                   {track.key}
                 </Text>
               </View>
@@ -261,16 +261,17 @@ const PlayerScreen = ({ route, navigation }) => {
         <Slider
           style={styles.slider}
           minimumValue={0}
-          maximumValue={duration}
-          value={currentTime}
+          maximumValue={duration || 1}
+          value={isSeeking ? seekPosition : position}
           onValueChange={handleSliderChange}
-          minimumTrackTintColor="#FFFFFF"
-          maximumTrackTintColor="rgba(255, 255, 255, 0.3)"
-          thumbTintColor="#FFFFFF"
+          onSlidingComplete={handleSliderComplete}
+          minimumTrackTintColor="#8B5CF6"
+          maximumTrackTintColor="rgba(139, 92, 246, 0.3)"
+          thumbTintColor="#EC4899"
         />
         <View style={styles.timeContainer}>
-          <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-          <Text style={styles.timeText}>{formatTime(duration)}</Text>
+          <Text style={styles.timeText}>{formatTime(isSeeking ? seekPosition : position)}</Text>
+          <Text style={styles.timeText}>{formatTime(duration || 0)}</Text>
         </View>
       </View>
 
@@ -283,7 +284,7 @@ const PlayerScreen = ({ route, navigation }) => {
           <Ionicons
             name="shuffle"
             size={24}
-            color={isShuffleOn ? "#FFFFFF" : "rgba(255, 255, 255, 0.6)"}
+            color={shuffleEnabled ? "#8B5CF6" : "rgba(255, 255, 255, 0.6)"}
           />
         </TouchableOpacity>
 
@@ -318,9 +319,9 @@ const PlayerScreen = ({ route, navigation }) => {
           onPress={toggleRepeat}
         >
           <Ionicons
-            name={repeatMode === 'one' ? "repeat-outline" : "repeat"}
+            name={repeatMode === 'track' ? "repeat-outline" : "repeat"}
             size={24}
-            color={repeatMode !== 'off' ? "#FFFFFF" : "rgba(255, 255, 255, 0.6)"}
+            color={repeatMode !== 'off' ? "#8B5CF6" : "rgba(255, 255, 255, 0.6)"}
           />
         </TouchableOpacity>
       </View>
@@ -414,7 +415,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -429,9 +430,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   artworkShadow: {
-    width: width * 0.7,
-    height: width * 0.7,
-    borderRadius: (width * 0.7) / 2,
+    width: width * 0.55,
+    height: width * 0.55,
+    borderRadius: (width * 0.55) / 2,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -444,14 +445,14 @@ const styles = StyleSheet.create({
   artwork: {
     width: '100%',
     height: '100%',
-    borderRadius: (width * 0.7) / 2,
+    borderRadius: (width * 0.55) / 2,
     borderWidth: 3,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   artworkPlaceholder: {
     width: '100%',
     height: '100%',
-    borderRadius: (width * 0.7) / 2,
+    borderRadius: (width * 0.55) / 2,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -464,16 +465,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.xl,
     marginBottom: SPACING.lg,
+    minHeight: 80,
   },
   trackInfo: {
     flex: 1,
     paddingRight: SPACING.md,
+    overflow: 'visible',
   },
   trackTitle: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: SPACING.xs,
+    height: 28,
   },
   trackArtist: {
     fontSize: FONT_SIZES.md,
@@ -520,7 +524,7 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: FONT_SIZES.sm,
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: 'rgba(139, 92, 246, 0.8)',
   },
   controls: {
     flexDirection: 'row',
@@ -540,9 +544,17 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(139, 92, 246, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#8B5CF6',
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
   },
   modalOverlay: {
     flex: 1,

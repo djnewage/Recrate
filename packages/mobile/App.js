@@ -8,6 +8,8 @@ import * as Linking from 'expo-linking';
 import NetInfo from '@react-native-community/netinfo';
 import { COLORS } from './src/constants/theme';
 import { useConnectionStore } from './src/store/connectionStore';
+import useStore from './src/store/useStore';
+import * as TrackPlayerService from './src/services/TrackPlayerService';
 
 // Screens
 import ConnectionScreen from './src/screens/ConnectionScreen';
@@ -15,6 +17,7 @@ import LibraryScreen from './src/screens/LibraryScreen';
 import CratesScreen from './src/screens/CratesScreen';
 import CrateDetailScreen from './src/screens/CrateDetailScreen';
 import PlayerScreen from './src/screens/PlayerScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 
 // Components
 import MiniPlayer from './src/components/MiniPlayer';
@@ -38,11 +41,16 @@ function CratesStack() {
         headerShown: false,
       }}
     >
-      <Stack.Screen name="CratesList" component={CratesScreen} />
+      <Stack.Screen name="Crates" component={CratesScreen} />
       <Stack.Screen
         name="CrateDetail"
         component={CrateDetailScreen}
-        options={{ headerShown: true, title: 'Crate' }}
+        options={{
+          headerShown: true,
+          title: '',
+          headerBackVisible: true,
+          headerBackTitleVisible: false,
+        }}
       />
     </Stack.Navigator>
   );
@@ -90,7 +98,7 @@ function TabNavigator({ navigation }) {
       />
       <Tab.Screen
         name="Settings"
-        component={ConnectionScreen}
+        component={SettingsScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings" size={size} color={color} />
@@ -150,6 +158,37 @@ export default function App() {
       },
     },
   };
+
+  // Initialize TrackPlayer on app mount
+  useEffect(() => {
+    let isInitialized = false;
+
+    async function initializeTrackPlayer() {
+      try {
+        const success = await TrackPlayerService.setupPlayer();
+
+        if (success) {
+          // Setup event handlers with Zustand store
+          TrackPlayerService.setupEventHandlers(useStore);
+          isInitialized = true;
+          console.log('TrackPlayer initialized successfully');
+        } else {
+          console.error('Failed to initialize TrackPlayer');
+        }
+      } catch (error) {
+        console.error('Error initializing TrackPlayer:', error);
+      }
+    }
+
+    initializeTrackPlayer();
+
+    return () => {
+      if (isInitialized) {
+        // Cleanup on app unmount (optional)
+        TrackPlayerService.cleanup().catch(console.error);
+      }
+    };
+  }, []);
 
   // Auto-reconnect on network change
   useEffect(() => {

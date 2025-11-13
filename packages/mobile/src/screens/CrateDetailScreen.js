@@ -7,16 +7,20 @@ import {
   ActivityIndicator,
   Alert,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
-import TrackItem from '../components/TrackItem';
+import TrackRow from '../components/TrackRow';
 
 const CrateDetailScreen = ({ route, navigation }) => {
   const { crateId } = route.params;
   const { selectedCrate, isLoadingCrates, loadCrate, removeTrackFromCrate } = useStore();
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedTrackIds, setSelectedTrackIds] = useState([]);
+  const [sortBy, setSortBy] = useState('title');
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadCrate(crateId);
@@ -29,10 +33,16 @@ const CrateDetailScreen = ({ route, navigation }) => {
     }
   }, [selectedTrackIds.length]);
 
-  const handleTrackPress = (track) => {
+  const handleTrackPress = async (track) => {
     if (isEditMode || selectedTrackIds.length > 0) {
       toggleTrackSelection(track.id);
     } else {
+      // Set queue with all crate tracks (sorted)
+      if (sortedTracks && sortedTracks.length > 0) {
+        const trackIndex = sortedTracks.findIndex(t => t.id === track.id);
+        const { setQueue } = useStore.getState();
+        await setQueue(sortedTracks, trackIndex);
+      }
       navigation.navigate('Player', { track });
     }
   };
@@ -110,6 +120,77 @@ const CrateDetailScreen = ({ route, navigation }) => {
     );
   };
 
+  const handleTrackMenu = (track) => {
+    // TODO: Implement action sheet menu
+    Alert.alert(
+      track.title,
+      'Menu options coming soon',
+      [
+        { text: 'Play Now', onPress: () => handleTrackPress(track) },
+        { text: 'Remove from Crate', style: 'destructive', onPress: () => handleRemoveTrack(track) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleSortPress = (field) => {
+    if (sortBy === field) {
+      // Toggle direction if same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Reset to ascending if different field
+      setSortBy(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const filterTracks = (tracks) => {
+    if (!tracks) return [];
+    if (!searchQuery.trim()) return tracks;
+
+    const query = searchQuery.toLowerCase();
+    return tracks.filter((track) => {
+      const title = (track.title || '').toLowerCase();
+      const artist = (track.artist || '').toLowerCase();
+      const album = (track.album || '').toLowerCase();
+      const key = (track.key || '').toLowerCase();
+
+      return title.includes(query) ||
+             artist.includes(query) ||
+             album.includes(query) ||
+             key.includes(query);
+    });
+  };
+
+  const sortTracks = (tracksToSort) => {
+    if (!tracksToSort) return [];
+
+    return [...tracksToSort].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'title':
+          comparison = (a.title || '').localeCompare(b.title || '');
+          break;
+        case 'artist':
+          comparison = (a.artist || '').localeCompare(b.artist || '');
+          break;
+        case 'bpm':
+          comparison = (a.bpm || 0) - (b.bpm || 0);
+          break;
+        default:
+          return 0;
+      }
+
+      // Reverse if descending
+      return sortDirection === 'desc' ? -comparison : comparison;
+    });
+  };
+
+  // Filter first, then sort
+  const filteredTracks = filterTracks(selectedCrate?.tracks);
+  const sortedTracks = sortTracks(filteredTracks);
+
   if (isLoadingCrates || !selectedCrate) {
     return (
       <View style={styles.loadingContainer}>
@@ -125,12 +206,17 @@ const CrateDetailScreen = ({ route, navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.headerInfo}>
-            <Text style={styles.title}>{selectedCrate.name}</Text>
-            <Text style={styles.subtitle}>
-              {selectedCrate.tracks?.length || 0} tracks
-              {selectedTrackIds.length > 0 &&
-                ` • ${selectedTrackIds.length} selected`}
-            </Text>
+            <View style={styles.headerTitleRow}>
+              <Text style={styles.title}>{selectedCrate.name}</Text>
+              <Text style={styles.subtitle}>
+                • {searchQuery ? `${sortedTracks.length} of ${selectedCrate.tracks?.length || 0}` : `${selectedCrate.tracks?.length || 0}`} tracks
+              </Text>
+            </View>
+            {selectedTrackIds.length > 0 && (
+              <Text style={styles.selectedText}>
+                {selectedTrackIds.length} selected
+              </Text>
+            )}
           </View>
           <View style={styles.headerButtons}>
             {isEditMode && selectedTrackIds.length > 0 && (
@@ -153,6 +239,49 @@ const CrateDetailScreen = ({ route, navigation }) => {
         </View>
       </View>
 
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder={`Search in ${selectedCrate.name}...`}
+          placeholderTextColor={COLORS.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery !== '' && (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => setSearchQuery('')}
+          >
+            <Text style={styles.clearButtonText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Sort Options */}
+      <View style={styles.sortContainer}>
+        {['title', 'artist', 'bpm'].map((option) => (
+          <TouchableOpacity
+            key={option}
+            style={[
+              styles.sortButton,
+              sortBy === option && styles.sortButtonActive,
+            ]}
+            onPress={() => handleSortPress(option)}
+          >
+            <Text
+              style={[
+                styles.sortButtonText,
+                sortBy === option && styles.sortButtonTextActive,
+              ]}
+            >
+              {option.charAt(0).toUpperCase() + option.slice(1)}
+              {sortBy === option && (sortDirection === 'asc' ? ' ↑' : ' ↓')}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* Tracks List */}
       {selectedCrate.tracks?.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -163,16 +292,18 @@ const CrateDetailScreen = ({ route, navigation }) => {
         </View>
       ) : (
         <FlatList
-          data={selectedCrate.tracks}
+          data={sortedTracks}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TrackItem
+            <TrackRow
               track={item}
               onPress={handleTrackPress}
-              onLongPress={() => !isEditMode && handleRemoveTrack(item)}
+              onLongPress={handleTrackLongPress}
+              onMenuPress={handleTrackMenu}
               isSelected={selectedTrackIds.includes(item.id)}
             />
           )}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.list}
         />
       )}
@@ -186,30 +317,36 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl,
+    padding: SPACING.md,
+    paddingTop: SPACING.md,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   headerInfo: {
     flex: 1,
     marginRight: SPACING.md,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flexWrap: 'wrap',
   },
   headerButtons: {
     flexDirection: 'row',
     gap: SPACING.sm,
   },
   headerButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.surface,
   },
   headerButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.primary,
     fontWeight: '600',
   },
@@ -217,18 +354,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#EF4444',
   },
   removeButtonText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.text,
     fontWeight: '600',
   },
   title: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: SPACING.xs,
   },
   subtitle: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  selectedText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+  },
+  clearButton: {
+    position: 'absolute',
+    right: SPACING.md + SPACING.sm,
+    padding: SPACING.sm,
+  },
+  clearButtonText: {
+    fontSize: FONT_SIZES.lg,
     color: COLORS.textSecondary,
   },
   loadingContainer: {
@@ -259,9 +423,36 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
   },
+  sortContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  sortButton: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+  },
+  sortButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  sortButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  sortButtonTextActive: {
+    color: COLORS.text,
+    fontWeight: '600',
+  },
   list: {
-    paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xl * 3,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginLeft: 70, // 16px padding + 42px badge + 12px gap
   },
 });
 

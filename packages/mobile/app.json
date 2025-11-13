@@ -23,7 +23,8 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
-        }
+        },
+        "UIBackgroundModes": ["audio"]
       },
       "entitlements": {
         "com.apple.developer.networking.vpn.api": ["allow-vpn"],
@@ -36,8 +37,9 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a1a"
       },
-      "permissions": ["CAMERA"],
-      "edgeToEdgeEnabled": true
+      "permissions": ["CAMERA", "FOREGROUND_SERVICE", "WAKE_LOCK"],
+      "edgeToEdgeEnabled": true,
+      "package": "com.recrate.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"

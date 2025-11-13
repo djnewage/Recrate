@@ -37,7 +37,11 @@ const TrackItem = ({ track, onPress, onLongPress, isSelected }) => {
           )}
         </View>
       </View>
-      {isSelected && <View style={styles.checkmark} />}
+      {isSelected ? (
+        <View style={styles.checkmark} />
+      ) : (
+        <Text style={styles.arrow}>›</Text>
+      )}
     </TouchableOpacity>
   );
 };
@@ -61,10 +65,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.xs / 2,
   },
   artist: {
     fontSize: FONT_SIZES.sm,
@@ -85,6 +89,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: COLORS.primary,
     marginLeft: SPACING.md,
+  },
+  arrow: {
+    fontSize: FONT_SIZES.xxl,
+    color: COLORS.textSecondary,
+    marginLeft: SPACING.md,
+    opacity: 0.5,
   },
 });
 

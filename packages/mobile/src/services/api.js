@@ -102,6 +102,17 @@ export const apiService = {
     return response.data;
   },
 
+  // Config endpoints
+  getConfig: async () => {
+    const response = await api.get('/api/config');
+    return response.data.config;
+  },
+
+  updateConfig: async (configData) => {
+    const response = await api.post('/api/config', configData);
+    return response.data;
+  },
+
   // Streaming URLs (synchronous, so we'll use the current base URL)
   getStreamUrl: (trackId) => {
     // Try to get from connection store first
