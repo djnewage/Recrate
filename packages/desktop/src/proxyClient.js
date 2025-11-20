@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const http = require('http');
 
 class ProxyClient {
   constructor(proxyURL, deviceId, deviceName, logger) {
@@ -102,8 +103,13 @@ class ProxyClient {
     try {
       this.logger.info(`Handling request: ${method} ${path}`);
 
-      // Prepare fetch options
-      const fetchOptions = {
+      // Use http module instead of fetch (works better in Electron)
+      const url = new URL(path, this.localServerURL);
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port || 3000,
+        path: url.pathname + url.search,
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -111,29 +117,48 @@ class ProxyClient {
         }
       };
 
-      // Only include body for non-GET/HEAD requests
-      if (body && method !== 'GET' && method !== 'HEAD') {
-        fetchOptions.body = JSON.stringify(body);
-      }
+      const responseData = await new Promise((resolve, reject) => {
+        const req = http.request(options, (res) => {
+          let data = '';
 
-      // Forward to local server
-      const response = await fetch(`${this.localServerURL}${path}`, fetchOptions);
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
 
-      const contentType = response.headers.get('content-type');
-      let data;
+          res.on('end', () => {
+            const contentType = res.headers['content-type'] || '';
+            let parsedData;
 
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        data = await response.text();
-      }
+            try {
+              if (contentType.includes('application/json')) {
+                parsedData = JSON.parse(data);
+              } else {
+                parsedData = data;
+              }
+            } catch (e) {
+              parsedData = data;
+            }
+
+            resolve({ status: res.statusCode, data: parsedData });
+          });
+        });
+
+        req.on('error', reject);
+
+        // Only send body for non-GET/HEAD requests
+        if (body && method !== 'GET' && method !== 'HEAD') {
+          req.write(JSON.stringify(body));
+        }
+
+        req.end();
+      });
 
       // Send response back to proxy
       this.ws.send(JSON.stringify({
         type: 'response',
         requestId,
-        status: response.status,
-        data
+        status: responseData.status,
+        data: responseData.data
       }));
 
     } catch (error) {
