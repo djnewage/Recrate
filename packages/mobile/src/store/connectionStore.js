@@ -25,7 +25,10 @@ export const useConnectionStore = create((set, get) => ({
 
   // Test connection to a URL
   testConnection: async (url) => {
-    console.log(`[ConnectionStore] Testing connection to: ${url}/health`);
+    // Build health URL - all servers have /health endpoint
+    const healthURL = `${url}/health`;
+
+    console.log(`[ConnectionStore] Testing connection to: ${healthURL}`);
 
     try {
       const controller = new AbortController();
@@ -34,7 +37,7 @@ export const useConnectionStore = create((set, get) => ({
         controller.abort();
       }, 30000); // Increased to 30 seconds for slow cellular
 
-      const response = await fetch(`${url}/health`, {
+      const response = await fetch(healthURL, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
