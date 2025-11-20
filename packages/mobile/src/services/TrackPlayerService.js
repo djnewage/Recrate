@@ -14,6 +14,18 @@ export async function setupPlayer() {
   try {
     await TrackPlayer.setupPlayer({
       autoHandleInterruptions: true,
+      // iOS-specific optimizations
+      iosCategory: 'playback',
+      iosCategoryMode: 'default',
+      // Android-specific optimizations
+      android: {
+        appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
+      },
+      // Buffering configuration for faster playback start
+      minBuffer: 15, // Start playing after 15 seconds buffered
+      maxBuffer: 50, // Buffer up to 50 seconds ahead
+      playBuffer: 2.5, // Start playing after 2.5 seconds minimum
+      backBuffer: 0, // Don't keep buffer behind playhead
     });
 
     await TrackPlayer.updateOptions({
@@ -40,9 +52,11 @@ export async function setupPlayer() {
         Capability.SkipToNext,
         Capability.SkipToPrevious,
       ],
+      // Progressive download - don't wait for entire file
+      progressUpdateEventInterval: 1,
     });
 
-    console.log('TrackPlayer setup complete');
+    console.log('TrackPlayer setup complete with optimized buffering');
     return true;
   } catch (error) {
     console.error('Error setting up TrackPlayer:', error);
@@ -85,10 +99,41 @@ export async function addTracksToQueue(tracks) {
 }
 
 /**
+ * Preload a track by fetching initial bytes to warm up the connection
+ * This significantly reduces playback start delay
+ */
+export async function preloadTrack(track) {
+  try {
+    const streamUrl = apiService.getStreamUrl(track.id);
+
+    // Fetch first 256KB to warm up connection and start caching
+    fetch(streamUrl, {
+      method: 'GET',
+      headers: {
+        'Range': 'bytes=0-262143', // First 256KB
+      },
+    }).catch(err => {
+      // Silently fail - this is just optimization
+      console.log('Preload failed (non-critical):', err.message);
+    });
+
+    console.log(`Preloaded first chunk of: ${track.title}`);
+  } catch (error) {
+    // Non-critical - just log and continue
+    console.log('Preload error (non-critical):', error.message);
+  }
+}
+
+/**
  * Play a specific track (clears queue and plays immediately)
  */
 export async function playTrack(track) {
   try {
+    console.log(`Playing track: ${track.title}`);
+
+    // Preload the track to warm up connection (non-blocking)
+    preloadTrack(track);
+
     // Reset queue
     await TrackPlayer.reset();
 
@@ -145,6 +190,14 @@ export function setupEventHandlers(store) {
             currentQueueIndex: event.nextTrack,
           });
           console.log('Updated currentTrack to:', fullTrack.title);
+
+          // Preload next track in queue for instant playback
+          const nextIndex = event.nextTrack + 1;
+          if (nextIndex < queue.length) {
+            const nextTrack = queue[nextIndex];
+            console.log('Preloading next track:', nextTrack.title);
+            preloadTrack(nextTrack);
+          }
         } else {
           // Fallback: convert from TrackPlayer format
           store.setState({

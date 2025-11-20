@@ -69,6 +69,10 @@ class AudioStreamer {
           'Accept-Ranges': 'bytes',
           'Content-Length': contentLength,
           'Content-Type': mimeType,
+          // Cache headers for better performance
+          'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+          'ETag': `"${trackId}-${stats.mtime.getTime()}"`, // ETag based on modification time
+          'Last-Modified': stats.mtime.toUTCString(),
         });
 
         this.streamFile(filePath, start, end, res);
@@ -78,6 +82,10 @@ class AudioStreamer {
           'Content-Length': fileSize,
           'Content-Type': mimeType,
           'Accept-Ranges': 'bytes',
+          // Cache headers for better performance
+          'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+          'ETag': `"${trackId}-${stats.mtime.getTime()}"`, // ETag based on modification time
+          'Last-Modified': stats.mtime.toUTCString(),
         });
 
         this.streamFile(filePath, 0, fileSize - 1, res);
@@ -112,6 +120,9 @@ class AudioStreamer {
       res.writeHead(200, {
         'Content-Type': artwork.format,
         'Content-Length': artwork.data.length,
+        // Cache artwork aggressively (rarely changes)
+        'Cache-Control': 'public, max-age=86400, immutable', // Cache for 24 hours
+        'ETag': `"${trackId}-artwork"`,
       });
 
       res.end(artwork.data);
