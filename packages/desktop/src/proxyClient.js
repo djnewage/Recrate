@@ -59,8 +59,8 @@ class ProxyClient {
           this.handleMessage(data);
         });
 
-        this.ws.on('close', () => {
-          this.logger.warn('Disconnected from proxy');
+        this.ws.on('close', (code, reason) => {
+          this.logger.warn(`Disconnected from proxy - Code: ${code}, Reason: ${reason.toString() || 'No reason provided'}`);
           this.stopHeartbeat();
           this.scheduleReconnect();
         });
@@ -154,23 +154,43 @@ class ProxyClient {
       });
 
       // Send response back to proxy
-      this.ws.send(JSON.stringify({
+      const response = {
         type: 'response',
         requestId,
         status: responseData.status,
         data: responseData.data
-      }));
+      };
+      const responseStr = JSON.stringify(response);
+
+      this.logger.info(`Sending response for request ${requestId} - Status: ${responseData.status}, Size: ${responseStr.length} bytes, WS State: ${this.ws.readyState}`);
+
+      try {
+        this.ws.send(responseStr);
+        this.logger.info(`Response sent successfully, WS State after send: ${this.ws.readyState}`);
+      } catch (sendError) {
+        this.logger.error(`Error sending response: ${sendError.message}`);
+        throw sendError;
+      }
 
     } catch (error) {
       this.logger.error('Error handling request:', error);
 
       // Send error response
-      this.ws.send(JSON.stringify({
+      const errorResponse = {
         type: 'response',
         requestId,
         status: 500,
         error: error.message
-      }));
+      };
+
+      this.logger.info(`Sending error response for request ${requestId}, WS State: ${this.ws.readyState}`);
+
+      try {
+        this.ws.send(JSON.stringify(errorResponse));
+        this.logger.info(`Error response sent successfully, WS State after send: ${this.ws.readyState}`);
+      } catch (sendError) {
+        this.logger.error(`Error sending error response: ${sendError.message}`);
+      }
     }
   }
 

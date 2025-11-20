@@ -99,6 +99,8 @@ class WebSocketManager {
   handleResponse(deviceId, message) {
     const { requestId, status, data, error } = message;
 
+    logger.info(`Received response from device ${deviceId}: requestId=${requestId}, status=${status}, hasData=${!!data}, hasError=${!!error}`);
+
     // Store response for mobile app to retrieve
     this.deviceRegistry.storeResponse(deviceId, requestId, {
       status,
@@ -106,6 +108,8 @@ class WebSocketManager {
       error,
       timestamp: Date.now()
     });
+
+    logger.info(`Response stored successfully for requestId=${requestId}`);
   }
 
   // Send request to desktop
