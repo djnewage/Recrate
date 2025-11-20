@@ -28,5 +28,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Tailscale
   getTailscaleInfo: () => ipcRenderer.invoke('get-tailscale-info'),
-  openTailscaleUrl: () => ipcRenderer.invoke('open-tailscale-url')
+  openTailscaleUrl: () => ipcRenderer.invoke('open-tailscale-url'),
+
+  // Proxy
+  getProxyStatus: () => ipcRenderer.invoke('get-proxy-status'),
+  onProxyStatus: (callback) => {
+    ipcRenderer.on('proxy-status', (event, status) => callback(status));
+  }
 });

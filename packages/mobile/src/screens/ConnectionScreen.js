@@ -82,11 +82,17 @@ const ConnectionScreen = ({ navigation }) => {
 
   const ConnectionBadge = ({ type }) => {
     const badges = {
+      [CONNECTION_TYPES.PROXY]: {
+        icon: '☁️',
+        text: 'Cloud Proxy',
+        color: '#8b5cf6',
+        subtitle: 'Works anywhere',
+      },
       [CONNECTION_TYPES.TAILSCALE]: {
         icon: '🌐',
-        text: 'Remote Access',
+        text: 'Tailscale Remote',
         color: '#48bb78',
-        subtitle: 'Works anywhere',
+        subtitle: 'VPN connection',
       },
       [CONNECTION_TYPES.LOCAL]: {
         icon: '🏠',
