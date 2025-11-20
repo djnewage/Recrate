@@ -22,7 +22,7 @@ let serverStatus = 'stopped';
 let tailscaleServeURL = null;
 
 // Proxy configuration - can be overridden in settings
-const PROXY_URL = process.env.PROXY_URL || 'ws://localhost:3001';
+const PROXY_URL = process.env.PROXY_URL || 'wss://steadfast-forgiveness-production.up.railway.app';
 
 // Get local IP address
 function getLocalIP() {
