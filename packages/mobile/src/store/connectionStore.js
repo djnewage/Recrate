@@ -156,6 +156,7 @@ export const useConnectionStore = create((set, get) => ({
     // Get device's local IP to determine subnet
     // For now, try common router IPs
     const commonIPs = [
+      'http://192.168.1.131:3000', // Tristan's MacBook Pro
       'http://192.168.1.100:3000',
       'http://192.168.0.100:3000',
       'http://192.168.1.2:3000',

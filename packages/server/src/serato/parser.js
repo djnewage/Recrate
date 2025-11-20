@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const LRUCache = require('../utils/cache');
 const logger = require('../utils/logger');
 const MetadataExtractor = require('../audio/metadata');
+const pathResolver = require('../utils/pathResolver');
 
 /**
  * Custom error classes
@@ -34,9 +35,9 @@ class CrateNotFoundError extends Error {
  * Uses a simplified approach: directory scanning + metadata extraction
  */
 class SeratoParser {
-  constructor(seratoPath, musicPath, cacheConfig = {}) {
+  constructor(seratoPath, musicPaths, cacheConfig = {}) {
     this.seratoPath = seratoPath;
-    this.musicPath = musicPath;
+    this.musicPaths = Array.isArray(musicPaths) ? musicPaths : [musicPaths].filter(Boolean);
     this.cratesDir = path.join(seratoPath, 'Subcrates');
 
     // Initialize cache
@@ -50,6 +51,60 @@ class SeratoParser {
 
     // Supported audio formats
     this.audioExtensions = ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.ogg', '.aiff'];
+
+    // Indexing status tracking
+    this.indexingStatus = {
+      isIndexing: false,
+      isComplete: false,
+      startTime: null,
+      endTime: null,
+      progress: {
+        phase: 'idle', // idle, indexing, parsing_database, scanning, complete
+        currentPath: null,
+        filesIndexed: 0,
+        tracksFound: 0,
+        tracksResolved: 0,
+        tracksNotFound: 0,
+        message: 'Ready to index'
+      }
+    };
+
+    // WebSocket instance for progress updates (set by server)
+    this.io = null;
+  }
+
+  /**
+   * Set WebSocket instance for progress updates
+   */
+  setWebSocket(io) {
+    this.io = io;
+  }
+
+  /**
+   * Emit progress update via WebSocket
+   */
+  _emitProgress(update) {
+    if (this.io) {
+      this.io.emit('indexing:progress', {
+        ...this.indexingStatus,
+        progress: {
+          ...this.indexingStatus.progress,
+          ...update
+        }
+      });
+    }
+  }
+
+  /**
+   * Get current indexing status
+   */
+  getIndexingStatus() {
+    return {
+      ...this.indexingStatus,
+      duration: this.indexingStatus.startTime
+        ? (this.indexingStatus.endTime || Date.now()) - this.indexingStatus.startTime
+        : null
+    };
   }
 
   /**
@@ -68,65 +123,167 @@ class SeratoParser {
   }
 
   /**
+   * Start background indexing (non-blocking)
+   */
+  async startBackgroundIndexing() {
+    if (this.indexingStatus.isIndexing) {
+      logger.warn('Indexing already in progress');
+      return;
+    }
+
+    // Start indexing in background (don't await)
+    this.parseLibrary().catch(error => {
+      logger.error('Background indexing failed:', error);
+      this.indexingStatus.isIndexing = false;
+      this.indexingStatus.progress.phase = 'error';
+      this.indexingStatus.progress.message = `Indexing failed: ${error.message}`;
+      this._emitProgress({ phase: 'error', message: `Error: ${error.message}` });
+    });
+  }
+
+  /**
    * Parse library - Extract tracks from Serato database or scan directory
    * Returns array of track objects
    */
   async parseLibrary(musicPath = null) {
     const cacheKey = 'library';
     const cached = this.cache.get(cacheKey);
-    if (cached) {
+    if (cached && this.indexingStatus.isComplete) {
       logger.debug('Returning cached library');
       return cached;
     }
+
+    // If already indexing, wait for it to complete
+    if (this.indexingStatus.isIndexing) {
+      logger.debug('Indexing already in progress, waiting...');
+      // Poll until indexing completes
+      while (this.indexingStatus.isIndexing) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return this.cache.get(cacheKey) || [];
+    }
+
+    this.indexingStatus.isIndexing = true;
+    this.indexingStatus.isComplete = false;
+    this.indexingStatus.startTime = Date.now();
+    this.indexingStatus.progress.phase = 'indexing';
+    this.indexingStatus.progress.message = 'Starting library indexing...';
+    this._emitProgress({ phase: 'indexing', message: 'Starting library indexing...' });
 
     logger.info('Parsing library...');
 
     try {
       const tracksMap = new Map(); // Use Map to avoid duplicates (keyed by file path)
 
+      // Determine music paths to scan
+      const pathsToScan = this.musicPaths.length > 0
+        ? this.musicPaths
+        : (musicPath ? [musicPath] : [path.dirname(this.seratoPath)]);
+
+      // Build path resolver index across all music locations
+      logger.info('Building file index for intelligent path resolution...');
+      this.indexingStatus.progress.message = 'Building file index across music locations...';
+      this._emitProgress({ message: 'Building file index across music locations...' });
+
+      await pathResolver.buildIndex(pathsToScan);
+      const indexStats = pathResolver.getStats();
+      this.indexingStatus.progress.filesIndexed = indexStats.filenameIndexSize;
+      this._emitProgress({ filesIndexed: indexStats.filenameIndexSize });
+
       // Try to parse database V2 first for accurate track list with metadata
+      this.indexingStatus.progress.phase = 'parsing_database';
+      this.indexingStatus.progress.message = 'Parsing Serato database...';
+      this._emitProgress({ phase: 'parsing_database', message: 'Parsing Serato database...' });
+
       const trackMetadata = await this._parseDatabaseV2();
 
       if (trackMetadata && trackMetadata.length > 0) {
         // Database parsing succeeded - use track metadata
         logger.info(`Found ${trackMetadata.length} tracks in Serato database`);
+        this.indexingStatus.progress.message = `Resolving paths for ${trackMetadata.length} tracks...`;
+        this._emitProgress({ message: `Resolving paths for ${trackMetadata.length} tracks...` });
+
+        let resolved = 0;
+        let notFound = 0;
+        let processedCount = 0;
 
         for (const metadata of trackMetadata) {
+          let trackPath = metadata.filePath;
+
           try {
-            // Verify file exists
-            await fs.stat(metadata.filePath);
-            // Skip metadata extraction since we already have it from database
-            const track = await this._createTrackObject(metadata.filePath, true);
-            if (track) {
-              // Merge database metadata with track object
-              track.bpm = metadata.bpm || track.bpm;
-              track.key = metadata.key || track.key;
-              tracksMap.set(metadata.filePath, track);
-            }
+            // First, verify if exact path exists
+            await fs.stat(trackPath);
           } catch (error) {
-            // File doesn't exist or can't be read - skip it
-            logger.debug(`Skipping track (file not found): ${metadata.filePath}`);
+            // File doesn't exist at exact path - try intelligent resolution
+            logger.debug(`Resolving moved/missing file: ${trackPath}`);
+            const resolvedPath = await pathResolver.resolvePath(trackPath, metadata);
+
+            if (resolvedPath) {
+              trackPath = resolvedPath;
+              resolved++;
+              logger.debug(`Resolved: ${metadata.filePath} -> ${resolvedPath}`);
+            } else {
+              notFound++;
+              logger.debug(`Could not resolve: ${metadata.filePath}`);
+              continue; // Skip tracks that can't be resolved
+            }
+          }
+
+          // Create track object
+          // Skip metadata extraction since we already have it from database
+          const track = await this._createTrackObject(trackPath, true);
+          if (track) {
+            // Merge database metadata with track object
+            track.bpm = metadata.bpm || track.bpm;
+            track.key = metadata.key || track.key;
+            tracksMap.set(trackPath, track);
+          }
+
+          processedCount++;
+          // Emit progress every 100 tracks
+          if (processedCount % 100 === 0) {
+            this.indexingStatus.progress.tracksFound = tracksMap.size;
+            this.indexingStatus.progress.tracksResolved = resolved;
+            this.indexingStatus.progress.tracksNotFound = notFound;
+            this.indexingStatus.progress.message = `Processed ${processedCount}/${trackMetadata.length} tracks (${resolved} resolved)`;
+            this._emitProgress({
+              tracksFound: tracksMap.size,
+              tracksResolved: resolved,
+              tracksNotFound: notFound,
+              message: `Processed ${processedCount}/${trackMetadata.length} tracks`
+            });
           }
         }
 
-        logger.info(`Found ${tracksMap.size} tracks from database with existing files`);
+        this.indexingStatus.progress.tracksFound = tracksMap.size;
+        this.indexingStatus.progress.tracksResolved = resolved;
+        this.indexingStatus.progress.tracksNotFound = notFound;
+        logger.info(`Found ${tracksMap.size} tracks from database (${resolved} resolved via path matching, ${notFound} not found)`);
       } else {
-        logger.info('Database V2 parsing failed');
+        logger.info('Database V2 parsing failed or returned no tracks');
       }
 
-      // ALSO scan the music directory to catch any files not in the database
-      logger.info('Scanning music directory for additional tracks...');
-      const defaultMusicPath = path.dirname(this.seratoPath);
-      const scanPath = this.musicPath || musicPath || defaultMusicPath;
-      logger.info(`Scan path: ${scanPath}`);
-      // Extract metadata for scanned tracks since they're not in the database
-      const scannedTracks = await this._scanDirectory(scanPath, true);
-
+      // Scan all music directories to catch any files not in the database
+      this.indexingStatus.progress.phase = 'scanning';
+      this.indexingStatus.progress.message = `Scanning ${pathsToScan.length} music location(s)...`;
+      this._emitProgress({ phase: 'scanning', message: `Scanning ${pathsToScan.length} music location(s)...` });
+      logger.info(`Scanning ${pathsToScan.length} music location(s) for additional tracks...`);
       let addedFromScan = 0;
-      for (const track of scannedTracks) {
-        if (!tracksMap.has(track.filePath)) {
-          tracksMap.set(track.filePath, track);
-          addedFromScan++;
+
+      for (const scanPath of pathsToScan) {
+        this.indexingStatus.progress.currentPath = scanPath;
+        this.indexingStatus.progress.message = `Scanning: ${scanPath}`;
+        this._emitProgress({ currentPath: scanPath, message: `Scanning: ${scanPath}` });
+        logger.info(`Scanning: ${scanPath}`);
+
+        // Extract metadata for scanned tracks since they're not in the database
+        const scannedTracks = await this._scanDirectory(scanPath, true);
+
+        for (const track of scannedTracks) {
+          if (!tracksMap.has(track.filePath)) {
+            tracksMap.set(track.filePath, track);
+            addedFromScan++;
+          }
         }
       }
 
@@ -136,9 +293,27 @@ class SeratoParser {
       logger.success(`Total library: ${tracks.length} tracks`);
 
       this.cache.set(cacheKey, tracks);
+
+      // Mark indexing as complete
+      this.indexingStatus.isIndexing = false;
+      this.indexingStatus.isComplete = true;
+      this.indexingStatus.endTime = Date.now();
+      this.indexingStatus.progress.phase = 'complete';
+      this.indexingStatus.progress.tracksFound = tracks.length;
+      this.indexingStatus.progress.message = `Indexing complete! Found ${tracks.length} tracks`;
+      this._emitProgress({
+        phase: 'complete',
+        tracksFound: tracks.length,
+        message: `Indexing complete! Found ${tracks.length} tracks`
+      });
+
       return tracks;
     } catch (error) {
       logger.error('Error parsing library:', error.message);
+      this.indexingStatus.isIndexing = false;
+      this.indexingStatus.progress.phase = 'error';
+      this.indexingStatus.progress.message = `Error: ${error.message}`;
+      this._emitProgress({ phase: 'error', message: `Error: ${error.message}` });
       throw new ParseError(`Failed to parse library: ${error.message}`);
     }
   }
@@ -228,12 +403,29 @@ class SeratoParser {
       // Get all library tracks
       const library = await this.parseLibrary();
 
-      // Match tracks by file path
-      const tracks = trackPaths
-        .map(trackPath => {
-          return library.find(t => t.filePath === trackPath);
-        })
-        .filter(Boolean); // Remove undefined matches
+      // Match tracks by file path (with intelligent resolution for moved files)
+      const tracks = [];
+      for (const trackPath of trackPaths) {
+        // Try exact match first (fastest)
+        let track = library.find(t => t.filePath === trackPath);
+
+        // If no exact match, try resolving the path
+        if (!track) {
+          const resolvedPath = await pathResolver.resolvePath(trackPath);
+          if (resolvedPath) {
+            track = library.find(t => t.filePath === resolvedPath);
+            if (track) {
+              logger.debug(`Crate track resolved: ${trackPath} -> ${resolvedPath}`);
+            }
+          }
+        }
+
+        if (track) {
+          tracks.push(track);
+        } else {
+          logger.debug(`Crate track not found in library: ${trackPath}`);
+        }
+      }
 
       const result = {
         id: crate.id,
@@ -313,14 +505,12 @@ class SeratoParser {
   }
 
   /**
-   * Generate consistent track ID from file path
+   * Generate consistent track ID from metadata
+   * Uses pathResolver to create stable IDs based on artist+title+duration
+   * This ensures track IDs remain stable even when file paths change
    */
-  generateTrackId(filePath) {
-    return crypto
-      .createHash('md5')
-      .update(filePath)
-      .digest('hex')
-      .substring(0, 16);
+  generateTrackId(metadata) {
+    return pathResolver.generateTrackId(metadata);
   }
 
   /**
@@ -389,8 +579,8 @@ class SeratoParser {
         }
       }
 
-      return {
-        id: this.generateTrackId(filePath),
+      // Build track object with metadata defaults
+      const trackData = {
         filePath: filePath,
         filename: filename,
         title: metadata?.title || path.basename(filename, ext),
@@ -401,10 +591,16 @@ class SeratoParser {
         duration: metadata?.duration || 0,
         bpm: metadata?.bpm || null,
         key: metadata?.key || null,
+        trackNumber: metadata?.trackNumber || null,
         fileSize: stats.size,
         format: metadata?.format || ext.substring(1).toUpperCase(),
         addedAt: stats.birthtime,
       };
+
+      // Generate stable ID from metadata (not file path)
+      trackData.id = this.generateTrackId(trackData);
+
+      return trackData;
     } catch (error) {
       logger.warn(`Error creating track object for ${filePath}:`, error.message);
       return null;

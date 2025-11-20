@@ -29,10 +29,13 @@ class RecrateService {
     try {
       // Initialize parser
       logger.info("Initializing Serato parser...");
-      if (config.serato.musicPath) {
-        logger.info(`Music path: ${config.serato.musicPath}`);
+      if (config.serato.musicPaths && config.serato.musicPaths.length > 0) {
+        logger.info(`Music paths (${config.serato.musicPaths.length}):`);
+        config.serato.musicPaths.forEach((p, i) => {
+          logger.info(`  [${i + 1}] ${p}`);
+        });
       }
-      this.parser = new SeratoParser(config.serato.path, config.serato.musicPath, config.cache);
+      this.parser = new SeratoParser(config.serato.path, config.serato.musicPaths, config.cache);
       await this.parser.verifySeratoPath();
       logger.success("Serato parser initialized");
 
@@ -71,11 +74,22 @@ class RecrateService {
       // Start API server
       await this.apiServer.start();
 
+      // Set WebSocket instance on parser for progress updates
+      if (this.apiServer.io) {
+        this.parser.setWebSocket(this.apiServer.io);
+        logger.debug("WebSocket connected to parser for progress updates");
+      }
+
       logger.success("Recrate Service started successfully!");
       logger.info("Ready to accept connections");
 
       // Log useful information
       this._logStartupInfo();
+
+      // Start background indexing (non-blocking)
+      logger.info("Starting background library indexing...");
+      logger.info("Note: Library will be available once indexing completes (may take a few minutes for large libraries)");
+      this.parser.startBackgroundIndexing();
     } catch (error) {
       logger.error("Failed to start service:", error);
       throw error;
@@ -147,6 +161,7 @@ class RecrateService {
     logger.info("");
     logger.info("Available endpoints:");
     logger.info(`  GET    /api/library              - List all tracks`);
+    logger.info(`  GET    /api/library/status       - Get indexing status`);
     logger.info(`  GET    /api/library/:id          - Get track details`);
     logger.info(`  GET    /api/crates               - List all crates`);
     logger.info(`  GET    /api/crates/:id           - Get crate details`);

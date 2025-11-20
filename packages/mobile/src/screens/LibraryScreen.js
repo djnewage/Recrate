@@ -19,6 +19,9 @@ const LibraryScreen = ({ navigation }) => {
     selectedTracks,
     isLoadingLibrary,
     libraryPagination,
+    isIndexing,
+    indexingStatus,
+    indexingMessage,
     loadLibrary,
     loadMoreTracks,
     toggleTrackSelection,
@@ -28,6 +31,7 @@ const LibraryScreen = ({ navigation }) => {
     searchResults,
     search,
     clearSearch,
+    stopIndexingPoll,
   } = useStore();
 
   const [sortBy, setSortBy] = useState('title');
@@ -36,6 +40,11 @@ const LibraryScreen = ({ navigation }) => {
 
   useEffect(() => {
     loadLibrary();
+
+    // Cleanup: stop polling when component unmounts
+    return () => {
+      stopIndexingPoll();
+    };
   }, []);
 
   // Exit edit mode when selection is cleared
@@ -246,7 +255,7 @@ const LibraryScreen = ({ navigation }) => {
       )}
 
       {/* Track List */}
-      {isLoadingLibrary && tracks.length === 0 ? (
+      {isLoadingLibrary && tracks.length === 0 && !isIndexing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading library...</Text>
@@ -271,6 +280,46 @@ const LibraryScreen = ({ navigation }) => {
           onEndReachedThreshold={0.5}
           ListFooterComponent={renderFooter}
         />
+      )}
+
+      {/* Indexing Overlay */}
+      {isIndexing && (
+        <View style={styles.indexingOverlay}>
+          <View style={styles.indexingCard}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.indexingTitle}>Indexing Library</Text>
+            <Text style={styles.indexingMessage}>
+              {indexingMessage || 'Building your music library...'}
+            </Text>
+
+            {indexingStatus && (
+              <View style={styles.indexingDetails}>
+                <Text style={styles.indexingDetailText}>
+                  Phase: {indexingStatus.progress?.phase || 'preparing'}
+                </Text>
+                {indexingStatus.progress?.filesIndexed > 0 && (
+                  <Text style={styles.indexingDetailText}>
+                    Files indexed: {indexingStatus.progress.filesIndexed.toLocaleString()}
+                  </Text>
+                )}
+                {indexingStatus.progress?.tracksFound > 0 && (
+                  <Text style={styles.indexingDetailText}>
+                    Tracks found: {indexingStatus.progress.tracksFound.toLocaleString()}
+                  </Text>
+                )}
+                {indexingStatus.duration && (
+                  <Text style={styles.indexingDetailText}>
+                    Duration: {Math.round(indexingStatus.duration / 1000)}s
+                  </Text>
+                )}
+              </View>
+            )}
+
+            <Text style={styles.indexingNote}>
+              This may take a few minutes for large libraries
+            </Text>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -415,6 +464,57 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
+  },
+  indexingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  indexingCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.xl,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  indexingTitle: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  indexingMessage: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+  },
+  indexingDetails: {
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    width: '100%',
+    marginTop: SPACING.sm,
+  },
+  indexingDetailText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+  },
+  indexingNote: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: SPACING.md,
+    fontStyle: 'italic',
   },
 });
 

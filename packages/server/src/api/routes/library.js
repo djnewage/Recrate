@@ -10,11 +10,43 @@ function createLibraryRoutes(parser) {
   const metadataExtractor = new MetadataExtractor();
 
   /**
+   * GET /api/library/status
+   * Get indexing status
+   */
+  router.get('/status', (req, res) => {
+    try {
+      const status = parser.getIndexingStatus();
+      res.json(status);
+    } catch (error) {
+      logger.error('Error getting indexing status:', error);
+      res.status(500).json({ error: 'Failed to get indexing status' });
+    }
+  });
+
+  /**
    * GET /api/library
    * List all tracks with optional search, sorting, and pagination
    */
   router.get('/', async (req, res) => {
     try {
+      // Check if indexing is in progress
+      const status = parser.getIndexingStatus();
+      if (status.isIndexing && !status.isComplete) {
+        // Return indexing status instead of empty library
+        return res.json({
+          indexing: true,
+          status: status,
+          tracks: [],
+          pagination: {
+            total: 0,
+            limit: 100,
+            offset: 0,
+            hasMore: false
+          },
+          message: 'Library is currently being indexed. This may take a few minutes for large libraries.'
+        });
+      }
+
       const { search, sortBy = 'title', limit = 100, offset = 0 } = req.query;
 
       let tracks = await parser.parseLibrary();

@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recrate</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      overflow: hidden;
+    }
+
+    #app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      flex: 1;
+      padding: 40px;
+      overflow-y: auto;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 30px;
+    }
+
+    .status-running {
+      background: #48bb78;
+    }
+
+    .status-stopped {
+      background: #f56565;
+    }
+
+    .qr-container {
+      background: white;
+      padding: 30px;
+      border-radius: 20px;
+      text-align: center;
+      margin: 30px 0;
+    }
+
+    .qr-code {
+      margin: 20px auto;
+    }
+
+    .url-display {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 15px;
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+      margin: 20px 0;
+      word-break: break-all;
+    }
+
+    button {
+      background: white;
+      color: #667eea;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin: 10px 0;
+      transition: transform 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.secondary {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+    }
+
+    .settings-screen {
+      display: none;
+    }
+
+    .settings-screen.active {
+      display: block;
+    }
+
+    .form-group {
+      margin: 20px 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+    }
+
+    .path-input {
+      display: flex;
+      gap: 10px;
+    }
+
+    .path-input input {
+      flex: 1;
+    }
+
+    .path-input button {
+      width: auto;
+      padding: 12px 20px;
+    }
+
+    .logs {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      border-radius: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      margin-top: 20px;
+    }
+
+    .log-entry {
+      margin: 5px 0;
+    }
+
+    .connection-card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 15px;
+      padding: 20px;
+      margin: 15px 0;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .setup-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px dashed rgba(255, 255, 255, 0.3);
+    }
+
+    .connection-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .connection-icon {
+      font-size: 24px;
+    }
+
+    .connection-title {
+      font-size: 18px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .status-active {
+      background: #48bb78;
+    }
+
+    .status-inactive {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .connection-url {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 15px;
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      margin: 10px 0;
+      word-break: break-all;
+      cursor: pointer;
+    }
+
+    .connection-url:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .connection-hint {
+      font-size: 13px;
+      opacity: 0.7;
+      text-align: center;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <!-- Status Screen -->
+      <div id="status-screen" class="status-screen active">
+        <h1>🎧 Recrate</h1>
+
+        <div style="text-align: center;">
+          <span id="status-badge" class="status-badge status-stopped">
+            ⭕ Server Stopped
+          </span>
+        </div>
+
+        <div id="server-info" style="display: none;">
+          <!-- Local Connection -->
+          <div class="connection-card">
+            <div class="connection-header">
+              <span class="connection-icon">🏠</span>
+              <span class="connection-title">Local Network</span>
+            </div>
+            <div class="qr-container">
+              <canvas id="qr-code" class="qr-code"></canvas>
+            </div>
+            <div class="connection-url" id="local-url">http://192.168.1.100:3000</div>
+            <div class="connection-hint">
+              Use this when phone and laptop are on same WiFi
+            </div>
+          </div>
+
+          <!-- Remote Connection (Tailscale) -->
+          <div id="remote-connection" class="connection-card" style="display: none;">
+            <div class="connection-header">
+              <span class="connection-icon">🌐</span>
+              <span class="connection-title">Remote Access</span>
+              <span class="status-badge status-active">Active</span>
+            </div>
+            <div class="qr-container">
+              <canvas id="qr-code-remote" class="qr-code"></canvas>
+            </div>
+            <div class="connection-url" id="remote-url">
+              http://100.101.102.103:3000
+            </div>
+            <div class="connection-hint">
+              ✨ Works anywhere - gym, coffee shop, on the go!
+            </div>
+          </div>
+
+          <!-- Tailscale Setup Required -->
+          <div
+            id="tailscale-setup"
+            class="connection-card setup-card"
+            style="display: none;"
+          >
+            <div class="connection-header">
+              <span class="connection-icon">🌐</span>
+              <span class="connection-title">Remote Access</span>
+              <span class="status-badge status-inactive">Not Setup</span>
+            </div>
+            <p style="margin: 15px 0; opacity: 0.9;">
+              Install Tailscale to access your library from anywhere
+            </p>
+            <ul style="text-align: left; margin: 15px 0; padding-left: 20px;">
+              <li>Works on 5G, any WiFi network</li>
+              <li>Secure & encrypted connection</li>
+              <li>Free for personal use</li>
+              <li>Takes 5 minutes to setup</li>
+            </ul>
+            <button onclick="setupTailscale()">Setup Remote Access</button>
+          </div>
+
+          <!-- Instructions -->
+          <div style="text-align: center; margin-top: 30px;">
+            <p style="font-size: 14px; opacity: 0.8;">
+              📱 On your phone:<br />
+              1. Open Recrate app<br />
+              2. Scan QR code or enter URL<br />
+              3. Start organizing!
+            </p>
+          </div>
+        </div>
+
+        <button id="toggle-server-btn" onclick="toggleServer()">
+          Start Server
+        </button>
+
+        <button class="secondary" onclick="showSettings()">
+          Settings
+        </button>
+
+        <div id="logs" class="logs" style="display: none;"></div>
+      </div>
+
+      <!-- Settings Screen -->
+      <div id="settings-screen" class="settings-screen">
+        <h1>⚙️ Settings</h1>
+
+        <div class="form-group">
+          <label>Serato Library Path</label>
+          <div class="path-input">
+            <input type="text" id="serato-path" readonly>
+            <button onclick="selectSeratoPath()">Browse</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Music Files Path</label>
+          <div class="path-input">
+            <input type="text" id="music-path" readonly>
+            <button onclick="selectMusicPath()">Browse</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Port</label>
+          <input type="number" id="port" value="3000">
+        </div>
+
+        <button onclick="saveSettings()">
+          Save Settings
+        </button>
+
+        <button class="secondary" onclick="showStatus()">
+          Back
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script>
+    // Use window.electronAPI directly to avoid redeclaration issues
+    const api = window.electronAPI;
+    let serverStatus = 'stopped';
+    let serverUrl = '';
+
+    // Initialize
+    async function init() {
+      await loadConfig();
+      await updateServerStatus();
+
+      // Poll for status every 2 seconds
+      setInterval(async () => {
+        await updateServerStatus();
+      }, 2000);
+
+      // Listen for server status changes
+      api.onServerStatus(async (status) => {
+        serverStatus = status.status;
+        serverUrl = status.localURL || status.url; // Support both new and old format
+        await updateUI(status);
+
+        // Show error if present
+        if (status.error) {
+          alert('Server Error: ' + status.error);
+        }
+      });
+
+      // Listen for logs
+      api.onServerLog((log) => {
+        addLog(log);
+      });
+
+      // Listen for errors
+      api.onServerError((error) => {
+        addLog('ERROR: ' + error);
+      });
+    }
+
+    // Load config
+    async function loadConfig() {
+      const config = await api.getConfig();
+      document.getElementById('serato-path').value = config.seratoPath;
+      document.getElementById('music-path').value = config.musicPath;
+      document.getElementById('port').value = config.port;
+    }
+
+    // Update server status
+    async function updateServerStatus() {
+      const status = await api.getServerStatus();
+      serverStatus = status.status;
+      serverUrl = status.url;
+      updateUI();
+    }
+
+    // Update UI based on status
+    async function updateUI(statusData) {
+      const badge = document.getElementById('status-badge');
+      const info = document.getElementById('server-info');
+      const btn = document.getElementById('toggle-server-btn');
+
+      if (serverStatus === 'running') {
+        badge.textContent = '✅ Server Running';
+        badge.className = 'status-badge status-running';
+        info.style.display = 'block';
+        btn.textContent = 'Stop Server';
+
+        // Get Tailscale info
+        const tailscaleInfo = await api.getTailscaleInfo();
+
+        // Update local connection
+        const localURL = statusData?.localURL || serverUrl;
+        document.getElementById('local-url').textContent = localURL;
+        generateQR(localURL, 'qr-code');
+
+        // Handle remote connection display
+        const remoteCard = document.getElementById('remote-connection');
+        const setupCard = document.getElementById('tailscale-setup');
+
+        if (tailscaleInfo.running && tailscaleInfo.ip) {
+          // Tailscale is working - show remote connection
+          remoteCard.style.display = 'block';
+          setupCard.style.display = 'none';
+
+          const remoteURL = statusData?.tailscaleURL || `http://${tailscaleInfo.ip}:3000`;
+          document.getElementById('remote-url').textContent = remoteURL;
+
+          // Generate QR code for remote URL
+          generateQR(remoteURL, 'qr-code-remote');
+        } else {
+          // Tailscale not setup - show setup card
+          remoteCard.style.display = 'none';
+          setupCard.style.display = 'block';
+        }
+      } else {
+        badge.textContent = '⭕ Server Stopped';
+        badge.className = 'status-badge status-stopped';
+        info.style.display = 'none';
+        btn.textContent = 'Start Server';
+      }
+    }
+
+    // Generate QR code
+    function generateQR(url, canvasId = 'qr-code') {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+
+      // Parse the URL to extract IP and port
+      try {
+        const urlObj = new URL(url);
+        const ip = urlObj.hostname;
+        const port = urlObj.port || '3000';
+
+        // Create deep link URL for mobile app
+        const deepLinkUrl = `recrate://connect?ip=${ip}&port=${port}`;
+
+        const qr = qrcode(0, 'M');
+        qr.addData(deepLinkUrl);
+        qr.make();
+
+        const size = 200;
+        const moduleCount = qr.getModuleCount();
+        const cellSize = size / moduleCount;
+
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        for (let row = 0; row < moduleCount; row++) {
+          for (let col = 0; col < moduleCount; col++) {
+            ctx.fillStyle = qr.isDark(row, col) ? '#000000' : '#ffffff';
+            ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+          }
+        }
+      } catch (error) {
+        console.error('Error generating QR code:', error);
+        // Fallback to original URL if parsing fails
+        const qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+
+        const size = 200;
+        const moduleCount = qr.getModuleCount();
+        const cellSize = size / moduleCount;
+
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        for (let row = 0; row < moduleCount; row++) {
+          for (let col = 0; col < moduleCount; col++) {
+            ctx.fillStyle = qr.isDark(row, col) ? '#000000' : '#ffffff';
+            ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+          }
+        }
+      }
+    }
+
+    // Toggle server
+    async function toggleServer() {
+      if (serverStatus === 'running') {
+        await api.stopServer();
+      } else {
+        await api.startServer();
+      }
+      setTimeout(updateServerStatus, 1000);
+    }
+
+    // Show settings
+    function showSettings() {
+      document.getElementById('status-screen').classList.remove('active');
+      document.getElementById('settings-screen').classList.add('active');
+    }
+
+    // Show status
+    function showStatus() {
+      document.getElementById('settings-screen').classList.remove('active');
+      document.getElementById('status-screen').classList.add('active');
+    }
+
+    // Select Serato path
+    async function selectSeratoPath() {
+      const path = await api.selectDirectory('Select Serato Library Folder');
+      if (path) {
+        document.getElementById('serato-path').value = path;
+      }
+    }
+
+    // Select music path
+    async function selectMusicPath() {
+      const path = await api.selectDirectory('Select Music Folder');
+      if (path) {
+        document.getElementById('music-path').value = path;
+      }
+    }
+
+    // Save settings
+    async function saveSettings() {
+      const config = {
+        seratoPath: document.getElementById('serato-path').value,
+        musicPath: document.getElementById('music-path').value,
+        port: parseInt(document.getElementById('port').value),
+        autoStart: true
+      };
+
+      await api.saveConfig(config);
+      alert('Settings saved! Restart the server for changes to take effect.');
+      showStatus();
+    }
+
+    // Add log entry
+    function addLog(log) {
+      const logsDiv = document.getElementById('logs');
+      logsDiv.style.display = 'block';
+
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.textContent = log;
+      logsDiv.appendChild(entry);
+
+      // Auto-scroll
+      logsDiv.scrollTop = logsDiv.scrollHeight;
+
+      // Keep only last 50 logs
+      while (logsDiv.children.length > 50) {
+        logsDiv.removeChild(logsDiv.firstChild);
+      }
+    }
+
+    // Setup Tailscale
+    async function setupTailscale() {
+      const tailscaleInfo = await api.getTailscaleInfo();
+
+      if (!tailscaleInfo.installed) {
+        // Not installed - open download page
+        await api.openTailscaleUrl();
+
+        alert(
+          'Opening Tailscale download page...\n\n' +
+          'After installing:\n' +
+          '1. Sign in with Google or GitHub\n' +
+          '2. Restart Recrate\n' +
+          '3. Remote access will be enabled!'
+        );
+      } else if (!tailscaleInfo.running) {
+        // Installed but not running
+        alert(
+          'Tailscale is installed but not running.\n\n' +
+          'Please start Tailscale from:\n' +
+          'Mac: Menu bar icon\n' +
+          'Windows: System tray\n\n' +
+          'Then restart Recrate.'
+        );
+      }
+    }
+
+    // Initialize on load
+    init();
+  </script>
+</body>
+</html>
