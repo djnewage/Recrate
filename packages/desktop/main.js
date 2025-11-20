@@ -5,6 +5,7 @@ const Store = require('electron-store');
 const log = require('electron-log');
 const os = require('os');
 const fs = require('fs');
+const ProxyClient = require('./src/proxyClient');
 
 // Configure logging
 log.transports.file.level = 'info';
@@ -15,9 +16,13 @@ let mainWindow = null;
 let tray = null;
 let serverProcess = null;
 let tailscaleServeProcess = null;
+let proxyClient = null;
 let serverPort = 3000;
 let serverStatus = 'stopped';
 let tailscaleServeURL = null;
+
+// Proxy configuration - can be overridden in settings
+const PROXY_URL = process.env.PROXY_URL || 'ws://localhost:3001';
 
 // Get local IP address
 function getLocalIP() {
@@ -305,8 +310,85 @@ function updateTrayMenu() {
   );
 }
 
+/**
+ * Connect to cloud proxy
+ */
+async function connectToProxy() {
+  try {
+    log.info('Connecting to cloud proxy...');
+
+    proxyClient = new ProxyClient(
+      PROXY_URL,
+      null, // Will auto-generate device ID
+      os.hostname(),
+      log
+    );
+
+    await proxyClient.connect();
+
+    log.info('Connected to proxy successfully');
+    log.info('Device ID:', proxyClient.getDeviceId());
+
+    // Update UI
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('proxy-status', {
+        connected: true,
+        deviceId: proxyClient.getDeviceId(),
+        url: getProxyURL()
+      });
+    }
+
+  } catch (error) {
+    log.error('Failed to connect to proxy:', error.message);
+
+    // Continue without proxy - local and Tailscale still work
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('proxy-status', {
+        connected: false,
+        error: error.message
+      });
+    }
+  }
+}
+
+/**
+ * Get proxy URL for mobile app
+ */
+function getProxyURL() {
+  if (!proxyClient) return null;
+
+  const deviceId = proxyClient.getDeviceId();
+  // Convert ws:// to http:// or wss:// to https://
+  let httpURL = PROXY_URL.replace('ws://', 'http://').replace('wss://', 'https://');
+
+  // Replace localhost with actual local IP for mobile access
+  if (httpURL.includes('localhost') || httpURL.includes('127.0.0.1')) {
+    const localIP = getLocalIP();
+    httpURL = httpURL.replace('localhost', localIP).replace('127.0.0.1', localIP);
+  }
+
+  return `${httpURL}/api/${deviceId}`;
+}
+
+/**
+ * Disconnect from cloud proxy
+ */
+function disconnectFromProxy() {
+  if (proxyClient) {
+    log.info('Disconnecting from proxy...');
+    proxyClient.disconnect();
+    proxyClient = null;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('proxy-status', {
+        connected: false
+      });
+    }
+  }
+}
+
 // Start Node.js server
-function startServer() {
+async function startServer() {
   if (serverProcess) {
     log.info('Server already running');
     return;
@@ -346,7 +428,7 @@ function startServer() {
     }
   });
 
-  serverProcess.stdout.on('data', (data) => {
+  serverProcess.stdout.on('data', async (data) => {
     const output = data.toString();
     log.info('Server:', output);
 
@@ -360,10 +442,13 @@ function startServer() {
       serverStatus = 'running';
       updateTrayMenu();
 
-      // Start Tailscale HTTPS serve
+      // Connect to cloud proxy
+      await connectToProxy();
+
+      // Start Tailscale HTTPS serve (fallback option)
       startTailscaleServe();
 
-      // Get Tailscale info
+      // Get connection info
       const localIP = getLocalIP();
       const tailscaleIP = getTailscaleIP();
       const tailscaleInstalled = isTailscaleInstalled();
@@ -371,15 +456,21 @@ function startServer() {
       // Send status to renderer (with delay to ensure window is ready)
       const sendStatus = () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
+          const proxyURL = proxyClient && proxyClient.isConnected()
+            ? getProxyURL()
+            : null;
+
           mainWindow.webContents.send('server-status', {
             status: 'running',
             localURL: `http://${localIP}:${serverPort}`,
+            proxyURL,
+            proxyConnected: proxyClient && proxyClient.isConnected(),
             tailscaleURL: tailscaleIP ? `http://${tailscaleIP}:${serverPort}` : null,
             tailscaleHTTPSURL: tailscaleServeURL,
             tailscaleInstalled,
             config
           });
-          log.info('Sent running status to renderer with Tailscale info');
+          log.info('Sent running status to renderer with proxy and Tailscale info');
         }
       };
 
@@ -436,6 +527,9 @@ function stopServer() {
     serverStatus = 'stopped';
     updateTrayMenu();
   }
+
+  // Disconnect from proxy
+  disconnectFromProxy();
 
   // Also stop Tailscale serve
   stopTailscaleServe();
@@ -513,6 +607,14 @@ ipcMain.handle('open-tailscale-url', () => {
   require('electron').shell.openExternal('https://tailscale.com/download');
 });
 
+ipcMain.handle('get-proxy-status', () => {
+  return {
+    connected: proxyClient && proxyClient.isConnected(),
+    deviceId: proxyClient ? proxyClient.getDeviceId() : null,
+    url: proxyClient && proxyClient.isConnected() ? getProxyURL() : null
+  };
+});
+
 // App lifecycle
 app.whenReady().then(() => {
   createWindow();
@@ -527,6 +629,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   stopServer();
+  disconnectFromProxy();
   stopTailscaleServe();
 });
 

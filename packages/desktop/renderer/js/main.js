@@ -49,6 +49,16 @@ async function init() {
     }
   });
 
+  // Register proxy status listener
+  console.log('📡 Registering proxy status listener...');
+  electronAPI.onProxyStatus((proxyStatus) => {
+    console.log('📨 Received proxy status event:', proxyStatus);
+    // Refresh connection info when proxy status changes
+    if (serverStatus === 'running') {
+      updateConnectionInfo({ proxyURL: proxyStatus.url });
+    }
+  });
+
   // Now check initial status
   await updateServerStatus();
 
@@ -159,32 +169,37 @@ async function updateConnectionInfo(statusData) {
   const iconElement = document.getElementById('connection-icon');
   const labelElement = document.getElementById('connection-label');
 
-  // Get Tailscale info
+  // Get proxy status and Tailscale info
+  const proxyStatus = await electronAPI.getProxyStatus();
   const tailscaleInfo = await electronAPI.getTailscaleInfo();
 
   let displayURL = serverURL;
 
-  // Determine connection type - prioritize Tailscale if available
-  if (tailscaleInfo.running && tailscaleInfo.ip) {
-    displayURL = statusData?.tailscaleURL || `http://${tailscaleInfo.ip}:3000`;
-    connectionType = 'remote';
+  // Determine connection type - prioritize: Proxy > Tailscale > Local
+  if (proxyStatus.connected && proxyStatus.url) {
+    // Cloud proxy is the best option - works everywhere
+    displayURL = proxyStatus.url;
+    connectionType = 'proxy';
 
-    // Update URL
     urlElement.textContent = displayURL;
+    iconElement.textContent = '☁️';
+    labelElement.textContent = 'Cloud Proxy • Works anywhere';
+  } else if (tailscaleInfo.running && tailscaleInfo.ip) {
+    // Tailscale as fallback
+    displayURL = statusData?.tailscaleURL || `http://${tailscaleInfo.ip}:3000`;
+    connectionType = 'tailscale';
 
-    // Update connection type indicator
+    urlElement.textContent = displayURL;
     iconElement.textContent = '🌐';
-    labelElement.textContent = 'Remote • Tap to copy';
+    labelElement.textContent = 'Tailscale Remote • Tap to copy';
   } else {
+    // Local network only
     displayURL = statusData?.localURL || serverURL;
     connectionType = 'local';
 
-    // Update URL
     urlElement.textContent = displayURL;
-
-    // Update connection type indicator
     iconElement.textContent = '🏠';
-    labelElement.textContent = 'Local • Tap to copy';
+    labelElement.textContent = 'Local Network • Same WiFi only';
   }
 
   // Generate QR code

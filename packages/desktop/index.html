@@ -405,7 +405,8 @@
         info.style.display = 'block';
         btn.textContent = 'Stop Server';
 
-        // Get Tailscale info
+        // Get proxy and Tailscale info
+        const proxyStatus = await api.getProxyStatus();
         const tailscaleInfo = await api.getTailscaleInfo();
 
         // Get canvas elements
@@ -420,7 +421,27 @@
         // Prepare URLs
         const localURL = statusData?.localURL || serverUrl;
 
-        if (tailscaleInfo.running && tailscaleInfo.ip) {
+        // Priority: Proxy > Tailscale > Local
+        if (proxyStatus.connected && proxyStatus.url) {
+          // Cloud proxy is the best option - works everywhere
+          const proxyURL = proxyStatus.url;
+
+          // Toggle canvas visibility - show remote, hide local
+          qrLocal.style.display = 'none';
+          qrRemote.style.display = 'block';
+
+          // Update UI text
+          smartUrl.textContent = proxyURL;
+          connectionIcon.textContent = '☁️';
+          connectionTitle.textContent = 'Cloud Proxy';
+          connectionHint.textContent = '☁️ Works anywhere - Tap to copy';
+
+          // Hide setup card
+          setupCard.style.display = 'none';
+
+          // Generate QR code for proxy URL
+          generateQR(proxyURL, 'qr-code-remote');
+        } else if (tailscaleInfo.running && tailscaleInfo.ip) {
           // Tailscale is working - show REMOTE QR code
           // Priority: HTTPS URL > HTTP with IP > fallback
           const remoteURL = statusData?.tailscaleHTTPSURL ||

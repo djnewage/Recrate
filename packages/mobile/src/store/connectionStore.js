@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CONNECTION_TYPES = {
-  LOCAL: 'local',
+  PROXY: 'proxy',
   TAILSCALE: 'tailscale',
+  LOCAL: 'local',
   MANUAL: 'manual',
   OFFLINE: 'offline',
 };
@@ -75,9 +76,13 @@ export const useConnectionStore = create((set, get) => ({
         console.log('Trying last known IP:', lastIP);
         const works = await get().testConnection(lastIP);
         if (works) {
-          const type = lastIP.startsWith('100.')
-            ? CONNECTION_TYPES.TAILSCALE
-            : CONNECTION_TYPES.LOCAL;
+          // Determine connection type
+          let type = CONNECTION_TYPES.LOCAL;
+          if (lastIP.includes('/api/') && lastIP.startsWith('https://')) {
+            type = CONNECTION_TYPES.PROXY;
+          } else if (lastIP.startsWith('100.')) {
+            type = CONNECTION_TYPES.TAILSCALE;
+          }
 
           set({
             serverURL: lastIP,
@@ -210,9 +215,12 @@ export const useConnectionStore = create((set, get) => ({
       console.log(`[ConnectionStore] ✅ Manual connection successful!`);
       await AsyncStorage.setItem('lastServerIP', url);
 
-      // Determine connection type based on IP
+      // Determine connection type based on URL pattern
       let connType = CONNECTION_TYPES.MANUAL;
-      if (url.includes('100.')) {
+      if (url.includes('/api/') && url.startsWith('https://')) {
+        connType = CONNECTION_TYPES.PROXY;
+        console.log(`[ConnectionStore] Detected cloud proxy connection`);
+      } else if (url.includes('100.')) {
         connType = CONNECTION_TYPES.TAILSCALE;
         console.log(`[ConnectionStore] Detected Tailscale connection`);
       } else if (url.includes('192.168.') || url.includes('10.0.') || url.includes('localhost')) {
