@@ -496,17 +496,24 @@
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
 
-      // Parse the URL to extract IP and port
+      // For proxy/HTTPS URLs (like Railway), use the URL directly
+      // For local HTTP URLs, convert to deep link format
+      let qrData;
       try {
         const urlObj = new URL(url);
-        const ip = urlObj.hostname;
-        const port = urlObj.port || '3000';
 
-        // Create deep link URL for mobile app
-        const deepLinkUrl = `recrate://connect?ip=${ip}&port=${port}`;
+        if (url.startsWith('https://') || url.includes('/api/')) {
+          // Use direct URL for proxy/HTTPS (mobile will handle it)
+          qrData = url;
+        } else {
+          // Use deep link format for local HTTP
+          const ip = urlObj.hostname;
+          const port = urlObj.port || '3000';
+          qrData = `recrate://connect?ip=${ip}&port=${port}`;
+        }
 
         const qr = qrcode(0, 'M');
-        qr.addData(deepLinkUrl);
+        qr.addData(qrData);
         qr.make();
 
         const size = 160;
