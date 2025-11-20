@@ -102,15 +102,22 @@ class ProxyClient {
     try {
       this.logger.info(`Handling request: ${method} ${path}`);
 
-      // Forward to local server
-      const response = await fetch(`${this.localServerURL}${path}`, {
+      // Prepare fetch options
+      const fetchOptions = {
         method,
         headers: {
           'Content-Type': 'application/json',
           ...headers
-        },
-        body: body ? JSON.stringify(body) : undefined
-      });
+        }
+      };
+
+      // Only include body for non-GET/HEAD requests
+      if (body && method !== 'GET' && method !== 'HEAD') {
+        fetchOptions.body = JSON.stringify(body);
+      }
+
+      // Forward to local server
+      const response = await fetch(`${this.localServerURL}${path}`, fetchOptions);
 
       const contentType = response.headers.get('content-type');
       let data;
