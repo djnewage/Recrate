@@ -45,6 +45,11 @@ const QRScanner = ({ onScan, onClose }) => {
         console.log('[QRScanner] Detected HTTP URL format');
         serverURL = data;
       }
+      // Format 3: HTTPS/Proxy URL (https://proxy.up.railway.app/api/deviceId)
+      else if (data.startsWith('https://') || data.includes('/api/')) {
+        console.log('[QRScanner] Detected HTTPS/proxy URL format');
+        serverURL = data;
+      }
 
       // If we got a valid URL, connect
       if (serverURL) {
