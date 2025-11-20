@@ -119,27 +119,44 @@ class ProxyClient {
 
       const responseData = await new Promise((resolve, reject) => {
         const req = http.request(options, (res) => {
-          let data = '';
+          const contentType = res.headers['content-type'] || '';
+          const isBinary = contentType.includes('audio/') ||
+                          contentType.includes('image/') ||
+                          contentType.includes('video/') ||
+                          contentType.includes('application/octet-stream');
+
+          let chunks = [];
 
           res.on('data', (chunk) => {
-            data += chunk;
+            chunks.push(chunk);
           });
 
           res.on('end', () => {
-            const contentType = res.headers['content-type'] || '';
+            const buffer = Buffer.concat(chunks);
             let parsedData;
 
             try {
-              if (contentType.includes('application/json')) {
-                parsedData = JSON.parse(data);
+              if (isBinary) {
+                // For binary data, send as base64 string
+                parsedData = buffer.toString('base64');
+              } else if (contentType.includes('application/json')) {
+                // For JSON, parse it
+                parsedData = JSON.parse(buffer.toString('utf8'));
               } else {
-                parsedData = data;
+                // For text, convert to string
+                parsedData = buffer.toString('utf8');
               }
             } catch (e) {
-              parsedData = data;
+              // Fallback to base64 if parsing fails
+              parsedData = buffer.toString('base64');
             }
 
-            resolve({ status: res.statusCode, data: parsedData });
+            resolve({
+              status: res.statusCode,
+              data: parsedData,
+              headers: res.headers,
+              isBinary
+            });
           });
         });
 
@@ -158,11 +175,13 @@ class ProxyClient {
         type: 'response',
         requestId,
         status: responseData.status,
-        data: responseData.data
+        data: responseData.data,
+        headers: responseData.headers,
+        isBinary: responseData.isBinary
       };
       const responseStr = JSON.stringify(response);
 
-      this.logger.info(`Sending response for request ${requestId} - Status: ${responseData.status}, Size: ${responseStr.length} bytes, WS State: ${this.ws.readyState}`);
+      this.logger.info(`Sending response for request ${requestId} - Status: ${responseData.status}, Binary: ${responseData.isBinary}, Size: ${responseStr.length} bytes, WS State: ${this.ws.readyState}`);
 
       try {
         this.ws.send(responseStr);

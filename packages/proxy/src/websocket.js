@@ -97,15 +97,18 @@ class WebSocketManager {
   }
 
   handleResponse(deviceId, message) {
-    const { requestId, status, data, error } = message;
+    const { requestId, status, data, error, headers, isBinary } = message;
 
-    logger.info(`Received response from device ${deviceId}: requestId=${requestId}, status=${status}, hasData=${!!data}, hasError=${!!error}`);
+    const dataSize = typeof data === 'string' ? data.length : (data ? JSON.stringify(data).length : 0);
+    logger.info(`Received response from device ${deviceId}: requestId=${requestId}, status=${status}, isBinary=${isBinary}, dataSize=${dataSize} bytes`);
 
     // Store response for mobile app to retrieve
     this.deviceRegistry.storeResponse(deviceId, requestId, {
       status,
       data,
       error,
+      headers,
+      isBinary,
       timestamp: Date.now()
     });
 

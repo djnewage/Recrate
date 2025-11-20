@@ -49,7 +49,26 @@ router.all('/:deviceId/*', async (req, res) => {
     const response = await wsManager.waitForResponse(deviceId, requestId);
 
     // Send response to mobile
-    res.status(response.status || 200).json(response.data);
+    if (response.isBinary) {
+      // Decode base64 binary data
+      const buffer = Buffer.from(response.data, 'base64');
+
+      // Set headers from desktop response
+      if (response.headers) {
+        Object.keys(response.headers).forEach(key => {
+          // Skip headers that Express sets automatically or that would cause conflicts
+          const lowerKey = key.toLowerCase();
+          if (lowerKey !== 'connection' && lowerKey !== 'transfer-encoding' && lowerKey !== 'date') {
+            res.setHeader(key, response.headers[key]);
+          }
+        });
+      }
+
+      res.status(response.status || 200).send(buffer);
+    } else {
+      // For non-binary responses (JSON, text), send as-is
+      res.status(response.status || 200).json(response.data);
+    }
 
   } catch (error) {
     logger.error('Error proxying request:', error);
