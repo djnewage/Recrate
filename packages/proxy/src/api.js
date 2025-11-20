@@ -9,9 +9,29 @@ function setWebSocketManager(manager) {
   wsManager = manager;
 }
 
-// Proxy all requests to desktop
-router.all('/:deviceId/*', async (req, res) => {
+// Check if device is connected (must be before catch-all route)
+router.get('/device/:deviceId/status', async (req, res) => {
   const { deviceId } = req.params;
+
+  const device = await wsManager.deviceRegistry.getDevice(deviceId);
+
+  if (device) {
+    res.json({
+      connected: true,
+      deviceName: device.deviceName,
+      connectedAt: device.connectedAt,
+      lastHeartbeat: device.lastHeartbeat
+    });
+  } else {
+    res.json({
+      connected: false
+    });
+  }
+});
+
+// Proxy all requests to desktop (catch-all route must be last)
+router.all('/:deviceId/*', async (req, res) => {
+  const { deviceId} = req.params;
   const path = '/' + req.params[0]; // Get the path after deviceId
 
   try {
@@ -50,26 +70,6 @@ router.all('/:deviceId/*', async (req, res) => {
         message: error.message
       });
     }
-  }
-});
-
-// Check if device is connected
-router.get('/device/:deviceId/status', async (req, res) => {
-  const { deviceId } = req.params;
-
-  const device = await wsManager.deviceRegistry.getDevice(deviceId);
-
-  if (device) {
-    res.json({
-      connected: true,
-      deviceName: device.deviceName,
-      connectedAt: device.connectedAt,
-      lastHeartbeat: device.lastHeartbeat
-    });
-  } else {
-    res.json({
-      connected: false
-    });
   }
 });
 
