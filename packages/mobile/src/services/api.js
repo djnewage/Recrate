@@ -54,6 +54,11 @@ export const apiService = {
     return response.data;
   },
 
+  getLibraryStatus: async () => {
+    const response = await api.get(`${ENDPOINTS.LIBRARY}/status`);
+    return response.data;
+  },
+
   getTrack: async (trackId) => {
     const response = await api.get(`${ENDPOINTS.LIBRARY}/${trackId}`);
     return response.data.track;
@@ -110,6 +115,24 @@ export const apiService = {
 
   updateConfig: async (configData) => {
     const response = await api.post('/api/config', configData);
+    return response.data;
+  },
+
+  // Get mounted volumes
+  getVolumes: async () => {
+    const response = await api.get('/api/config/volumes');
+    return response.data;
+  },
+
+  // Get available Serato installations
+  getSeratoInstallations: async () => {
+    const response = await api.get('/api/config/serato-installations');
+    return response.data;
+  },
+
+  // Validate a Serato path
+  validateSeratoPath: async (seratoPath) => {
+    const response = await api.post('/api/config/validate-path', { seratoPath });
     return response.data;
   },
 

@@ -6,7 +6,10 @@
     "start": "npx expo start",
     "android": "npx expo start --android",
     "ios": "npx expo start --ios",
-    "web": "npx expo start --web"
+    "web": "npx expo start --web",
+    "build:preview": "eas build --profile preview --platform ios",
+    "build:dev": "eas build --profile development-device --platform ios",
+    "kill-server": "lsof -ti :3000 | xargs kill -9 || echo 'No server running on port 3000'"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",

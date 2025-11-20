@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
 const MetadataExtractor = require('./metadata');
+const pathResolver = require('../utils/pathResolver');
 
 /**
  * Audio streamer with HTTP range request support
@@ -26,12 +27,22 @@ class AudioStreamer {
         return;
       }
 
-      const filePath = track.filePath;
+      let filePath = track.filePath;
 
-      // Check if file exists
+      // Check if file exists at current path
       if (!fs.existsSync(filePath)) {
-        res.status(404).json({ error: 'Audio file not found' });
-        return;
+        // Try to resolve moved file
+        logger.debug(`Track file not found at ${filePath}, attempting path resolution...`);
+        const resolvedPath = await pathResolver.resolvePath(filePath, track);
+
+        if (resolvedPath && fs.existsSync(resolvedPath)) {
+          filePath = resolvedPath;
+          logger.debug(`Resolved track path: ${filePath}`);
+        } else {
+          logger.warn(`Could not resolve path for track ${trackId}: ${filePath}`);
+          res.status(404).json({ error: 'Audio file not found' });
+          return;
+        }
       }
 
       // Get file stats

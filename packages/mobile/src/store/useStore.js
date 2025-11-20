@@ -10,6 +10,12 @@ const useStore = create((set, get) => ({
   isLoadingLibrary: false,
   libraryError: null,
 
+  // Indexing state
+  isIndexing: false,
+  indexingStatus: null,
+  indexingMessage: null,
+  indexingPollInterval: null,
+
   // Pagination state
   libraryPagination: {
     total: 0,
@@ -52,18 +58,105 @@ const useStore = create((set, get) => ({
 
       const data = await apiService.getLibrary(requestParams);
 
+      // Check if backend is indexing
+      if (data.indexing) {
+        set({
+          isIndexing: true,
+          indexingStatus: data.status,
+          indexingMessage: data.message,
+          tracks: [],
+          isLoadingLibrary: false,
+          libraryPagination: {
+            total: 0,
+            limit: 100,
+            offset: 0,
+            hasMore: false,
+          },
+        });
+
+        // Start polling for indexing status
+        get().startIndexingPoll();
+        return;
+      }
+
+      // Normal response - indexing complete
+      // Deduplicate tracks when appending to prevent duplicate key errors
+      let finalTracks = data.tracks;
+      if (append) {
+        const existingTracks = get().tracks;
+        const existingIds = new Set(existingTracks.map(t => t.id));
+        const newTracks = data.tracks.filter(t => !existingIds.has(t.id));
+        finalTracks = [...existingTracks, ...newTracks];
+      }
+
       set({
-        tracks: append ? [...get().tracks, ...data.tracks] : data.tracks,
+        tracks: finalTracks,
         isLoadingLibrary: false,
+        isIndexing: false,
+        indexingStatus: null,
+        indexingMessage: null,
         libraryPagination: {
-          total: data.pagination.total,
-          limit: data.pagination.limit,
-          offset: data.pagination.offset,
-          hasMore: data.pagination.hasMore,
+          total: data.pagination?.total || data.tracks.length,
+          limit: data.pagination?.limit || 100,
+          offset: data.pagination?.offset || 0,
+          hasMore: data.pagination?.hasMore || false,
         },
       });
+
+      // Stop polling if it was running
+      get().stopIndexingPoll();
     } catch (error) {
       set({ libraryError: error.message, isLoadingLibrary: false });
+    }
+  },
+
+  checkIndexingStatus: async () => {
+    try {
+      const status = await apiService.getLibraryStatus();
+
+      if (status.isIndexing && !status.isComplete) {
+        // Still indexing - update status
+        set({
+          isIndexing: true,
+          indexingStatus: status,
+          indexingMessage: status.progress?.message || 'Indexing library...',
+        });
+      } else if (status.isComplete) {
+        // Indexing complete - reload library
+        set({
+          isIndexing: false,
+          indexingStatus: null,
+          indexingMessage: null,
+        });
+
+        // Stop polling
+        get().stopIndexingPoll();
+
+        // Reload library to get tracks
+        await get().loadLibrary();
+      }
+    } catch (error) {
+      console.error('Error checking indexing status:', error);
+    }
+  },
+
+  startIndexingPoll: () => {
+    // Clear any existing interval
+    get().stopIndexingPoll();
+
+    // Check status every 2 seconds
+    const intervalId = setInterval(() => {
+      get().checkIndexingStatus();
+    }, 2000);
+
+    set({ indexingPollInterval: intervalId });
+  },
+
+  stopIndexingPoll: () => {
+    const { indexingPollInterval } = get();
+    if (indexingPollInterval) {
+      clearInterval(indexingPollInterval);
+      set({ indexingPollInterval: null });
     }
   },
 
