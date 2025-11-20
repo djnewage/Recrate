@@ -15,7 +15,7 @@ class ProxyClient {
     this.reconnectTimeout = null;
     this.heartbeatInterval = null;
     this.requestHandlers = new Map();
-    this.localServerURL = 'http://localhost:3000';
+    this.localServerURL = 'http://127.0.0.1:3000'; // Use IPv4 explicitly
   }
 
   generateDeviceId() {
