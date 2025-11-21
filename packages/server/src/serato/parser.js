@@ -1,6 +1,8 @@
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
+const { EventEmitter } = require('events');
+const pLimit = require('p-limit');
 const LRUCache = require('../utils/cache');
 const logger = require('../utils/logger');
 const MetadataExtractor = require('../audio/metadata');
@@ -34,11 +36,15 @@ class CrateNotFoundError extends Error {
  * Serato Parser - Reads Serato database and crate files
  * Uses a simplified approach: directory scanning + metadata extraction
  */
-class SeratoParser {
+class SeratoParser extends EventEmitter {
   constructor(seratoPath, musicPaths, cacheConfig = {}) {
+    super();
     this.seratoPath = seratoPath;
     this.musicPaths = Array.isArray(musicPaths) ? musicPaths : [musicPaths].filter(Boolean);
     this.cratesDir = path.join(seratoPath, 'Subcrates');
+
+    // Concurrency limiter to prevent "too many open files" errors
+    this.fileOpLimit = pLimit(100); // Max 100 concurrent file operations
 
     // Initialize cache
     this.cache = new LRUCache(
@@ -153,14 +159,14 @@ class SeratoParser {
       return cached;
     }
 
-    // If already indexing, wait for it to complete
+    // If already indexing, wait for it to complete using events
     if (this.indexingStatus.isIndexing) {
-      logger.debug('Indexing already in progress, waiting...');
-      // Poll until indexing completes
-      while (this.indexingStatus.isIndexing) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      return this.cache.get(cacheKey) || [];
+      logger.debug('Indexing already in progress, waiting for completion...');
+      return new Promise((resolve) => {
+        this.once('indexing:complete', () => {
+          resolve(this.cache.get(cacheKey) || []);
+        });
+      });
     }
 
     this.indexingStatus.isIndexing = true;
@@ -205,55 +211,60 @@ class SeratoParser {
 
         let resolved = 0;
         let notFound = 0;
-        let processedCount = 0;
 
-        for (const metadata of trackMetadata) {
-          let trackPath = metadata.filePath;
+        // Create all promises upfront for true concurrent execution
+        // p-limit will queue and execute up to 100 concurrently
+        const promises = trackMetadata.map(metadata =>
+          this.fileOpLimit(async () => {
+            let trackPath = metadata.filePath;
 
-          try {
-            // First, verify if exact path exists
-            await fs.stat(trackPath);
-          } catch (error) {
-            // File doesn't exist at exact path - try intelligent resolution
-            logger.debug(`Resolving moved/missing file: ${trackPath}`);
-            const resolvedPath = await pathResolver.resolvePath(trackPath, metadata);
+            try {
+              // First, verify if exact path exists
+              await fs.stat(trackPath);
+            } catch (error) {
+              // File doesn't exist at exact path - try intelligent resolution
+              logger.debug(`Resolving moved/missing file: ${trackPath}`);
+              const resolvedPath = await pathResolver.resolvePath(trackPath, metadata);
 
-            if (resolvedPath) {
-              trackPath = resolvedPath;
-              resolved++;
-              logger.debug(`Resolved: ${metadata.filePath} -> ${resolvedPath}`);
-            } else {
-              notFound++;
-              logger.debug(`Could not resolve: ${metadata.filePath}`);
-              continue; // Skip tracks that can't be resolved
+              if (resolvedPath) {
+                trackPath = resolvedPath;
+                resolved++; // Note: Minor race condition acceptable for statistics
+                logger.debug(`Resolved: ${metadata.filePath} -> ${resolvedPath}`);
+              } else {
+                notFound++; // Note: Minor race condition acceptable for statistics
+                logger.debug(`Could not resolve: ${metadata.filePath}`);
+                return; // Skip tracks that can't be resolved
+              }
             }
-          }
 
-          // Create track object
-          // Skip metadata extraction since we already have it from database
-          const track = await this._createTrackObject(trackPath, true);
-          if (track) {
-            // Merge database metadata with track object
-            track.bpm = metadata.bpm || track.bpm;
-            track.key = metadata.key || track.key;
-            tracksMap.set(trackPath, track);
-          }
+            // Create track object
+            // Skip metadata extraction since we already have it from database
+            const track = await this._createTrackObject(trackPath, true);
+            if (track) {
+              // Merge database metadata with track object
+              track.bpm = metadata.bpm || track.bpm;
+              track.key = metadata.key || track.key;
+              tracksMap.set(trackPath, track); // Map operations are safe in single-threaded JS
+            }
 
-          processedCount++;
-          // Emit progress every 100 tracks
-          if (processedCount % 100 === 0) {
-            this.indexingStatus.progress.tracksFound = tracksMap.size;
-            this.indexingStatus.progress.tracksResolved = resolved;
-            this.indexingStatus.progress.tracksNotFound = notFound;
-            this.indexingStatus.progress.message = `Processed ${processedCount}/${trackMetadata.length} tracks (${resolved} resolved)`;
-            this._emitProgress({
-              tracksFound: tracksMap.size,
-              tracksResolved: resolved,
-              tracksNotFound: notFound,
-              message: `Processed ${processedCount}/${trackMetadata.length} tracks`
-            });
-          }
-        }
+            // Emit progress every 100 completed tracks
+            if (tracksMap.size % 100 === 0) {
+              this.indexingStatus.progress.tracksFound = tracksMap.size;
+              this.indexingStatus.progress.tracksResolved = resolved;
+              this.indexingStatus.progress.tracksNotFound = notFound;
+              this.indexingStatus.progress.message = `Processed ${tracksMap.size}/${trackMetadata.length} tracks (${resolved} resolved)`;
+              this._emitProgress({
+                tracksFound: tracksMap.size,
+                tracksResolved: resolved,
+                tracksNotFound: notFound,
+                message: `Processed ${tracksMap.size}/${trackMetadata.length} tracks`
+              });
+            }
+          })
+        );
+
+        // Wait for all promises to complete
+        await Promise.all(promises);
 
         this.indexingStatus.progress.tracksFound = tracksMap.size;
         this.indexingStatus.progress.tracksResolved = resolved;
@@ -306,6 +317,9 @@ class SeratoParser {
         tracksFound: tracks.length,
         message: `Indexing complete! Found ${tracks.length} tracks`
       });
+
+      // Emit event for waiting callers
+      this.emit('indexing:complete', tracks);
 
       return tracks;
     } catch (error) {
@@ -524,11 +538,29 @@ class SeratoParser {
   }
 
   /**
-   * Scan directory recursively for audio files
+   * Scan directory recursively for audio files with circular symlink detection
    * @private
    */
-  async _scanDirectory(dirPath, extractMetadata = true, tracks = []) {
+  async _scanDirectory(dirPath, extractMetadata = true, tracks = [], visited = new Set()) {
     try {
+      // Resolve to real path to detect circular symlinks
+      let realPath;
+      try {
+        realPath = await fs.realpath(dirPath);
+      } catch (error) {
+        // If realpath fails, use original path (might be permission issue)
+        logger.debug(`Could not resolve real path for ${dirPath}, using original path`);
+        realPath = dirPath;
+      }
+
+      // Check if we've already visited this path (circular symlink detection)
+      if (visited.has(realPath)) {
+        logger.warn(`Circular symlink detected, skipping: ${dirPath}`);
+        return tracks;
+      }
+
+      visited.add(realPath);
+
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
       for (const entry of entries) {
@@ -540,7 +572,7 @@ class SeratoParser {
         }
 
         if (entry.isDirectory()) {
-          await this._scanDirectory(fullPath, extractMetadata, tracks);
+          await this._scanDirectory(fullPath, extractMetadata, tracks, visited);
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
           if (this.audioExtensions.includes(ext)) {

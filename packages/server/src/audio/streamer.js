@@ -1,4 +1,5 @@
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const logger = require('../utils/logger');
 const MetadataExtractor = require('./metadata');
@@ -45,8 +46,8 @@ class AudioStreamer {
         }
       }
 
-      // Get file stats
-      const stats = fs.statSync(filePath);
+      // Get file stats (async to avoid blocking event loop)
+      const stats = await fsPromises.stat(filePath);
       const fileSize = stats.size;
       const mimeType = this.getMimeType(filePath);
 
@@ -54,8 +55,17 @@ class AudioStreamer {
       const range = req.headers.range;
 
       if (range) {
-        // Handle range request
-        const { start, end } = this.parseRange(range, fileSize);
+        // Handle range request with validation
+        let start, end;
+        try {
+          const parsed = this.parseRange(range, fileSize);
+          start = parsed.start;
+          end = parsed.end;
+        } catch (error) {
+          logger.warn(`Invalid range header: ${range}`, error.message);
+          res.status(416).json({ error: 'Range not satisfiable', details: error.message });
+          return;
+        }
 
         if (start >= fileSize || end >= fileSize) {
           res.status(416).json({ error: 'Range not satisfiable' });
@@ -152,24 +162,67 @@ class AudioStreamer {
   }
 
   /**
-   * Parse HTTP range header
+   * Parse HTTP range header with validation
    */
   parseRange(rangeHeader, fileSize) {
+    // Validate range header format
+    if (!rangeHeader || typeof rangeHeader !== 'string') {
+      throw new Error('Invalid range header');
+    }
+
+    if (!rangeHeader.startsWith('bytes=')) {
+      throw new Error('Range header must start with "bytes="');
+    }
+
     const parts = rangeHeader.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
+
+    if (parts.length !== 2) {
+      throw new Error('Invalid range format');
+    }
+
+    const start = parts[0] ? parseInt(parts[0], 10) : 0;
     const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
 
-    return { start, end };
+    // Validate parsed values
+    if (isNaN(start) || isNaN(end)) {
+      throw new Error('Range values must be valid numbers');
+    }
+
+    if (start < 0 || end < 0) {
+      throw new Error('Range values cannot be negative');
+    }
+
+    if (start > end) {
+      throw new Error('Range start must be less than or equal to end');
+    }
+
+    // Cap at file size
+    return {
+      start: Math.min(start, fileSize - 1),
+      end: Math.min(end, fileSize - 1)
+    };
   }
 
   /**
-   * Stream file with range support
+   * Stream file with range support and proper cleanup
    */
   streamFile(filePath, start, end, res) {
     const stream = fs.createReadStream(filePath, { start, end });
 
+    // Cleanup on client disconnect to prevent resource leaks
+    res.on('close', () => {
+      if (!stream.destroyed) {
+        stream.destroy();
+        logger.debug(`Stream closed by client: ${filePath}`);
+      }
+    });
+
+    // Handle stream errors
     stream.on('error', (error) => {
       logger.error('Stream error:', error);
+      if (!stream.destroyed) {
+        stream.destroy();
+      }
       if (!res.headersSent) {
         res.status(500).json({ error: 'Stream error' });
       }

@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const logger = require('../utils/logger');
@@ -37,7 +38,10 @@ class APIServer {
     this.app.use(express.json());
     this.app.use(morgan('dev'));
 
-    // Health check endpoint
+    // Rate limiting middleware
+    this.setupRateLimiting();
+
+    // Health check endpoint (no rate limiting)
     this.app.get('/health', this.healthCheck.bind(this));
 
     // API routes
@@ -134,6 +138,52 @@ class APIServer {
       error: err.message || 'Internal server error',
       ...(this.config.isDevelopment && { stack: err.stack }),
     });
+  }
+
+  /**
+   * Set up rate limiting for different endpoint types
+   */
+  setupRateLimiting() {
+    // General API rate limiter - 100 requests per 15 minutes per IP
+    const generalLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100,
+      message: 'Too many requests from this IP, please try again later',
+      standardHeaders: true, // Return rate limit info in headers
+      legacyHeaders: false,
+    });
+
+    // Streaming rate limiter - 20 streams per minute per IP
+    const streamLimiter = rateLimit({
+      windowMs: 1 * 60 * 1000, // 1 minute
+      max: 20,
+      message: 'Too many stream requests, please try again later',
+      skipSuccessfulRequests: false,
+    });
+
+    // Write operations rate limiter - 30 write operations per 15 minutes
+    const writeLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 30,
+      message: 'Too many write operations, please try again later',
+    });
+
+    // Apply general limiter to all API routes
+    this.app.use('/api/', generalLimiter);
+
+    // Apply specific limiters to streaming and write endpoints
+    this.app.use('/api/stream/', streamLimiter);
+    this.app.use('/api/artwork/', streamLimiter);
+
+    // Write operations (POST, DELETE)
+    this.app.use('/api/crates', (req, res, next) => {
+      if (req.method === 'POST' || req.method === 'DELETE') {
+        return writeLimiter(req, res, next);
+      }
+      next();
+    });
+
+    logger.info('Rate limiting configured');
   }
 
   /**
