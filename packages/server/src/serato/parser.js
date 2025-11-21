@@ -211,11 +211,11 @@ class SeratoParser extends EventEmitter {
 
         let resolved = 0;
         let notFound = 0;
-        let processedCount = 0;
 
-        // Process tracks with concurrency limiting to avoid "too many open files"
-        for (const metadata of trackMetadata) {
-          await this.fileOpLimit(async () => {
+        // Create all promises upfront for true concurrent execution
+        // p-limit will queue and execute up to 100 concurrently
+        const promises = trackMetadata.map(metadata =>
+          this.fileOpLimit(async () => {
             let trackPath = metadata.filePath;
 
             try {
@@ -228,10 +228,10 @@ class SeratoParser extends EventEmitter {
 
               if (resolvedPath) {
                 trackPath = resolvedPath;
-                resolved++;
+                resolved++; // Note: Minor race condition acceptable for statistics
                 logger.debug(`Resolved: ${metadata.filePath} -> ${resolvedPath}`);
               } else {
-                notFound++;
+                notFound++; // Note: Minor race condition acceptable for statistics
                 logger.debug(`Could not resolve: ${metadata.filePath}`);
                 return; // Skip tracks that can't be resolved
               }
@@ -244,25 +244,27 @@ class SeratoParser extends EventEmitter {
               // Merge database metadata with track object
               track.bpm = metadata.bpm || track.bpm;
               track.key = metadata.key || track.key;
-              tracksMap.set(trackPath, track);
+              tracksMap.set(trackPath, track); // Map operations are safe in single-threaded JS
             }
 
-            processedCount++;
-            // Emit progress every 100 tracks
-            if (processedCount % 100 === 0) {
+            // Emit progress every 100 completed tracks
+            if (tracksMap.size % 100 === 0) {
               this.indexingStatus.progress.tracksFound = tracksMap.size;
               this.indexingStatus.progress.tracksResolved = resolved;
               this.indexingStatus.progress.tracksNotFound = notFound;
-              this.indexingStatus.progress.message = `Processed ${processedCount}/${trackMetadata.length} tracks (${resolved} resolved)`;
+              this.indexingStatus.progress.message = `Processed ${tracksMap.size}/${trackMetadata.length} tracks (${resolved} resolved)`;
               this._emitProgress({
                 tracksFound: tracksMap.size,
                 tracksResolved: resolved,
                 tracksNotFound: notFound,
-                message: `Processed ${processedCount}/${trackMetadata.length} tracks`
+                message: `Processed ${tracksMap.size}/${trackMetadata.length} tracks`
               });
             }
-          });
-        }
+          })
+        );
+
+        // Wait for all promises to complete
+        await Promise.all(promises);
 
         this.indexingStatus.progress.tracksFound = tracksMap.size;
         this.indexingStatus.progress.tracksResolved = resolved;
