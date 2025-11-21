@@ -222,7 +222,7 @@ const streamLimiter = rateLimit({
 ```json
 {
   "p-limit": "^3.1.0",           // Concurrency control
-  "express-rate-limit": "^6.7.0" // API rate limiting
+  "express-rate-limit": "^8.2.1" // API rate limiting
 }
 ```
 
