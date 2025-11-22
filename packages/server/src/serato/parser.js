@@ -653,6 +653,9 @@ class SeratoParser extends EventEmitter {
         fileSize: stats.size,
         format: metadata?.format || ext.substring(1).toUpperCase(),
         addedAt: stats.birthtime,
+        // Path verification metadata (set during indexing)
+        verifiedPath: filePath, // The verified, working path
+        pathVerifiedAt: Date.now(), // When we last verified this path exists
       };
 
       // Generate stable ID from metadata (not file path)

@@ -28,19 +28,30 @@ class AudioStreamer {
         return;
       }
 
-      let filePath = track.filePath;
+      // Use verified path if available (set during indexing), otherwise fall back to filePath
+      let filePath = track.verifiedPath || track.filePath;
 
-      // Check if file exists at current path
-      if (!fs.existsSync(filePath)) {
-        // Try to resolve moved file
+      // Check if file exists (async to avoid blocking event loop)
+      try {
+        await fsPromises.access(filePath, fs.constants.R_OK);
+        // File exists and is readable
+      } catch (error) {
+        // File doesn't exist or isn't readable - try path resolution
         logger.debug(`Track file not found at ${filePath}, attempting path resolution...`);
-        const resolvedPath = await pathResolver.resolvePath(filePath, track);
+        const resolvedPath = await pathResolver.resolvePath(track.filePath, track);
 
-        if (resolvedPath && fs.existsSync(resolvedPath)) {
-          filePath = resolvedPath;
-          logger.debug(`Resolved track path: ${filePath}`);
+        if (resolvedPath) {
+          try {
+            await fsPromises.access(resolvedPath, fs.constants.R_OK);
+            filePath = resolvedPath;
+            logger.debug(`Resolved track path: ${filePath}`);
+          } catch {
+            logger.warn(`Resolved path not accessible for track ${trackId}: ${resolvedPath}`);
+            res.status(404).json({ error: 'Audio file not found' });
+            return;
+          }
         } else {
-          logger.warn(`Could not resolve path for track ${trackId}: ${filePath}`);
+          logger.warn(`Could not resolve path for track ${trackId}: ${track.filePath}`);
           res.status(404).json({ error: 'Audio file not found' });
           return;
         }
