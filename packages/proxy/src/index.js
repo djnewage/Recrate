@@ -37,7 +37,7 @@ app.use('/api', apiRouter);
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0'; // Listen on all interfaces for local testing
 server.listen(PORT, HOST, () => {
-  logger.success(`🚀 Proxy server running on ${HOST}:${PORT}`);
+  logger.info(`🚀 Proxy server running on ${HOST}:${PORT}`);
   logger.info(`📱 Mobile API: http://localhost:${PORT}/api`);
   logger.info(`🖥️  Desktop Binary WebSocket: ws://localhost:${PORT}/ws/desktop`);
 });
