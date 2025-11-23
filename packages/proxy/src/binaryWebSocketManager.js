@@ -5,7 +5,7 @@
 
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
-const logger = require('./logger');
+const logger = require('./utils/logger');
 
 class BinaryWebSocketManager {
   constructor(server) {
