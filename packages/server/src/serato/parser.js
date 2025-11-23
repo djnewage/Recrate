@@ -52,6 +52,9 @@ class SeratoParser extends EventEmitter {
       cacheConfig.ttl || 3600000
     );
 
+    // Track cache for O(1) lookups by ID (populated during indexing)
+    this.trackCache = new Map(); // trackId → track object
+
     // Initialize metadata extractor
     this.metadataExtractor = new MetadataExtractor();
 
@@ -176,6 +179,10 @@ class SeratoParser extends EventEmitter {
     this.indexingStatus.progress.message = 'Starting library indexing...';
     this._emitProgress({ phase: 'indexing', message: 'Starting library indexing...' });
 
+    // Clear track cache to rebuild from scratch
+    this.trackCache.clear();
+    logger.debug('Track cache cleared for re-indexing');
+
     logger.info('Parsing library...');
 
     try {
@@ -245,6 +252,7 @@ class SeratoParser extends EventEmitter {
               track.bpm = metadata.bpm || track.bpm;
               track.key = metadata.key || track.key;
               tracksMap.set(trackPath, track); // Map operations are safe in single-threaded JS
+              this.trackCache.set(track.id, track); // Add to track cache for instant lookups
             }
 
             // Emit progress every 100 completed tracks
@@ -293,6 +301,7 @@ class SeratoParser extends EventEmitter {
         for (const track of scannedTracks) {
           if (!tracksMap.has(track.filePath)) {
             tracksMap.set(track.filePath, track);
+            this.trackCache.set(track.id, track); // Add to track cache for instant lookups
             addedFromScan++;
           }
         }
@@ -461,16 +470,27 @@ class SeratoParser extends EventEmitter {
 
   /**
    * Get a single track by ID
+   * Checks cache first for O(1) lookup without blocking on indexing
    */
   async getTrackById(trackId) {
+    // Check track cache first (instant O(1) lookup)
+    if (this.trackCache.has(trackId)) {
+      logger.debug(`Track ${trackId} found in cache (instant lookup)`);
+      return this.trackCache.get(trackId);
+    }
+
+    // If not in cache, fall back to library search
+    // This will only happen if indexing hasn't started or track doesn't exist
+    logger.debug(`Track ${trackId} not in cache, searching library...`);
     const library = await this.parseLibrary();
     const track = library.find(t => t.id === trackId);
 
-    if (!track) {
-      return null;
+    // Add to cache if found
+    if (track) {
+      this.trackCache.set(track.id, track);
     }
 
-    return track;
+    return track || null;
   }
 
   /**
@@ -512,9 +532,15 @@ class SeratoParser extends EventEmitter {
     if (item) {
       this.cache.delete(item);
       logger.debug(`Cache invalidated for: ${item}`);
+      // If invalidating library, also clear track cache
+      if (item === 'library') {
+        this.trackCache.clear();
+        logger.debug('Track cache cleared');
+      }
     } else {
       this.cache.clear();
-      logger.debug('All cache cleared');
+      this.trackCache.clear();
+      logger.debug('All caches cleared (library + track cache)');
     }
   }
 
@@ -627,6 +653,9 @@ class SeratoParser extends EventEmitter {
         fileSize: stats.size,
         format: metadata?.format || ext.substring(1).toUpperCase(),
         addedAt: stats.birthtime,
+        // Path verification metadata (set during indexing)
+        verifiedPath: filePath, // The verified, working path
+        pathVerifiedAt: Date.now(), // When we last verified this path exists
       };
 
       // Generate stable ID from metadata (not file path)

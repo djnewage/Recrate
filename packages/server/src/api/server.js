@@ -11,6 +11,7 @@ const createCrateRoutes = require('./routes/crates');
 const { createStreamingRoutes, createArtworkRoutes } = require('./routes/streaming');
 const createSearchRoutes = require('./routes/search');
 const createConfigRoutes = require('./routes/config');
+const AudioWebSocketServer = require('./websocket-server');
 
 /**
  * API Server - Express server with WebSocket support
@@ -25,6 +26,7 @@ class APIServer {
     this.app = express();
     this.httpServer = null;
     this.io = null;
+    this.audioWsServer = null;
   }
 
   /**
@@ -190,6 +192,7 @@ class APIServer {
    * Set up WebSocket for real-time updates
    */
   setupWebSocket() {
+    // Socket.IO for mobile app progress updates
     this.io = new Server(this.httpServer, {
       cors: {
         origin: '*',
@@ -205,7 +208,10 @@ class APIServer {
       });
     });
 
-    logger.success('WebSocket server initialized');
+    logger.success('Socket.IO server initialized');
+
+    // Binary WebSocket server for Desktop Relay audio streaming
+    this.audioWsServer = new AudioWebSocketServer(this.httpServer, this.parser);
   }
 
   /**

@@ -1,3 +1,8 @@
+// ============================================================================
+// FILE: packages/proxy/src/api.js
+// PURPOSE: HTTP API handler that forwards requests via Binary WebSocket
+// ============================================================================
+
 const express = require('express');
 const router = express.Router();
 const logger = require('./utils/logger');
@@ -9,18 +14,26 @@ function setWebSocketManager(manager) {
   wsManager = manager;
 }
 
-// Check if device is connected (must be before catch-all route)
+// Health check endpoint
+router.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: Date.now(),
+    service: 'recrate-proxy'
+  });
+});
+
+// Check if device is connected
 router.get('/device/:deviceId/status', async (req, res) => {
   const { deviceId } = req.params;
 
-  const device = await wsManager.deviceRegistry.getDevice(deviceId);
+  const deviceStatus = wsManager.getDeviceStatus(deviceId);
 
-  if (device) {
+  if (deviceStatus.connected) {
     res.json({
       connected: true,
-      deviceName: device.deviceName,
-      connectedAt: device.connectedAt,
-      lastHeartbeat: device.lastHeartbeat
+      protocol: deviceStatus.protocol,
+      connectedAt: deviceStatus.connectedAt
     });
   } else {
     res.json({
@@ -29,65 +42,123 @@ router.get('/device/:deviceId/status', async (req, res) => {
   }
 });
 
-// Proxy all requests to desktop (catch-all route must be last)
+// Proxy audio stream requests to desktop (catch-all route must be last)
 router.all('/:deviceId/*', async (req, res) => {
   const { deviceId} = req.params;
   const path = '/' + req.params[0]; // Get the path after deviceId
+  const rangeHeader = req.headers.range;
 
   try {
-    logger.info(`Mobile request: ${req.method} ${path} for device ${deviceId}`);
+    logger.info(`[${deviceId}] Mobile request: ${req.method} ${path}`);
 
-    // Send request to desktop via WebSocket
-    const requestId = await wsManager.sendRequest(deviceId, {
-      method: req.method,
-      path,
-      body: req.body,
-      headers: req.headers
-    });
-
-    // Wait for response from desktop
-    const response = await wsManager.waitForResponse(deviceId, requestId);
-
-    // Send response to mobile
-    if (response.isBinary) {
-      // Decode base64 binary data
-      const buffer = Buffer.from(response.data, 'base64');
-
-      // Set headers from desktop response
-      if (response.headers) {
-        Object.keys(response.headers).forEach(key => {
-          // Skip headers that Express sets automatically or that would cause conflicts
-          const lowerKey = key.toLowerCase();
-          if (lowerKey !== 'connection' && lowerKey !== 'transfer-encoding' && lowerKey !== 'date') {
-            res.setHeader(key, response.headers[key]);
-          }
-        });
-      }
-
-      res.status(response.status || 200).send(buffer);
-    } else {
-      // For non-binary responses (JSON, text), send as-is
-      res.status(response.status || 200).json(response.data);
-    }
-
-  } catch (error) {
-    logger.error('Error proxying request:', error);
-
-    if (error.message === 'Device not connected') {
-      res.status(503).json({
-        error: 'Desktop not connected',
+    // Check if device is connected
+    const deviceStatus = wsManager.getDeviceStatus(deviceId);
+    if (!deviceStatus.connected) {
+      return res.status(503).json({
+        error: 'Device not connected',
+        deviceId,
         message: 'Make sure Recrate is running on your computer'
       });
-    } else if (error.message === 'Request timeout') {
-      res.status(504).json({
-        error: 'Request timeout',
-        message: 'Desktop took too long to respond'
+    }
+
+    // Parse track ID from path
+    // Example: /api/stream/track-123 → track-123
+    const pathParts = path.split('/').filter(p => p.length > 0);
+    const trackId = pathParts[pathParts.length - 1];
+
+    if (!trackId) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'Track ID is required'
       });
+    }
+
+    // Send stream request to Desktop via WebSocket (event-driven, NO POLLING)
+    const { requestId, promise } = await wsManager.sendStreamRequest(
+      deviceId,
+      trackId,
+      rangeHeader
+    );
+
+    logger.debug(`[${deviceId}] Request dispatched: ${requestId}`);
+
+    // Set up streaming response handler
+    // This allows us to send chunks to mobile as they arrive from Desktop
+    let headersSent = false;
+
+    wsManager.attachChunkHandler(requestId, (chunk) => {
+      if (!headersSent) {
+        // Get metadata from Desktop's stream_response message
+        const metadata = wsManager.getMetadata(requestId);
+        if (metadata) {
+          res.status(metadata.status);
+
+          // Set headers from Desktop
+          Object.keys(metadata.headers).forEach(key => {
+            if (metadata.headers[key] !== undefined) {
+              const lowerKey = key.toLowerCase();
+              // Skip headers that Express sets automatically
+              if (lowerKey !== 'connection' && lowerKey !== 'transfer-encoding' && lowerKey !== 'date') {
+                res.setHeader(key, metadata.headers[key]);
+              }
+            }
+          });
+
+          headersSent = true;
+        }
+      }
+
+      // Stream chunk to mobile immediately (NO ACCUMULATION, NO BASE64)
+      if (headersSent) {
+        res.write(chunk);
+      }
+    });
+
+    // Wait for stream to complete
+    const result = await promise;
+
+    // End response
+    if (headersSent) {
+      res.end();
     } else {
-      res.status(500).json({
-        error: 'Proxy error',
-        message: error.message
+      // If we never sent headers, send the complete buffer now
+      res.status(result.metadata.status);
+      Object.keys(result.metadata.headers).forEach(key => {
+        if (result.metadata.headers[key] !== undefined) {
+          const lowerKey = key.toLowerCase();
+          if (lowerKey !== 'connection' && lowerKey !== 'transfer-encoding' && lowerKey !== 'date') {
+            res.setHeader(key, result.metadata.headers[key]);
+          }
+        }
       });
+      res.send(result.buffer);
+    }
+
+    logger.success(`[${deviceId}] Request completed: ${requestId}, ${result.bytesSent} bytes`);
+
+  } catch (error) {
+    logger.error(`[${deviceId}] Request failed:`, error);
+
+    if (!res.headersSent) {
+      if (error.message === 'Device not connected') {
+        res.status(503).json({
+          error: 'Desktop not connected',
+          deviceId,
+          message: 'Make sure Recrate is running on your computer'
+        });
+      } else if (error.message === 'Stream request timeout') {
+        res.status(504).json({
+          error: 'Request timeout',
+          deviceId,
+          message: 'Desktop took too long to respond'
+        });
+      } else {
+        res.status(500).json({
+          error: 'Proxy error',
+          deviceId,
+          message: error.message
+        });
+      }
     }
   }
 });
