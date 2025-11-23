@@ -65,7 +65,7 @@ router.get('/:deviceId/health', async (req, res) => {
   }
 });
 
-// Proxy audio stream requests to desktop (catch-all route must be last)
+// Proxy all requests to desktop (catch-all route must be last)
 router.all('/:deviceId/*', async (req, res) => {
   const { deviceId} = req.params;
   const path = '/' + req.params[0]; // Get the path after deviceId
@@ -84,80 +84,115 @@ router.all('/:deviceId/*', async (req, res) => {
       });
     }
 
-    // Parse track ID from path
-    // Example: /api/stream/track-123 → track-123
-    const pathParts = path.split('/').filter(p => p.length > 0);
-    const trackId = pathParts[pathParts.length - 1];
+    // Determine if this is a streaming request or a general HTTP request
+    // Streaming requests: /api/stream/*
+    const isStreamingRequest = path.includes('/api/stream/');
 
-    if (!trackId) {
-      return res.status(400).json({
-        error: 'Invalid request',
-        message: 'Track ID is required'
-      });
-    }
+    if (isStreamingRequest) {
+      // Handle as audio streaming request
+      const pathParts = path.split('/').filter(p => p.length > 0);
+      const trackId = pathParts[pathParts.length - 1];
 
-    // Send stream request to Desktop via WebSocket (event-driven, NO POLLING)
-    const { requestId, promise } = await wsManager.sendStreamRequest(
-      deviceId,
-      trackId,
-      rangeHeader
-    );
+      if (!trackId) {
+        return res.status(400).json({
+          error: 'Invalid request',
+          message: 'Track ID is required'
+        });
+      }
 
-    logger.info(`[${deviceId}] Request dispatched: ${requestId}`);
+      // Send stream request to Desktop via WebSocket
+      const { requestId, promise } = await wsManager.sendStreamRequest(
+        deviceId,
+        trackId,
+        rangeHeader
+      );
 
-    // Set up streaming response handler
-    // This allows us to send chunks to mobile as they arrive from Desktop
-    let headersSent = false;
+      logger.info(`[${deviceId}] Stream request dispatched: ${requestId}`);
 
-    wsManager.attachChunkHandler(requestId, (chunk) => {
-      if (!headersSent) {
-        // Get metadata from Desktop's stream_response message
-        const metadata = wsManager.getMetadata(requestId);
-        if (metadata) {
-          res.status(metadata.status);
+      // Set up streaming response handler
+      // This allows us to send chunks to mobile as they arrive from Desktop
+      let headersSent = false;
 
-          // Set headers from Desktop
-          Object.keys(metadata.headers).forEach(key => {
-            if (metadata.headers[key] !== undefined) {
-              const lowerKey = key.toLowerCase();
-              // Skip headers that Express sets automatically
-              if (lowerKey !== 'connection' && lowerKey !== 'transfer-encoding' && lowerKey !== 'date') {
-                res.setHeader(key, metadata.headers[key]);
+      wsManager.attachChunkHandler(requestId, (chunk) => {
+        if (!headersSent) {
+          // Get metadata from Desktop's stream_response message
+          const metadata = wsManager.getMetadata(requestId);
+          if (metadata) {
+            res.status(metadata.status);
+
+            // Set headers from Desktop
+            Object.keys(metadata.headers).forEach(key => {
+              if (metadata.headers[key] !== undefined) {
+                const lowerKey = key.toLowerCase();
+                // Skip headers that Express sets automatically
+                if (lowerKey !== 'connection' && lowerKey !== 'transfer-encoding' && lowerKey !== 'date') {
+                  res.setHeader(key, metadata.headers[key]);
+                }
               }
-            }
-          });
+            });
 
-          headersSent = true;
-        }
-      }
-
-      // Stream chunk to mobile immediately (NO ACCUMULATION, NO BASE64)
-      if (headersSent) {
-        res.write(chunk);
-      }
-    });
-
-    // Wait for stream to complete
-    const result = await promise;
-
-    // End response
-    if (headersSent) {
-      res.end();
-    } else {
-      // If we never sent headers, send the complete buffer now
-      res.status(result.metadata.status);
-      Object.keys(result.metadata.headers).forEach(key => {
-        if (result.metadata.headers[key] !== undefined) {
-          const lowerKey = key.toLowerCase();
-          if (lowerKey !== 'connection' && lowerKey !== 'transfer-encoding' && lowerKey !== 'date') {
-            res.setHeader(key, result.metadata.headers[key]);
+            headersSent = true;
           }
         }
-      });
-      res.send(result.buffer);
-    }
 
-    logger.info(`[${deviceId}] Request completed: ${requestId}, ${result.bytesSent} bytes`);
+        // Stream chunk to mobile immediately (NO ACCUMULATION, NO BASE64)
+        if (headersSent) {
+          res.write(chunk);
+        }
+      });
+
+      // Wait for stream to complete
+      const result = await promise;
+
+      // End response
+      if (headersSent) {
+        res.end();
+      } else {
+        // If we never sent headers, send the complete buffer now
+        res.status(result.metadata.status);
+        Object.keys(result.metadata.headers).forEach(key => {
+          if (result.metadata.headers[key] !== undefined) {
+            const lowerKey = key.toLowerCase();
+            if (lowerKey !== 'connection' && lowerKey !== 'transfer-encoding' && lowerKey !== 'date') {
+              res.setHeader(key, result.metadata.headers[key]);
+            }
+          }
+        });
+        res.send(result.buffer);
+      }
+
+      logger.info(`[${deviceId}] Stream completed: ${requestId}, ${result.bytesSent} bytes`);
+
+    } else {
+      // Handle as general HTTP request (library, crates, config, etc.)
+      logger.info(`[${deviceId}] HTTP request dispatched: ${req.method} ${path}`);
+
+      // Forward HTTP request to Desktop via WebSocket
+      const result = await wsManager.sendHttpRequest(
+        deviceId,
+        req.method,
+        path,
+        req.headers,
+        req.body
+      );
+
+      // Send response to mobile
+      res.status(result.status);
+
+      // Set headers from Desktop
+      Object.keys(result.headers).forEach(key => {
+        const lowerKey = key.toLowerCase();
+        // Skip headers that Express sets automatically
+        if (lowerKey !== 'connection' && lowerKey !== 'transfer-encoding' && lowerKey !== 'date') {
+          res.setHeader(key, result.headers[key]);
+        }
+      });
+
+      // Send body
+      res.send(result.body);
+
+      logger.info(`[${deviceId}] HTTP request completed: ${req.method} ${path}, status=${result.status}`);
+    }
 
   } catch (error) {
     logger.error(`[${deviceId}] Request failed:`, error);

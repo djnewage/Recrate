@@ -93,6 +93,10 @@ class BinaryWebSocketManager {
             // End of stream
             this.handleStreamEnd(deviceId, message);
 
+          } else if (message.type === 'http_response') {
+            // HTTP API response
+            this.handleHttpResponse(deviceId, message);
+
           } else if (message.type === 'error') {
             // Error response
             this.handleStreamError(deviceId, message);
@@ -162,6 +166,46 @@ class BinaryWebSocketManager {
     return { requestId, promise: streamPromise };
   }
 
+  async sendHttpRequest(deviceId, method, path, headers, body) {
+    const device = this.devices.get(deviceId);
+
+    if (!device || device.connection.readyState !== WebSocket.OPEN) {
+      throw new Error('Device not connected');
+    }
+
+    const requestId = uuidv4();
+
+    logger.info(`[${deviceId}] Sending HTTP request: ${method} ${path}, requestId=${requestId}`);
+
+    // Create promise that resolves when HTTP response arrives
+    const httpPromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        reject(new Error('HTTP request timeout'));
+      }, 30000);
+
+      this.pendingRequests.set(requestId, {
+        resolve,
+        reject,
+        timeout,
+        deviceId,
+        type: 'http'
+      });
+    });
+
+    // Send request to Desktop
+    device.connection.send(JSON.stringify({
+      type: 'http_request',
+      requestId,
+      method,
+      path,
+      headers,
+      body
+    }));
+
+    return httpPromise;
+  }
+
   // ========================================================================
   // RESPONSE HANDLING (FROM DESKTOP)
   // ========================================================================
@@ -219,6 +263,29 @@ class BinaryWebSocketManager {
       pending.reject(new Error(error));
       this.pendingRequests.delete(requestId);
       this.binaryChunks.delete(requestId);
+    }
+  }
+
+  handleHttpResponse(deviceId, message) {
+    const { requestId, status, headers, body } = message;
+
+    logger.info(`[${deviceId}] HTTP response for ${requestId}: status=${status}`);
+
+    const pending = this.pendingRequests.get(requestId);
+    if (pending && pending.type === 'http') {
+      clearTimeout(pending.timeout);
+
+      // Decode base64 body
+      const responseBody = body ? Buffer.from(body, 'base64') : Buffer.alloc(0);
+
+      // Resolve with HTTP response data
+      pending.resolve({
+        status,
+        headers,
+        body: responseBody
+      });
+
+      this.pendingRequests.delete(requestId);
     }
   }
 

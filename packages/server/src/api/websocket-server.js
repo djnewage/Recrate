@@ -69,6 +69,10 @@ class AudioWebSocketServer {
         await this.handleStreamRequest(ws, clientId, requestId, trackId, range);
         break;
 
+      case 'http_request':
+        await this.handleHttpRequest(ws, clientId, message);
+        break;
+
       case 'cancel_stream':
         this.handleCancelStream(clientId, requestId);
         break;
@@ -79,6 +83,53 @@ class AudioWebSocketServer {
 
       default:
         logger.warn(`[${clientId}] Unknown message type: ${type}`);
+    }
+  }
+
+  async handleHttpRequest(ws, clientId, message) {
+    const { requestId, method, path, headers, body } = message;
+
+    try {
+      logger.info(`[${clientId}] HTTP request: ${method} ${path}, requestId=${requestId}`);
+
+      // Make local HTTP request to our own REST API server
+      const axios = require('axios');
+      const localServerURL = 'http://127.0.0.1:3000'; // Local REST API server
+
+      const response = await axios({
+        method: method.toLowerCase(),
+        url: `${localServerURL}${path}`,
+        headers: {
+          ...headers,
+          host: '127.0.0.1:3000' // Override host header
+        },
+        data: body,
+        validateStatus: () => true, // Accept any status code
+        responseType: 'arraybuffer', // Get raw response
+        maxRedirects: 0
+      });
+
+      // Send HTTP response back through WebSocket
+      this.sendControl(ws, {
+        type: 'http_response',
+        requestId,
+        status: response.status,
+        headers: response.headers,
+        body: response.data.toString('base64') // Send as base64
+      });
+
+    } catch (error) {
+      logger.error(`[${clientId}] HTTP request error:`, error);
+      this.sendControl(ws, {
+        type: 'http_response',
+        requestId,
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+        body: Buffer.from(JSON.stringify({
+          error: 'Internal server error',
+          message: error.message
+        })).toString('base64')
+      });
     }
   }
 
