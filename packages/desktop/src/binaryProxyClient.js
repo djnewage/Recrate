@@ -157,7 +157,8 @@ class BinaryProxyClient {
         this.logger.warn('Railway Proxy connection closed, reconnecting...');
         this.isConnecting = false;
         this.rejectAllPending('Connection to Railway closed');
-        setTimeout(() => this.connectToProxy(), Math.min(this.reconnectDelay * 2, this.maxReconnectDelay));
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+        setTimeout(() => this.connectToProxy(), this.reconnectDelay);
       });
 
       this.proxyWs.on('error', (error) => {
