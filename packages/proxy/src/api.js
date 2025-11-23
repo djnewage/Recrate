@@ -64,9 +64,19 @@ router.all('/:deviceId/*', async (req, res) => {
     // Parse track ID from path
     // Example: /api/stream/track-123 → track-123
     const pathParts = path.split('/').filter(p => p.length > 0);
-    const trackId = pathParts[pathParts.length - 1];
+    
+    if (pathParts.length === 0) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'Track ID is required'
+      });
+    }
 
-    if (!trackId) {
+    // Extract track ID and remove query parameters or fragments
+    let trackId = pathParts[pathParts.length - 1];
+    trackId = trackId.split('?')[0].split('#')[0];
+
+    if (!trackId || trackId.length === 0) {
       return res.status(400).json({
         error: 'Invalid request',
         message: 'Track ID is required'
