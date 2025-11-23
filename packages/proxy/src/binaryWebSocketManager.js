@@ -48,7 +48,7 @@ class BinaryWebSocketManager {
         const requestId = data.toString('utf8', 4, 4 + requestIdLength);
         const audioData = data.slice(4 + requestIdLength);
 
-        logger.debug(`[${deviceId || tempId}] Binary chunk for ${requestId}: ${audioData.length} bytes`);
+        logger.info(`[${deviceId || tempId}] Binary chunk for ${requestId}: ${audioData.length} bytes`);
 
         // Accumulate chunks
         if (!this.binaryChunks.has(requestId)) {
@@ -76,7 +76,7 @@ class BinaryWebSocketManager {
               connectedAt: new Date()
             });
 
-            logger.success(`[${deviceId}] Desktop registered`);
+            logger.info(`[${deviceId}] Desktop registered`);
 
             // Send registration confirmation
             ws.send(JSON.stringify({
@@ -169,7 +169,7 @@ class BinaryWebSocketManager {
   handleStreamResponse(deviceId, message) {
     const { requestId, status, headers, contentLength } = message;
 
-    logger.debug(`[${deviceId}] Stream response for ${requestId}: status=${status}, length=${contentLength}`);
+    logger.info(`[${deviceId}] Stream response for ${requestId}: status=${status}, length=${contentLength}`);
 
     const pending = this.pendingRequests.get(requestId);
     if (pending) {

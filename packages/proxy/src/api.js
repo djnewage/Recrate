@@ -80,7 +80,7 @@ router.all('/:deviceId/*', async (req, res) => {
       rangeHeader
     );
 
-    logger.debug(`[${deviceId}] Request dispatched: ${requestId}`);
+    logger.info(`[${deviceId}] Request dispatched: ${requestId}`);
 
     // Set up streaming response handler
     // This allows us to send chunks to mobile as they arrive from Desktop
@@ -134,7 +134,7 @@ router.all('/:deviceId/*', async (req, res) => {
       res.send(result.buffer);
     }
 
-    logger.success(`[${deviceId}] Request completed: ${requestId}, ${result.bytesSent} bytes`);
+    logger.info(`[${deviceId}] Request completed: ${requestId}, ${result.bytesSent} bytes`);
 
   } catch (error) {
     logger.error(`[${deviceId}] Request failed:`, error);
