@@ -63,7 +63,15 @@ router.all('/:deviceId/*', async (req, res) => {
 
     // Parse track ID from path
     // Example: /api/stream/track-123 → track-123
-    const trackId = path.split('/').pop();
+    const pathParts = path.split('/').filter(p => p.length > 0);
+    const trackId = pathParts[pathParts.length - 1];
+
+    if (!trackId) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'Track ID is required'
+      });
+    }
 
     // Send stream request to Desktop via WebSocket (event-driven, NO POLLING)
     const { requestId, promise } = await wsManager.sendStreamRequest(
