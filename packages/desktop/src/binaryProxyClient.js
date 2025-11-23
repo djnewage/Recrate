@@ -46,7 +46,7 @@ class BinaryProxyClient {
       });
 
       this.localWs.on('open', () => {
-        this.logger.success('Connected to local server');
+        this.logger.info('✓ Connected to local server');
         resolve();
       });
 
@@ -135,7 +135,7 @@ class BinaryProxyClient {
       });
 
       this.proxyWs.on('open', () => {
-        this.logger.success('Connected to Railway Proxy');
+        this.logger.info('✓ Connected to Railway Proxy');
         this.isConnecting = false;
         this.reconnectDelay = 1000;
 
