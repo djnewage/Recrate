@@ -4,14 +4,14 @@
 // ============================================================================
 
 const WebSocket = require('ws');
-const logger = require('./logger');
 const { v4: uuidv4 } = require('uuid');
 
 class BinaryProxyClient {
-  constructor(proxyURL, localServerURL, deviceId) {
+  constructor(proxyURL, localServerURL, deviceId, logger) {
     this.proxyURL = proxyURL; // wss://recrate-proxy.railway.app
     this.localServerURL = localServerURL; // ws://127.0.0.1:3000/ws/audio
     this.deviceId = deviceId;
+    this.logger = logger || console; // Use provided logger or fallback to console
 
     // Promise-based correlation ID map
     this.pendingRequests = new Map(); // requestId → { resolve, reject, timeout, chunks }
@@ -24,8 +24,6 @@ class BinaryProxyClient {
     this.isConnecting = false;
     this.reconnectDelay = 1000;
     this.maxReconnectDelay = 30000;
-
-    this.logger = logger;
   }
 
   async start() {
