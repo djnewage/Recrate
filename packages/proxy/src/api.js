@@ -42,6 +42,29 @@ router.get('/device/:deviceId/status', async (req, res) => {
   }
 });
 
+// Device-specific health check
+router.get('/:deviceId/health', async (req, res) => {
+  const { deviceId } = req.params;
+
+  const deviceStatus = wsManager.getDeviceStatus(deviceId);
+
+  if (deviceStatus.connected) {
+    res.json({
+      status: 'ok',
+      timestamp: Date.now(),
+      deviceId,
+      protocol: deviceStatus.protocol,
+      connectedAt: deviceStatus.connectedAt
+    });
+  } else {
+    res.status(503).json({
+      error: 'Device not connected',
+      deviceId,
+      message: 'Make sure Recrate is running on your computer'
+    });
+  }
+});
+
 // Proxy audio stream requests to desktop (catch-all route must be last)
 router.all('/:deviceId/*', async (req, res) => {
   const { deviceId} = req.params;
