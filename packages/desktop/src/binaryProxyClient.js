@@ -264,6 +264,18 @@ class BinaryProxyClient {
     if (this.localWs) this.localWs.close();
     if (this.proxyWs) this.proxyWs.close();
   }
+
+  // ========================================================================
+  // UI COMPATIBILITY METHODS
+  // ========================================================================
+
+  getDeviceId() {
+    return this.deviceId;
+  }
+
+  isConnected() {
+    return this.proxyWs && this.proxyWs.readyState === 1; // 1 = WebSocket.OPEN
+  }
 }
 
 module.exports = BinaryProxyClient;
