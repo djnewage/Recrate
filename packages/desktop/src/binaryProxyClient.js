@@ -183,6 +183,9 @@ class BinaryProxyClient {
     if (message.type === 'stream_request') {
       // Forward to local server
       this.forwardStreamRequest(message);
+    } else if (message.type === 'http_request') {
+      // Forward HTTP request to local server
+      this.forwardHttpRequest(message);
     } else if (message.type === 'cancel_stream') {
       // Forward cancellation
       this.sendToLocalServer(JSON.stringify(message), false);
@@ -228,6 +231,23 @@ class BinaryProxyClient {
     }), false);
 
     // Note: We don't await the promise here - it resolves when stream_end arrives
+  }
+
+  forwardHttpRequest(message) {
+    const { requestId, method, path, headers, body } = message;
+
+    this.logger.info(`Forwarding HTTP request to local server: ${method} ${path}, requestId=${requestId}`);
+
+    // Simply forward the http_request message to local server
+    // The local server will handle it and send back http_response
+    this.sendToLocalServer(JSON.stringify({
+      type: 'http_request',
+      requestId,
+      method,
+      path,
+      headers,
+      body
+    }), false);
   }
 
   sendToLocalServer(data, isBinary) {
