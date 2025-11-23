@@ -328,7 +328,8 @@ async function connectToProxy() {
     proxyClient = new BinaryProxyClient(
       proxyWsURL,
       localServerURL,
-      deviceId
+      deviceId,
+      log
     );
 
     await proxyClient.start();
