@@ -76,7 +76,7 @@ router.all('/:deviceId/*', async (req, res) => {
     let trackId = pathParts[pathParts.length - 1];
     trackId = trackId.split('?')[0].split('#')[0];
 
-    if (!trackId || trackId.length === 0) {
+    if (!trackId) {
       return res.status(400).json({
         error: 'Invalid request',
         message: 'Track ID is required'
