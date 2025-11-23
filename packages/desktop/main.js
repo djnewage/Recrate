@@ -5,7 +5,7 @@ const Store = require('electron-store');
 const log = require('electron-log');
 const os = require('os');
 const fs = require('fs');
-const ProxyClient = require('./src/proxyClient');
+const BinaryProxyClient = require('./src/binaryProxyClient');
 
 // Configure logging
 log.transports.file.level = 'info';
@@ -317,23 +317,30 @@ async function connectToProxy() {
   try {
     log.info('Connecting to cloud proxy...');
 
-    proxyClient = new ProxyClient(
-      PROXY_URL,
-      null, // Will auto-generate device ID
-      os.hostname(),
-      log
+    // Generate device ID
+    const deviceId = store.get('deviceId') || `desktop-${os.hostname()}-${Date.now()}`;
+    store.set('deviceId', deviceId);
+
+    // Binary WebSocket proxy client
+    const proxyWsURL = PROXY_URL + '/ws/desktop';
+    const localServerURL = `ws://127.0.0.1:${serverPort}/ws/audio`;
+
+    proxyClient = new BinaryProxyClient(
+      proxyWsURL,
+      localServerURL,
+      deviceId
     );
 
-    await proxyClient.connect();
+    await proxyClient.start();
 
     log.info('Connected to proxy successfully');
-    log.info('Device ID:', proxyClient.getDeviceId());
+    log.info('Device ID:', deviceId);
 
     // Update UI
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('proxy-status', {
         connected: true,
-        deviceId: proxyClient.getDeviceId(),
+        deviceId: deviceId,
         url: getProxyURL()
       });
     }
@@ -357,7 +364,9 @@ async function connectToProxy() {
 function getProxyURL() {
   if (!proxyClient) return null;
 
-  const deviceId = proxyClient.getDeviceId();
+  const deviceId = store.get('deviceId');
+  if (!deviceId) return null;
+
   // Convert ws:// to http:// or wss:// to https://
   let httpURL = PROXY_URL.replace('ws://', 'http://').replace('wss://', 'https://');
 
@@ -376,7 +385,7 @@ function getProxyURL() {
 function disconnectFromProxy() {
   if (proxyClient) {
     log.info('Disconnecting from proxy...');
-    proxyClient.disconnect();
+    proxyClient.shutdown();
     proxyClient = null;
 
     if (mainWindow && !mainWindow.isDestroyed()) {
