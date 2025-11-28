@@ -40,8 +40,6 @@ jobs:
       - name: Build desktop app
         run: npm run build:${{ matrix.platform }}
         working-directory: packages/desktop
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

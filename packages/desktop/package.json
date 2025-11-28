@@ -92,12 +92,7 @@
           "package.json"
         ]
       }
-    ],
-    "publish": {
-      "provider": "github",
-      "owner": "djnewage",
-      "repo": "Recrate"
-    }
+    ]
   },
   "author": {
     "name": "Tristan Sacotte",
