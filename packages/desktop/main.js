@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const Store = require('electron-store');
 const log = require('electron-log');
 const os = require('os');
@@ -426,10 +426,23 @@ async function startServer() {
   log.info('Starting server with config:', config);
 
   // In development, run from source
-  // In production, run bundled binary
+  // In production, run bundled server
   const serverPath = app.isPackaged
     ? path.join(process.resourcesPath, 'server', 'src', 'index.js')
     : path.join(__dirname, '../server/src/index.js');
+
+  // Check if server file exists
+  if (!fs.existsSync(serverPath)) {
+    log.error('Server file not found:', serverPath);
+    if (mainWindow) {
+      mainWindow.webContents.send('server-error', `Server file not found: ${serverPath}`);
+      mainWindow.webContents.send('server-status', {
+        status: 'stopped',
+        error: 'Server files not found. Please reinstall the application.'
+      });
+    }
+    return;
+  }
 
   // Pass paths as command-line arguments to handle special characters properly
   const serverArgs = [
@@ -438,15 +451,36 @@ async function startServer() {
     `--music-path=${config.musicPath}`,
     `--port=${config.port}`
   ];
-  const serverCommand = 'node';
 
+  log.info('Server path:', serverPath);
   log.info('Server args:', serverArgs);
 
-  serverProcess = spawn(serverCommand, serverArgs, {
+  // Try to use system node first, fall back to Electron's node
+  // In packaged apps, we need to rely on system Node.js or bundle it
+  let nodeCommand = 'node';
+
+  // Check if we're in a packaged app
+  if (app.isPackaged) {
+    // Try to find system node
+    try {
+      // Check if node is available on the system
+      const nodePath = execSync('which node', { encoding: 'utf8' }).trim();
+      nodeCommand = nodePath;
+      log.info('Using system node:', nodeCommand);
+    } catch (e) {
+      // No system node, use Electron's node via process.execPath with ELECTRON_RUN_AS_NODE
+      log.info('No system node found, using Electron as Node');
+      nodeCommand = process.execPath;
+    }
+  }
+
+  serverProcess = spawn(nodeCommand, serverArgs, {
     env: {
       ...process.env,
-      NODE_ENV: 'production'
-    }
+      NODE_ENV: 'production',
+      ELECTRON_RUN_AS_NODE: '1'  // Makes Electron behave like Node.js
+    },
+    cwd: app.isPackaged ? path.dirname(serverPath) : undefined
   });
 
   serverProcess.stdout.on('data', async (data) => {
@@ -557,6 +591,17 @@ function stopServer() {
 }
 
 // IPC Handlers
+// Setup wizard handlers
+ipcMain.handle('get-setup-complete', () => {
+  return store.get('setupComplete', false);
+});
+
+ipcMain.handle('set-setup-complete', () => {
+  store.set('setupComplete', true);
+  log.info('Setup wizard completed');
+  return true;
+});
+
 ipcMain.handle('get-config', () => {
   return {
     seratoPath: store.get('seratoPath', detectSeratoPath()),

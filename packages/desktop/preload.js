@@ -2,6 +2,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // Expose protected methods to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Setup wizard
+  getSetupComplete: () => ipcRenderer.invoke('get-setup-complete'),
+  setSetupComplete: () => ipcRenderer.invoke('set-setup-complete'),
+
   // Config
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),

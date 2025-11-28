@@ -405,6 +405,131 @@
     .hidden {
       display: none !important;
     }
+
+    /* Setup Wizard Screen */
+    #setup-screen {
+      display: none;
+      height: 100vh;
+      flex-direction: column;
+    }
+
+    #setup-screen.active {
+      display: flex;
+    }
+
+    .setup-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 16px;
+      padding-left: 78px;
+      border-bottom: 1px solid var(--separator);
+      -webkit-app-region: drag;
+    }
+
+    .setup-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    .setup-progress {
+      margin-bottom: 32px;
+    }
+
+    .step-indicator {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      display: block;
+      text-align: center;
+    }
+
+    .progress-bar {
+      height: 4px;
+      background: var(--bg-tertiary);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent-blue);
+      transition: width 0.3s ease;
+    }
+
+    .setup-step {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      text-align: center;
+    }
+
+    .setup-step.active {
+      display: flex;
+    }
+
+    .step-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .setup-step h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .step-description {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .step-description code {
+      background: var(--bg-tertiary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Monaco', monospace;
+      font-size: 13px;
+    }
+
+    .setup-path-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    .setup-path-group input {
+      flex: 1;
+      padding: 12px 14px;
+      border: 1px solid var(--separator);
+      border-radius: 10px;
+      font-size: 13px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-family: 'SF Mono', 'Monaco', monospace;
+    }
+
+    .setup-path-group .btn {
+      flex: none;
+      padding: 12px 18px;
+    }
+
+    .step-actions {
+      margin-top: auto;
+      display: flex;
+      gap: 12px;
+      padding-top: 24px;
+    }
+
+    .step-actions .btn {
+      flex: 1;
+    }
   </style>
 </head>
 <body>
@@ -530,6 +655,61 @@
         <button class="btn btn-primary" onclick="saveSettings()">Save</button>
       </footer>
     </div>
+
+    <!-- Setup Wizard Screen -->
+    <div id="setup-screen">
+      <header class="setup-header">
+        <div class="app-title">
+          <img src="assets/icons/icon-128.png" class="app-icon" alt="Recrate">
+          <span class="app-name">Welcome to Recrate</span>
+        </div>
+      </header>
+
+      <div class="setup-container">
+        <!-- Progress indicator -->
+        <div class="setup-progress">
+          <span class="step-indicator">Step <span id="current-step">1</span> of 2</span>
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill" style="width: 50%"></div>
+          </div>
+        </div>
+
+        <!-- Step 1: Serato Path -->
+        <div id="setup-step-1" class="setup-step active">
+          <div class="step-icon">📁</div>
+          <h2>Serato Library Path</h2>
+          <p class="step-description">
+            Where is your <code>_Serato_</code> folder located?<br>
+            This contains your crates, playlists, and track analysis data.
+          </p>
+          <div class="setup-path-group">
+            <input type="text" id="setup-serato-path" readonly placeholder="Select your Serato folder...">
+            <button class="btn btn-secondary" onclick="browseSetupSerato()">Browse</button>
+          </div>
+          <div class="step-actions">
+            <button id="setup-next-1" class="btn btn-primary" onclick="goToStep(2)">Next →</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Music Path -->
+        <div id="setup-step-2" class="setup-step">
+          <div class="step-icon">🎵</div>
+          <h2>Music Files Path</h2>
+          <p class="step-description">
+            Where are your music files stored?<br>
+            This is where your MP3, FLAC, and other audio files live.
+          </p>
+          <div class="setup-path-group">
+            <input type="text" id="setup-music-path" readonly placeholder="Select your music folder...">
+            <button class="btn btn-secondary" onclick="browseSetupMusic()">Browse</button>
+          </div>
+          <div class="step-actions">
+            <button class="btn btn-secondary" onclick="goToStep(1)">← Back</button>
+            <button id="setup-finish" class="btn btn-primary" onclick="finishSetup()">Finish</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -551,8 +731,24 @@
 
     // Initialize
     async function init() {
+      // Check if setup is complete
+      const setupComplete = await api.getSetupComplete();
+
+      if (!setupComplete) {
+        // Show setup wizard
+        showSetupWizard();
+        return;
+      }
+
+      // Normal initialization
       await loadConfig();
       await updateServerStatus();
+
+      // Auto-start server if configured
+      const config = await api.getConfig();
+      if (config.autoStart) {
+        await api.startServer();
+      }
 
       // Poll for status
       setInterval(updateServerStatus, 2000);
@@ -565,6 +761,84 @@
       });
 
       // Listen for logs (silent)
+      api.onServerLog(() => {});
+      api.onServerError(() => {});
+    }
+
+    // === Setup Wizard Functions ===
+
+    async function showSetupWizard() {
+      // Hide other screens
+      document.getElementById('status-screen').style.display = 'none';
+      document.getElementById('settings-screen').classList.remove('active');
+      document.getElementById('setup-screen').classList.add('active');
+
+      // Load auto-detected paths
+      const config = await api.getConfig();
+      document.getElementById('setup-serato-path').value = config.seratoPath || '';
+      document.getElementById('setup-music-path').value = config.musicPath || '';
+    }
+
+    function goToStep(stepNum) {
+      // Hide all steps
+      document.querySelectorAll('.setup-step').forEach(s => s.classList.remove('active'));
+      // Show target step
+      document.getElementById(`setup-step-${stepNum}`).classList.add('active');
+      // Update progress
+      document.getElementById('current-step').textContent = stepNum;
+      document.getElementById('progress-fill').style.width = `${stepNum * 50}%`;
+    }
+
+    async function browseSetupSerato() {
+      const path = await api.selectDirectory('Select Serato Library Folder');
+      if (path) {
+        document.getElementById('setup-serato-path').value = path;
+      }
+    }
+
+    async function browseSetupMusic() {
+      const path = await api.selectDirectory('Select Music Folder');
+      if (path) {
+        document.getElementById('setup-music-path').value = path;
+      }
+    }
+
+    async function finishSetup() {
+      // Get paths from setup inputs
+      const seratoPath = document.getElementById('setup-serato-path').value;
+      const musicPath = document.getElementById('setup-music-path').value;
+
+      // Save config
+      const config = await api.getConfig();
+      await api.saveConfig({
+        ...config,
+        seratoPath: seratoPath,
+        musicPath: musicPath,
+      });
+
+      // Mark setup as complete
+      await api.setSetupComplete();
+
+      // Hide setup screen
+      document.getElementById('setup-screen').classList.remove('active');
+
+      // Show status screen and load config
+      document.getElementById('status-screen').style.display = 'flex';
+      await loadConfig();
+
+      // Start the server
+      await api.startServer();
+
+      // Start polling for status
+      setInterval(updateServerStatus, 2000);
+
+      // Listen for server status changes
+      api.onServerStatus(async (status) => {
+        serverStatus = status.status;
+        serverUrl = status.localURL || status.url;
+        await updateUI(status);
+      });
+
       api.onServerLog(() => {});
       api.onServerError(() => {});
     }
