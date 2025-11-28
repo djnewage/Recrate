@@ -29,6 +29,9 @@ const CratesScreen = ({ navigation, route }) => {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCrateName, setNewCrateName] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
 
   // Reload crates whenever the screen gains focus
   useFocusEffect(
@@ -109,6 +112,48 @@ const CratesScreen = ({ navigation, route }) => {
     );
   };
 
+  const handleSortPress = (field) => {
+    if (sortBy === field) {
+      // Toggle direction if same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Reset to ascending if different field
+      setSortBy(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortCrates = (cratesToSort) => {
+    return [...cratesToSort].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'name':
+          comparison = (a.name || '').localeCompare(b.name || '');
+          break;
+        case 'trackCount':
+          comparison = (a.trackCount || 0) - (b.trackCount || 0);
+          break;
+        case 'lastModified':
+          comparison = (a.lastModified || 0) - (b.lastModified || 0);
+          break;
+        default:
+          return 0;
+      }
+
+      // Reverse if descending
+      return sortDirection === 'desc' ? -comparison : comparison;
+    });
+  };
+
+  // Filter crates by search query
+  const filteredCrates = crates.filter(crate =>
+    crate.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Sort the filtered crates
+  const sortedAndFilteredCrates = sortCrates(filteredCrates);
+
   const renderCrateItem = ({ item }) => (
     <TouchableOpacity
       style={styles.crateItem}
@@ -145,23 +190,70 @@ const CratesScreen = ({ navigation, route }) => {
         </TouchableOpacity>
       </View>
 
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search crates..."
+          placeholderTextColor={COLORS.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery !== '' && (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => setSearchQuery('')}
+          >
+            <Text style={styles.clearButtonText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Sort Options */}
+      <View style={styles.sortContainer}>
+        {['name', 'trackCount', 'lastModified'].map((option) => (
+          <TouchableOpacity
+            key={option}
+            style={[
+              styles.sortButton,
+              sortBy === option && styles.sortButtonActive,
+            ]}
+            onPress={() => handleSortPress(option)}
+          >
+            <Text
+              style={[
+                styles.sortButtonText,
+                sortBy === option && styles.sortButtonTextActive,
+              ]}
+            >
+              {option === 'name' ? 'Name' : option === 'trackCount' ? 'Track Count' : 'Last Modified'}
+              {sortBy === option && (sortDirection === 'asc' ? ' ↑' : ' ↓')}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* Crates List */}
       {isLoadingCrates ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading crates...</Text>
         </View>
-      ) : crates.length === 0 ? (
+      ) : sortedAndFilteredCrates.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No crates yet</Text>
+          <Text style={styles.emptyText}>
+            {searchQuery ? 'No crates found' : 'No crates yet'}
+          </Text>
           <Text style={styles.emptySubtext}>
-            Create a crate to organize your tracks
+            {searchQuery
+              ? 'Try a different search term'
+              : 'Create a crate to organize your tracks'}
           </Text>
         </View>
       ) : (
         <FlatList
-          data={crates}
-          keyExtractor={(item) => item.id}
+          data={sortedAndFilteredCrates}
+          keyExtractor={(item) => item.filePath || item.id}
           renderItem={renderCrateItem}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.list}
@@ -246,6 +338,52 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.text,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+  },
+  clearButton: {
+    position: 'absolute',
+    right: SPACING.md + SPACING.sm,
+    padding: SPACING.sm,
+  },
+  clearButtonText: {
+    fontSize: FONT_SIZES.lg,
+    color: COLORS.textSecondary,
+  },
+  sortContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  sortButton: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+  },
+  sortButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  sortButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  sortButtonTextActive: {
+    color: COLORS.text,
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,

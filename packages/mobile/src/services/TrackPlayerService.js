@@ -11,7 +11,24 @@ import apiService from './api';
  * Setup TrackPlayer with capabilities and configuration
  */
 export async function setupPlayer() {
+  let isAlreadySetup = false;
+
   try {
+    // Try to get the current state to check if already initialized
+    await TrackPlayer.getActiveTrack();
+    isAlreadySetup = true;
+  } catch (error) {
+    // Player not initialized yet
+    isAlreadySetup = false;
+  }
+
+  if (isAlreadySetup) {
+    console.log('TrackPlayer already initialized, skipping setup');
+    return true;
+  }
+
+  try {
+    console.log('Setting up TrackPlayer...');
     await TrackPlayer.setupPlayer({
       autoHandleInterruptions: true,
       // iOS-specific optimizations
@@ -313,6 +330,11 @@ export async function getPlaybackState() {
  * Cleanup (optional - called on app unmount)
  */
 export async function cleanup() {
-  await TrackPlayer.reset();
-  await TrackPlayer.destroy();
+  try {
+    await TrackPlayer.reset();
+    // Note: destroy() was removed in react-native-track-player v3.x
+    // TrackPlayer is a singleton and doesn't need explicit cleanup
+  } catch (error) {
+    console.log('Cleanup error:', error);
+  }
 }

@@ -9,9 +9,11 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
+import FilterModal from '../components/FilterModal';
 
 const LibraryScreen = ({ navigation }) => {
   const {
@@ -32,6 +34,9 @@ const LibraryScreen = ({ navigation }) => {
     search,
     clearSearch,
     stopIndexingPoll,
+    isFilterActive,
+    getFilteredTracks,
+    toggleFilterDrawer,
   } = useStore();
 
   const [sortBy, setSortBy] = useState('title');
@@ -54,7 +59,13 @@ const LibraryScreen = ({ navigation }) => {
     }
   }, [selectedTracks.length]);
 
-  const displayTracks = searchQuery ? searchResults : tracks;
+  // Apply search or filters
+  let displayTracks = searchQuery ? searchResults : tracks;
+
+  // Apply filters if active and not searching
+  if (!searchQuery && isFilterActive) {
+    displayTracks = getFilteredTracks();
+  }
 
   const handleTrackPress = async (track) => {
     if (isEditMode || selectedTracks.length > 0) {
@@ -132,6 +143,9 @@ const LibraryScreen = ({ navigation }) => {
         case 'bpm':
           comparison = (a.bpm || 0) - (b.bpm || 0);
           break;
+        case 'key':
+          comparison = (a.key || '').localeCompare(b.key || '');
+          break;
         default:
           return 0;
       }
@@ -151,7 +165,8 @@ const LibraryScreen = ({ navigation }) => {
   };
 
   const renderFooter = () => {
-    if (!libraryPagination.hasMore || searchQuery) {
+    // Only show loading spinner when actually loading more tracks
+    if (!isLoadingLibrary || !libraryPagination.hasMore || searchQuery) {
       return null;
     }
 
@@ -170,10 +185,13 @@ const LibraryScreen = ({ navigation }) => {
         <View style={styles.headerTop}>
           <Text style={styles.title}>Library</Text>
           <Text style={styles.trackCount}>
-            {tracks.length}
-            {libraryPagination.total > 0 && libraryPagination.total !== tracks.length
-              ? ` of ${libraryPagination.total}`
-              : ''} tracks
+            {isFilterActive
+              ? `${displayTracks.length} of ${tracks.length} tracks`
+              : `${tracks.length}${
+                  libraryPagination.total > 0 && libraryPagination.total !== tracks.length
+                    ? ` of ${libraryPagination.total}`
+                    : ''
+                } tracks`}
           </Text>
           <TouchableOpacity
             style={styles.editButton}
@@ -212,7 +230,7 @@ const LibraryScreen = ({ navigation }) => {
 
       {/* Sort Options */}
       <View style={styles.sortContainer}>
-        {['title', 'artist', 'bpm'].map((option) => (
+        {['title', 'artist', 'bpm', 'key'].map((option) => (
           <TouchableOpacity
             key={option}
             style={[
@@ -232,6 +250,22 @@ const LibraryScreen = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
         ))}
+
+        {/* Filter Button */}
+        <TouchableOpacity
+          style={[
+            styles.filterButton,
+            isFilterActive && styles.filterButtonActive,
+          ]}
+          onPress={toggleFilterDrawer}
+        >
+          <Ionicons
+            name="filter"
+            size={16}
+            color={isFilterActive ? COLORS.text : COLORS.textSecondary}
+          />
+          {isFilterActive && <View style={styles.filterIndicator} />}
+        </TouchableOpacity>
       </View>
 
       {/* Selection Actions */}
@@ -321,6 +355,9 @@ const LibraryScreen = ({ navigation }) => {
           </View>
         </View>
       )}
+
+      {/* Filter Modal */}
+      <FilterModal />
     </View>
   );
 };
@@ -412,6 +449,28 @@ const styles = StyleSheet.create({
   sortButtonTextActive: {
     color: COLORS.text,
     fontWeight: '600',
+  },
+  filterButton: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    minWidth: 40,
+  },
+  filterButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  filterIndicator: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.secondary,
   },
   selectionActions: {
     flexDirection: 'row',

@@ -10,24 +10,27 @@
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
+    "generate-icons": "node scripts/generate-icons.js",
     "kill-server": "lsof -ti :3000 | xargs kill -9 || echo 'No server running on port 3000'"
   },
   "dependencies": {
     "@recrate/server": "*",
     "@recrate/shared": "*",
-    "qrcode": "^1.5.3",
-    "electron-store": "^8.1.0",
     "electron-log": "^5.0.0",
-    "ws": "^8.14.2",
-    "uuid": "^9.0.1"
+    "electron-store": "^8.1.0",
+    "qrcode": "^1.5.3",
+    "uuid": "^9.0.1",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
-    "electron": "^27.0.0",
-    "electron-builder": "^24.6.4"
+    "electron": "27.0.0",
+    "electron-builder": "^24.6.4",
+    "sharp": "^0.34.5"
   },
   "build": {
     "appId": "com.recrate.desktop",
     "productName": "Recrate",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "main.js",
       "preload.js",
@@ -39,24 +42,62 @@
     "mac": {
       "category": "public.app-category.music",
       "icon": "assets/icons/icon.icns",
-      "target": ["dmg", "zip"]
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ]
     },
     "win": {
       "icon": "assets/icons/icon.ico",
-      "target": ["nsis", "portable"]
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icons/icon.ico",
+      "uninstallerIcon": "assets/icons/icon.ico"
     },
     "linux": {
       "icon": "assets/icons/icon.png",
-      "target": ["AppImage", "deb"]
+      "category": "Audio",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ]
     },
     "extraResources": [
       {
         "from": "../server",
         "to": "server",
-        "filter": ["src/**/*", "package.json"]
+        "filter": [
+          "src/**/*",
+          "package.json"
+        ]
       }
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "djnewage",
+      "repo": "Recrate"
+    }
   },
-  "author": "",
+  "author": "Tristan Sacotte",
   "license": "MIT"
 }

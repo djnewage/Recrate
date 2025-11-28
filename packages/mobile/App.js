@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import NetInfo from '@react-native-community/netinfo';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { COLORS } from './src/constants/theme';
 import { useConnectionStore } from './src/store/connectionStore';
 import useStore from './src/store/useStore';
@@ -161,18 +162,19 @@ export default function App() {
 
   // Initialize TrackPlayer on app mount
   useEffect(() => {
-    let isInitialized = false;
+    let mounted = true;
 
     async function initializeTrackPlayer() {
       try {
+        if (!mounted) return;
+
         const success = await TrackPlayerService.setupPlayer();
 
-        if (success) {
+        if (success && mounted) {
           // Setup event handlers with Zustand store
           TrackPlayerService.setupEventHandlers(useStore);
-          isInitialized = true;
           console.log('TrackPlayer initialized successfully');
-        } else {
+        } else if (!success) {
           console.error('Failed to initialize TrackPlayer');
         }
       } catch (error) {
@@ -183,10 +185,8 @@ export default function App() {
     initializeTrackPlayer();
 
     return () => {
-      if (isInitialized) {
-        // Cleanup on app unmount (optional)
-        TrackPlayerService.cleanup().catch(console.error);
-      }
+      mounted = false;
+      // Don't cleanup TrackPlayer on unmount - it should persist
     };
   }, []);
 
@@ -216,14 +216,14 @@ export default function App() {
   }, []);
 
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
       <SafeAreaView style={styles.container}>
         <NavigationContainer ref={navigationRef} linking={linking}>
           <AppContent />
         </NavigationContainer>
       </SafeAreaView>
-    </>
+    </GestureHandlerRootView>
   );
 }
 

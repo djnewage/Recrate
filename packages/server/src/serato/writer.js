@@ -206,18 +206,20 @@ class SeratoWriter {
 
   /**
    * Build tracks section
+   * Each track needs its own otrk wrapper containing the ptrk tag
    */
   buildTracksSection(tracks) {
     if (!tracks || tracks.length === 0) {
-      // Empty track list
-      const emptyOtrk = this.writeTag('otrk', Buffer.alloc(0));
-      return emptyOtrk;
+      return Buffer.alloc(0); // No tracks = no otrk tags
     }
 
-    const trackBuffers = tracks.map(track => this.buildTrackEntry(track.filePath));
-    const tracksData = Buffer.concat(trackBuffers);
+    // Each track gets wrapped in its own otrk tag
+    const trackBuffers = tracks.map(track => {
+      const ptrkTag = this.buildTrackEntry(track.filePath);
+      return this.writeTag('otrk', ptrkTag);
+    });
 
-    return this.writeTag('otrk', tracksData);
+    return Buffer.concat(trackBuffers);
   }
 
   /**
@@ -320,8 +322,8 @@ class SeratoWriter {
         throw new TrackNotFoundError(`Track not found: ${trackId}`);
       }
 
-      // Skip if track already in crate
-      const alreadyExists = crate.tracks.some(t => t.id === trackId);
+      // Skip if track already in crate (check by file path, not ID)
+      const alreadyExists = crate.tracks.some(t => t.filePath === track.filePath);
       if (!alreadyExists) {
         newTracks.push(track);
       }

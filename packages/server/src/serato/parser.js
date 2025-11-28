@@ -374,9 +374,14 @@ class SeratoParser extends EventEmitter {
 
           // Quick count of tracks without full parsing
           let trackCount = 0;
+          let lastModified = null;
           try {
             const fileContent = await fs.readFile(filePath);
             trackCount = this._countTracksInCrate(fileContent);
+
+            // Get file modification time
+            const stats = await fs.stat(filePath);
+            lastModified = stats.mtime.getTime();
           } catch (error) {
             logger.warn(`Error counting tracks in ${name}:`, error.message);
           }
@@ -386,6 +391,7 @@ class SeratoParser extends EventEmitter {
             name: name,
             trackCount: trackCount,
             filePath: filePath,
+            lastModified: lastModified,
           };
         })
       );

@@ -19,7 +19,7 @@ const useStore = create((set, get) => ({
   // Pagination state
   libraryPagination: {
     total: 0,
-    limit: 100,
+    limit: 1000,
     offset: 0,
     hasMore: false,
   },
@@ -45,6 +45,15 @@ const useStore = create((set, get) => ({
   searchResults: [],
   isSearching: false,
 
+  // Filter state
+  filters: {
+    bpmRange: { min: 60, max: 180 },
+    selectedKeys: [],
+    selectedGenres: [],
+  },
+  isFilterDrawerOpen: false,
+  isFilterActive: false,
+
   // Library actions
   loadLibrary: async (params = {}, append = false) => {
     set({ isLoadingLibrary: true, libraryError: null });
@@ -68,7 +77,7 @@ const useStore = create((set, get) => ({
           isLoadingLibrary: false,
           libraryPagination: {
             total: 0,
-            limit: 100,
+            limit: 1000,
             offset: 0,
             hasMore: false,
           },
@@ -89,16 +98,24 @@ const useStore = create((set, get) => ({
         finalTracks = [...existingTracks, ...newTracks];
       }
 
+      // Additional safety deduplication to ensure no duplicate keys
+      // This catches any edge cases where backend returns duplicates
+      const uniqueTracks = Array.from(
+        new Map(finalTracks.map(t => [t.id, t])).values()
+      );
+
       set({
-        tracks: finalTracks,
+        tracks: uniqueTracks,
         isLoadingLibrary: false,
         isIndexing: false,
         indexingStatus: null,
         indexingMessage: null,
         libraryPagination: {
           total: data.pagination?.total || data.tracks.length,
-          limit: data.pagination?.limit || 100,
-          offset: data.pagination?.offset || 0,
+          limit: data.pagination?.limit || 1000,
+          // Use offset from API response, or fall back to the offset we requested
+          // This ensures pagination continues correctly even if API doesn't return offset
+          offset: data.pagination?.offset ?? requestParams.offset,
           hasMore: data.pagination?.hasMore || false,
         },
       });
@@ -171,15 +188,9 @@ const useStore = create((set, get) => ({
     // Calculate next offset
     const nextOffset = libraryPagination.offset + libraryPagination.limit;
 
-    // Update offset and load with append
-    set({
-      libraryPagination: {
-        ...libraryPagination,
-        offset: nextOffset,
-      },
-    });
-
-    await get().loadLibrary({}, true);
+    // Pass the nextOffset as a parameter to loadLibrary
+    // This will override the offset from state and ensure proper pagination
+    await get().loadLibrary({ offset: nextOffset }, true);
   },
 
   resetLibrary: () => {
@@ -187,7 +198,7 @@ const useStore = create((set, get) => ({
       tracks: [],
       libraryPagination: {
         total: 0,
-        limit: 100,
+        limit: 1000,
         offset: 0,
         hasMore: false,
       },
@@ -290,7 +301,13 @@ const useStore = create((set, get) => ({
 
     try {
       const data = await apiService.searchTracks(query);
-      set({ searchResults: data.results, isSearching: false });
+
+      // Deduplicate search results to prevent duplicate key errors
+      const uniqueResults = Array.from(
+        new Map(data.results.map(t => [t.id, t])).values()
+      );
+
+      set({ searchResults: uniqueResults, isSearching: false });
     } catch (error) {
       set({ isSearching: false });
     }
@@ -481,6 +498,79 @@ const useStore = create((set, get) => ({
     } catch (error) {
       console.error('Error setting queue:', error);
     }
+  },
+
+  // Filter actions
+  setFilters: (filters) => {
+    set({ filters });
+  },
+
+  resetFilters: () => {
+    set({
+      filters: {
+        bpmRange: { min: 60, max: 180 },
+        selectedKeys: [],
+        selectedGenres: [],
+      },
+      isFilterActive: false,
+    });
+  },
+
+  toggleFilterDrawer: () => {
+    const { isFilterDrawerOpen } = get();
+    set({ isFilterDrawerOpen: !isFilterDrawerOpen });
+  },
+
+  setFilterDrawerOpen: (open) => {
+    set({ isFilterDrawerOpen: open });
+  },
+
+  applyFilters: () => {
+    const { filters } = get();
+    const hasActiveFilters =
+      filters.bpmRange.min !== 60 ||
+      filters.bpmRange.max !== 180 ||
+      filters.selectedKeys.length > 0 ||
+      filters.selectedGenres.length > 0;
+
+    set({
+      isFilterActive: hasActiveFilters,
+      isFilterDrawerOpen: false,
+    });
+  },
+
+  getFilteredTracks: () => {
+    const { tracks, filters, isFilterActive } = get();
+
+    if (!isFilterActive) {
+      return tracks;
+    }
+
+    return tracks.filter((track) => {
+      // BPM filter
+      if (track.bpm) {
+        const bpm = parseInt(track.bpm, 10);
+        if (bpm < filters.bpmRange.min || bpm > filters.bpmRange.max) {
+          return false;
+        }
+      }
+
+      // Key filter
+      if (filters.selectedKeys.length > 0 && track.key) {
+        if (!filters.selectedKeys.includes(track.key)) {
+          return false;
+        }
+      }
+
+      // Genre filter
+      if (filters.selectedGenres.length > 0 && track.genre) {
+        if (!filters.selectedGenres.includes(track.genre)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
   },
 }));
 

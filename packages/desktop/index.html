@@ -11,370 +11,562 @@
       box-sizing: border-box;
     }
 
+    :root {
+      --bg-primary: #FFFFFF;
+      --bg-secondary: #F5F5F7;
+      --bg-tertiary: #E8E8ED;
+      --text-primary: #1D1D1F;
+      --text-secondary: #86868B;
+      --accent-blue: #007AFF;
+      --accent-green: #34C759;
+      --accent-red: #FF3B30;
+      --separator: rgba(60, 60, 67, 0.12);
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
       overflow: hidden;
+      -webkit-font-smoothing: antialiased;
     }
 
     #app {
       height: 100vh;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
     }
 
-    .container {
+    #status-screen {
+      display: flex;
+      flex-direction: column;
       flex: 1;
-      padding: 16px;
-      overflow-y: auto;
+      min-height: 0;
+      overflow: hidden;
     }
 
-    h1 {
-      font-size: 20px;
-      margin-bottom: 8px;
-      text-align: center;
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      padding-left: 78px; /* Space for macOS traffic lights */
+      border-bottom: 1px solid var(--separator);
+      background: var(--bg-primary);
+      -webkit-app-region: drag; /* Make header draggable */
+      flex-shrink: 0; /* Prevent header from shrinking */
     }
 
-    .status-badge {
-      display: inline-block;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 12px;
+    .header * {
+      -webkit-app-region: no-drag; /* Make buttons clickable */
+    }
+
+    .app-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .app-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+    }
+
+    .app-name {
+      font-size: 17px;
       font-weight: 600;
-      margin-bottom: 16px;
+      color: var(--text-primary);
     }
 
-    .status-running {
-      background: #48bb78;
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
     }
 
-    .status-stopped {
-      background: #f56565;
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-red);
     }
 
-    .qr-container {
-      background: white;
+    .status-dot.running {
+      background: var(--accent-green);
+    }
+
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
       padding: 16px;
+      min-height: 0; /* Important for flex overflow */
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-secondary);
       border-radius: 12px;
-      text-align: center;
-      margin: 16px 0;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .card-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Connection Badge */
+    .connection-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      background: rgba(0, 122, 255, 0.1);
+      color: var(--accent-blue);
+    }
+
+    .connection-badge svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .connection-badge.local {
+      background: rgba(52, 199, 89, 0.1);
+      color: var(--accent-green);
+    }
+
+    .connection-badge.cloud {
+      background: rgba(0, 122, 255, 0.1);
+      color: var(--accent-blue);
+    }
+
+    .connection-badge.tailscale {
+      background: rgba(88, 86, 214, 0.1);
+      color: #5856D6;
+    }
+
+    /* QR Section */
+    .qr-wrapper {
+      background: var(--bg-primary);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      margin-bottom: 12px;
     }
 
     .qr-code {
-      margin: 12px auto;
+      display: block;
     }
 
-    .url-display {
-      background: rgba(255, 255, 255, 0.1);
+    .connection-url {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
       padding: 10px 12px;
+      background: var(--bg-tertiary);
       border-radius: 8px;
-      font-family: 'Courier New', monospace;
-      font-size: 13px;
-      margin: 12px 0;
-      word-break: break-all;
-    }
-
-    button {
-      background: white;
-      color: #667eea;
-      border: none;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
+      font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+      font-size: 12px;
+      color: var(--text-primary);
       cursor: pointer;
+      transition: background 0.15s ease;
+      border: none;
       width: 100%;
-      margin: 10px 0;
-      transition: transform 0.2s;
+      text-align: center;
     }
 
-    button:hover {
-      transform: translateY(-2px);
+    .connection-url:hover {
+      background: #DCDCE0;
     }
 
-    button:active {
-      transform: translateY(0);
+    .connection-url:active {
+      background: #D1D1D5;
     }
 
-    button.secondary {
-      background: rgba(255, 255, 255, 0.2);
-      color: white;
+    .connection-url svg {
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      flex-shrink: 0;
     }
 
+    .connection-url:hover svg {
+      opacity: 1;
+    }
+
+    .connection-hint {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 10px;
+    }
+
+    /* Stats Card */
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--separator);
+    }
+
+    .stats-row:last-child {
+      border-bottom: none;
+    }
+
+    .stats-label {
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .stats-value {
+      font-size: 14px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Empty State */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      text-align: center;
+    }
+
+    .empty-state-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .empty-state-hint {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    /* Action Bar */
+    .action-bar {
+      display: flex;
+      gap: 10px;
+      padding: 16px;
+      background: var(--bg-primary);
+      border-top: 1px solid var(--separator);
+      flex-shrink: 0; /* Prevent action bar from shrinking */
+    }
+
+    .btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .btn-secondary {
+      background: var(--bg-secondary);
+      color: var(--accent-blue);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: #FFFFFF;
+    }
+
+    .btn-primary:hover {
+      background: #0066D6;
+    }
+
+    .btn-danger {
+      background: var(--accent-red);
+      color: #FFFFFF;
+    }
+
+    .btn-danger:hover {
+      background: #E6352B;
+    }
+
+    /* Settings Screen */
     .settings-screen {
       display: none;
+      height: 100vh;
+      flex-direction: column;
     }
 
     .settings-screen.active {
-      display: block;
+      display: flex;
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 16px;
+      padding-left: 78px; /* Space for macOS traffic lights */
+      border-bottom: 1px solid var(--separator);
+      -webkit-app-region: drag;
+    }
+
+    .settings-header * {
+      -webkit-app-region: no-drag;
+    }
+
+    .settings-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
     }
 
     .form-group {
-      margin: 16px 0;
+      padding: 16px;
+      border-bottom: 1px solid var(--separator);
     }
 
-    label {
+    .form-label {
       display: block;
-      margin-bottom: 6px;
-      font-weight: 600;
       font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
     }
 
-    input {
+    .form-input {
       width: 100%;
-      padding: 10px;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--separator);
       border-radius: 8px;
-      border: none;
       font-size: 14px;
+      color: var(--text-primary);
+      font-family: inherit;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
     }
 
     .path-input {
       display: flex;
-      gap: 10px;
-    }
-
-    .path-input input {
-      flex: 1;
-    }
-
-    .path-input button {
-      width: auto;
-      padding: 12px 20px;
-    }
-
-    .logs {
-      background: rgba(0, 0, 0, 0.3);
-      padding: 15px;
-      border-radius: 10px;
-      max-height: 150px;
-      overflow-y: auto;
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
-      margin-top: 20px;
-    }
-
-    .log-entry {
-      margin: 5px 0;
-    }
-
-    .connection-card {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
-      padding: 16px;
-      margin: 12px 0;
-      border: 2px solid rgba(255, 255, 255, 0.2);
-    }
-
-    .setup-card {
-      background: rgba(255, 255, 255, 0.05);
-      border: 2px dashed rgba(255, 255, 255, 0.3);
-    }
-
-    .connection-header {
-      display: flex;
-      align-items: center;
       gap: 8px;
-      margin-bottom: 12px;
     }
 
-    .connection-icon {
-      font-size: 20px;
-    }
-
-    .connection-title {
-      font-size: 16px;
-      font-weight: 600;
+    .path-input .form-input {
       flex: 1;
     }
 
-    .status-active {
-      background: #48bb78;
+    .path-input .btn {
+      flex: none;
+      padding: 10px 16px;
     }
 
-    .status-inactive {
-      background: rgba(255, 255, 255, 0.2);
-    }
-
-    .connection-url {
-      background: rgba(255, 255, 255, 0.15);
-      padding: 15px;
-      border-radius: 10px;
-      font-family: 'Courier New', monospace;
-      font-size: 14px;
-      margin: 10px 0;
-      word-break: break-all;
-      cursor: pointer;
-    }
-
-    .connection-url:hover {
-      background: rgba(255, 255, 255, 0.2);
-    }
-
-    .connection-hint {
-      font-size: 13px;
-      opacity: 0.7;
-      text-align: center;
-      margin-top: 10px;
+    /* Hide elements */
+    .hidden {
+      display: none !important;
     }
   </style>
 </head>
 <body>
   <div id="app">
-    <div class="container">
-      <!-- Status Screen -->
-      <div id="status-screen" class="status-screen active">
-        <!-- Compact Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.1); padding: 12px 16px; border-radius: 12px; margin-bottom: 16px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 18px;">🎧</span>
-            <span style="font-size: 18px; font-weight: 700;">Recrate</span>
-          </div>
-          <span id="status-badge" class="status-badge status-stopped">
-            ⭕ Server Stopped
-          </span>
+    <!-- Status Screen -->
+    <div id="status-screen">
+      <!-- Header -->
+      <header class="header">
+        <div class="app-title">
+          <img src="assets/icons/icon-128.png" class="app-icon" alt="Recrate">
+          <span class="app-name">Recrate</span>
         </div>
-
-        <div id="server-info" style="display: none;">
-          <!-- Smart QR Code (switches between local/remote) -->
-          <div class="connection-card">
-            <div class="connection-header">
-              <span id="connection-icon" class="connection-icon">🏠</span>
-              <span id="connection-title" class="connection-title">Scan to Connect</span>
-            </div>
-            <div class="qr-container">
-              <!-- Both canvases kept in DOM, toggle visibility -->
-              <canvas id="qr-code" class="qr-code"></canvas>
-              <canvas id="qr-code-remote" class="qr-code" style="display: none;"></canvas>
-            </div>
-            <div id="smart-url" class="connection-url" onclick="copyURL()" style="cursor: pointer;">http://loading...</div>
-            <div id="connection-hint" class="connection-hint" style="text-align: center; font-size: 12px; opacity: 0.8; margin-top: 8px;">
-              Tap URL to copy
-            </div>
-          </div>
-
-          <!-- Keep remote-connection div for backward compatibility but hide it -->
-          <div id="remote-connection" style="display: none;"></div>
-
-          <!-- Tailscale Setup Required -->
-          <div
-            id="tailscale-setup"
-            class="connection-card setup-card"
-            style="display: none;"
-          >
-            <div class="connection-header">
-              <span class="connection-icon">🌐</span>
-              <span class="connection-title">Remote Access</span>
-              <span class="status-badge status-inactive">Not Setup</span>
-            </div>
-            <p style="margin: 15px 0; opacity: 0.9;">
-              Install Tailscale to access your library from anywhere
-            </p>
-            <ul style="text-align: left; margin: 15px 0; padding-left: 20px;">
-              <li>Works on 5G, any WiFi network</li>
-              <li>Secure & encrypted connection</li>
-              <li>Free for personal use</li>
-              <li>Takes 5 minutes to setup</li>
-            </ul>
-            <button onclick="setupTailscale()">Setup Remote Access</button>
-          </div>
-
-          <!-- Instructions -->
-          <div style="text-align: center; margin-top: 30px;">
-            <p style="font-size: 14px; opacity: 0.8;">
-              📱 On your phone:<br />
-              1. Open Recrate app<br />
-              2. Scan QR code or enter URL<br />
-              3. Start organizing!
-            </p>
-          </div>
+        <div class="status-indicator">
+          <span id="status-dot" class="status-dot"></span>
+          <span id="status-text">Stopped</span>
         </div>
+      </header>
 
-        <button id="toggle-server-btn" onclick="toggleServer()">
-          Start Server
-        </button>
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- QR Card (hidden when stopped) -->
+        <section id="qr-section" class="card hidden">
+          <div class="card-header">
+            <span class="card-title">Scan to Connect</span>
+            <span id="connection-badge" class="connection-badge local">
+              <svg id="connection-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              </svg>
+              <span id="connection-label">Local</span>
+            </span>
+          </div>
 
-        <button class="secondary" onclick="showSettings()">
+          <div class="qr-wrapper">
+            <canvas id="qr-code" class="qr-code" width="160" height="160"></canvas>
+          </div>
+
+          <button id="connection-url" class="connection-url" onclick="copyURL()">
+            <span id="url-text">http://loading...</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+
+          <div class="connection-hint">Click URL to copy</div>
+        </section>
+
+        <!-- Stats Card (hidden when stopped) -->
+        <section id="stats-section" class="card hidden">
+          <div class="card-header">
+            <span class="card-title">Library</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">Tracks</span>
+            <span id="stat-tracks" class="stats-value">--</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">Crates</span>
+            <span id="stat-crates" class="stats-value">--</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">Connection</span>
+            <span id="stat-connection" class="stats-value">--</span>
+          </div>
+        </section>
+
+        <!-- Empty State (shown when stopped) -->
+        <div id="empty-state" class="empty-state">
+          <p class="empty-state-title">Server Stopped</p>
+          <p class="empty-state-hint">Press Start to begin streaming</p>
+        </div>
+      </main>
+
+      <!-- Action Bar -->
+      <footer class="action-bar">
+        <button id="settings-btn" class="btn btn-secondary" onclick="showSettings()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
           Settings
         </button>
+        <button id="toggle-btn" class="btn btn-primary" onclick="toggleServer()">
+          <svg id="toggle-icon" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21"/>
+          </svg>
+          <span id="toggle-text">Start</span>
+        </button>
+      </footer>
+    </div>
 
-        <div id="logs" class="logs" style="display: none;"></div>
-      </div>
+    <!-- Settings Screen -->
+    <div id="settings-screen" class="settings-screen">
+      <header class="settings-header">
+        <span class="settings-title">Settings</span>
+      </header>
 
-      <!-- Settings Screen -->
-      <div id="settings-screen" class="settings-screen">
-        <h1>⚙️ Settings</h1>
-
+      <div class="main-content">
         <div class="form-group">
-          <label>Serato Library Path</label>
+          <label class="form-label">Serato Library Path</label>
           <div class="path-input">
-            <input type="text" id="serato-path" readonly>
-            <button onclick="selectSeratoPath()">Browse</button>
+            <input type="text" id="serato-path" class="form-input" readonly>
+            <button class="btn btn-secondary" onclick="selectSeratoPath()">Browse</button>
           </div>
         </div>
 
         <div class="form-group">
-          <label>Music Files Path</label>
+          <label class="form-label">Music Files Path</label>
           <div class="path-input">
-            <input type="text" id="music-path" readonly>
-            <button onclick="selectMusicPath()">Browse</button>
+            <input type="text" id="music-path" class="form-input" readonly>
+            <button class="btn btn-secondary" onclick="selectMusicPath()">Browse</button>
           </div>
         </div>
 
         <div class="form-group">
-          <label>Port</label>
-          <input type="number" id="port" value="3000">
+          <label class="form-label">Port</label>
+          <input type="number" id="port" class="form-input" value="3000">
         </div>
-
-        <button onclick="saveSettings()">
-          Save Settings
-        </button>
-
-        <button class="secondary" onclick="showStatus()">
-          Back
-        </button>
       </div>
+
+      <footer class="action-bar">
+        <button class="btn btn-secondary" onclick="showStatus()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+      </footer>
     </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <script>
-    // Use window.electronAPI directly to avoid redeclaration issues
+    // API reference
     const api = window.electronAPI;
     let serverStatus = 'stopped';
     let serverUrl = '';
+    let currentConnectionType = 'local';
+
+    // SVG Icons
+    const ICONS = {
+      play: '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg>',
+      stop: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>',
+      home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+      cloud: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>',
+      globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
+    };
 
     // Initialize
     async function init() {
       await loadConfig();
       await updateServerStatus();
 
-      // Poll for status every 2 seconds
-      setInterval(async () => {
-        await updateServerStatus();
-      }, 2000);
+      // Poll for status
+      setInterval(updateServerStatus, 2000);
 
       // Listen for server status changes
       api.onServerStatus(async (status) => {
         serverStatus = status.status;
-        serverUrl = status.localURL || status.url; // Support both new and old format
+        serverUrl = status.localURL || status.url;
         await updateUI(status);
-
-        // Show error if present
-        if (status.error) {
-          alert('Server Error: ' + status.error);
-        }
       });
 
-      // Listen for logs
-      api.onServerLog((log) => {
-        addLog(log);
-      });
-
-      // Listen for errors
-      api.onServerError((error) => {
-        addLog('ERROR: ' + error);
-      });
+      // Listen for logs (silent)
+      api.onServerLog(() => {});
+      api.onServerError(() => {});
     }
 
     // Load config
@@ -395,118 +587,141 @@
 
     // Update UI based on status
     async function updateUI(statusData) {
-      const badge = document.getElementById('status-badge');
-      const info = document.getElementById('server-info');
-      const btn = document.getElementById('toggle-server-btn');
+      const statusDot = document.getElementById('status-dot');
+      const statusText = document.getElementById('status-text');
+      const qrSection = document.getElementById('qr-section');
+      const statsSection = document.getElementById('stats-section');
+      const emptyState = document.getElementById('empty-state');
+      const toggleBtn = document.getElementById('toggle-btn');
+      const toggleIcon = document.getElementById('toggle-icon');
+      const toggleText = document.getElementById('toggle-text');
 
       if (serverStatus === 'running') {
-        badge.textContent = '✅ Server Running';
-        badge.className = 'status-badge status-running';
-        info.style.display = 'block';
-        btn.textContent = 'Stop Server';
+        // Update status indicator
+        statusDot.classList.add('running');
+        statusText.textContent = 'Running';
 
-        // Get proxy and Tailscale info
+        // Show content, hide empty state
+        qrSection.classList.remove('hidden');
+        statsSection.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+
+        // Update button
+        toggleBtn.className = 'btn btn-danger';
+        toggleIcon.innerHTML = ICONS.stop;
+        toggleText.textContent = 'Stop';
+
+        // Get connection info
         const proxyStatus = await api.getProxyStatus();
         const tailscaleInfo = await api.getTailscaleInfo();
-
-        // Get canvas elements
-        const qrLocal = document.getElementById('qr-code');
-        const qrRemote = document.getElementById('qr-code-remote');
-        const smartUrl = document.getElementById('smart-url');
-        const connectionIcon = document.getElementById('connection-icon');
-        const connectionTitle = document.getElementById('connection-title');
-        const connectionHint = document.getElementById('connection-hint');
-        const setupCard = document.getElementById('tailscale-setup');
-
-        // Prepare URLs
         const localURL = statusData?.localURL || serverUrl;
 
-        // Priority: Proxy > Tailscale > Local
+        // Determine best connection and update UI
+        let displayURL = localURL;
+        let connectionType = 'local';
+
         if (proxyStatus.connected && proxyStatus.url) {
-          // Cloud proxy is the best option - works everywhere
-          const proxyURL = proxyStatus.url;
-
-          // Toggle canvas visibility - show remote, hide local
-          qrLocal.style.display = 'none';
-          qrRemote.style.display = 'block';
-
-          // Update UI text
-          smartUrl.textContent = proxyURL;
-          connectionIcon.textContent = '☁️';
-          connectionTitle.textContent = 'Cloud Proxy';
-          connectionHint.textContent = '☁️ Works anywhere - Tap to copy';
-
-          // Hide setup card
-          setupCard.style.display = 'none';
-
-          // Generate QR code for proxy URL
-          generateQR(proxyURL, 'qr-code-remote');
+          displayURL = proxyStatus.url;
+          connectionType = 'cloud';
         } else if (tailscaleInfo.running && tailscaleInfo.ip) {
-          // Tailscale is working - show REMOTE QR code
-          // Priority: HTTPS URL > HTTP with IP > fallback
-          const remoteURL = statusData?.tailscaleHTTPSURL ||
-                            tailscaleInfo.httpsURL ||
-                            statusData?.tailscaleURL ||
-                            `http://${tailscaleInfo.ip}:3000`;
-
-          // Toggle canvas visibility - show remote, hide local
-          qrLocal.style.display = 'none';
-          qrRemote.style.display = 'block';
-
-          // Update UI text
-          smartUrl.textContent = remoteURL;
-          connectionIcon.textContent = '🌐';
-          connectionTitle.textContent = 'Remote Access';
-          connectionHint.textContent = '✨ Works anywhere - Tap to copy';
-
-          // Hide setup card
-          setupCard.style.display = 'none';
-
-          // Generate QR code for remote URL
-          generateQR(remoteURL, 'qr-code-remote');
-        } else {
-          // No Tailscale - show LOCAL QR code
-
-          // Toggle canvas visibility - show local, hide remote
-          qrLocal.style.display = 'block';
-          qrRemote.style.display = 'none';
-
-          // Update UI text
-          smartUrl.textContent = localURL;
-          connectionIcon.textContent = '🏠';
-          connectionTitle.textContent = 'Local Network';
-          connectionHint.textContent = 'Same WiFi - Tap to copy';
-
-          // Show setup card
-          setupCard.style.display = 'block';
-
-          // Generate QR code for local URL
-          generateQR(localURL, 'qr-code');
+          displayURL = statusData?.tailscaleHTTPSURL ||
+                       tailscaleInfo.httpsURL ||
+                       statusData?.tailscaleURL ||
+                       `http://${tailscaleInfo.ip}:3000`;
+          connectionType = 'tailscale';
         }
+
+        // Update connection badge
+        updateConnectionBadge(connectionType);
+
+        // Update URL display
+        document.getElementById('url-text').textContent = displayURL;
+
+        // Update stats
+        document.getElementById('stat-connection').textContent =
+          connectionType === 'cloud' ? 'Cloud Proxy' :
+          connectionType === 'tailscale' ? 'Tailscale' : 'Local Network';
+
+        // Fetch library stats from server
+        fetchLibraryStats();
+
+        // Generate QR code
+        generateQR(displayURL);
+
       } else {
-        badge.textContent = '⭕ Server Stopped';
-        badge.className = 'status-badge status-stopped';
-        info.style.display = 'none';
-        btn.textContent = 'Start Server';
+        // Update status indicator
+        statusDot.classList.remove('running');
+        statusText.textContent = 'Stopped';
+
+        // Hide content, show empty state
+        qrSection.classList.add('hidden');
+        statsSection.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+
+        // Update button
+        toggleBtn.className = 'btn btn-primary';
+        toggleIcon.innerHTML = ICONS.play;
+        toggleText.textContent = 'Start';
+      }
+    }
+
+    // Update connection badge
+    function updateConnectionBadge(type) {
+      const badge = document.getElementById('connection-badge');
+      const icon = document.getElementById('connection-icon');
+      const label = document.getElementById('connection-label');
+
+      badge.className = 'connection-badge ' + type;
+
+      if (type === 'cloud') {
+        icon.innerHTML = ICONS.cloud;
+        label.textContent = 'Cloud';
+      } else if (type === 'tailscale') {
+        icon.innerHTML = ICONS.globe;
+        label.textContent = 'Tailscale';
+      } else {
+        icon.innerHTML = ICONS.home;
+        label.textContent = 'Local';
+      }
+    }
+
+    // Fetch library stats from server
+    async function fetchLibraryStats() {
+      try {
+        // Get the local server URL
+        const status = await api.getServerStatus();
+        if (status.status !== 'running' || !status.url) return;
+
+        const response = await fetch(`${status.url}/api/library`);
+        if (response.ok) {
+          const data = await response.json();
+          const trackCount = data.tracks ? data.tracks.length : 0;
+          document.getElementById('stat-tracks').textContent = trackCount.toLocaleString();
+        }
+
+        // Fetch crates
+        const cratesResponse = await fetch(`${status.url}/api/crates`);
+        if (cratesResponse.ok) {
+          const cratesData = await cratesResponse.json();
+          const crateCount = cratesData.crates ? cratesData.crates.length : 0;
+          document.getElementById('stat-crates').textContent = crateCount.toLocaleString();
+        }
+      } catch (error) {
+        console.log('Could not fetch library stats:', error.message);
       }
     }
 
     // Generate QR code
-    function generateQR(url, canvasId = 'qr-code') {
-      const canvas = document.getElementById(canvasId);
+    function generateQR(url) {
+      const canvas = document.getElementById('qr-code');
       if (!canvas) return;
 
-      // For proxy/HTTPS URLs (like Railway), use the URL directly
-      // For local HTTP URLs, convert to deep link format
       let qrData;
       try {
         const urlObj = new URL(url);
-
         if (url.startsWith('https://') || url.includes('/api/')) {
-          // Use direct URL for proxy/HTTPS (mobile will handle it)
           qrData = url;
         } else {
-          // Use deep link format for local HTTP
           const ip = urlObj.hostname;
           const port = urlObj.port || '3000';
           qrData = `recrate://connect?ip=${ip}&port=${port}`;
@@ -524,33 +739,21 @@
         canvas.height = size;
         const ctx = canvas.getContext('2d');
 
+        // White background
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, size, size);
+
+        // Draw QR modules
         for (let row = 0; row < moduleCount; row++) {
           for (let col = 0; col < moduleCount; col++) {
-            ctx.fillStyle = qr.isDark(row, col) ? '#000000' : '#ffffff';
-            ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+            if (qr.isDark(row, col)) {
+              ctx.fillStyle = '#1D1D1F';
+              ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+            }
           }
         }
       } catch (error) {
         console.error('Error generating QR code:', error);
-        // Fallback to original URL if parsing fails
-        const qr = qrcode(0, 'M');
-        qr.addData(url);
-        qr.make();
-
-        const size = 160;
-        const moduleCount = qr.getModuleCount();
-        const cellSize = size / moduleCount;
-
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-
-        for (let row = 0; row < moduleCount; row++) {
-          for (let col = 0; col < moduleCount; col++) {
-            ctx.fillStyle = qr.isDark(row, col) ? '#000000' : '#ffffff';
-            ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-          }
-        }
       }
     }
 
@@ -564,16 +767,29 @@
       setTimeout(updateServerStatus, 1000);
     }
 
+    // Copy URL
+    function copyURL() {
+      const urlText = document.getElementById('url-text').textContent;
+      navigator.clipboard.writeText(urlText).then(() => {
+        const btn = document.getElementById('connection-url');
+        const originalText = document.getElementById('url-text').textContent;
+        document.getElementById('url-text').textContent = 'Copied!';
+        setTimeout(() => {
+          document.getElementById('url-text').textContent = originalText;
+        }, 1500);
+      });
+    }
+
     // Show settings
     function showSettings() {
-      document.getElementById('status-screen').classList.remove('active');
+      document.getElementById('status-screen').style.display = 'none';
       document.getElementById('settings-screen').classList.add('active');
     }
 
     // Show status
     function showStatus() {
       document.getElementById('settings-screen').classList.remove('active');
-      document.getElementById('status-screen').classList.add('active');
+      document.getElementById('status-screen').style.display = 'flex';
     }
 
     // Select Serato path
@@ -604,70 +820,6 @@
       await api.saveConfig(config);
       alert('Settings saved! Restart the server for changes to take effect.');
       showStatus();
-    }
-
-    // Add log entry
-    function addLog(log) {
-      const logsDiv = document.getElementById('logs');
-      logsDiv.style.display = 'block';
-
-      const entry = document.createElement('div');
-      entry.className = 'log-entry';
-      entry.textContent = log;
-      logsDiv.appendChild(entry);
-
-      // Auto-scroll
-      logsDiv.scrollTop = logsDiv.scrollHeight;
-
-      // Keep only last 50 logs
-      while (logsDiv.children.length > 50) {
-        logsDiv.removeChild(logsDiv.firstChild);
-      }
-    }
-
-    // Copy URL to clipboard
-    function copyURL() {
-      const urlElement = document.getElementById('smart-url');
-      const url = urlElement.textContent;
-
-      navigator.clipboard.writeText(url).then(() => {
-        // Show feedback
-        const originalText = urlElement.textContent;
-        urlElement.textContent = '✅ Copied!';
-
-        setTimeout(() => {
-          urlElement.textContent = originalText;
-        }, 2000);
-      }).catch(err => {
-        console.error('Failed to copy:', err);
-      });
-    }
-
-    // Setup Tailscale
-    async function setupTailscale() {
-      const tailscaleInfo = await api.getTailscaleInfo();
-
-      if (!tailscaleInfo.installed) {
-        // Not installed - open download page
-        await api.openTailscaleUrl();
-
-        alert(
-          'Opening Tailscale download page...\n\n' +
-          'After installing:\n' +
-          '1. Sign in with Google or GitHub\n' +
-          '2. Restart Recrate\n' +
-          '3. Remote access will be enabled!'
-        );
-      } else if (!tailscaleInfo.running) {
-        // Installed but not running
-        alert(
-          'Tailscale is installed but not running.\n\n' +
-          'Please start Tailscale from:\n' +
-          'Mac: Menu bar icon\n' +
-          'Windows: System tray\n\n' +
-          'Then restart Recrate.'
-        );
-      }
     }
 
     // Initialize on load

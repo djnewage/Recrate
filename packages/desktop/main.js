@@ -195,8 +195,8 @@ function detectSeratoPath() {
 // Create main window
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 350,
-    height: 520,
+    width: 360,
+    height: 580,
     resizable: false,
     webPreferences: {
       nodeIntegration: false,
@@ -204,7 +204,10 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     },
     title: 'Recrate',
-    icon: path.join(__dirname, 'assets/icons/icon.png')
+    icon: path.join(__dirname, 'assets/icons/icon.png'),
+    backgroundColor: '#FFFFFF',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 12, y: 12 }
   });
 
   mainWindow.loadFile('index.html');
@@ -225,19 +228,27 @@ function createWindow() {
 
 // Create system tray
 function createTray() {
-  // Use a native icon for now (Electron default)
-  // TODO: Replace with custom icon when available
+  const { nativeImage } = require('electron');
+
   try {
+    // Use @2x version for retina support - Electron will scale appropriately
     const iconPath = path.join(__dirname, 'assets/icons/tray-icon.png');
-    if (fs.existsSync(iconPath) && fs.statSync(iconPath).size > 0) {
-      tray = new Tray(iconPath);
+    const icon2xPath = path.join(__dirname, 'assets/icons/tray-icon@2x.png');
+
+    let trayIcon;
+    if (fs.existsSync(icon2xPath)) {
+      // Create from @2x for best quality on retina displays
+      trayIcon = nativeImage.createFromPath(icon2xPath);
+      // Resize to proper tray size (22x22 logical pixels)
+      trayIcon = trayIcon.resize({ width: 22, height: 22 });
+    } else if (fs.existsSync(iconPath)) {
+      trayIcon = nativeImage.createFromPath(iconPath);
     } else {
-      // Use native icon as fallback - create a simple NativeImage
-      const { nativeImage } = require('electron');
-      const icon = nativeImage.createEmpty();
-      tray = new Tray(icon);
-      log.warn('Using default tray icon - custom icon not found');
+      trayIcon = nativeImage.createEmpty();
+      log.warn('Tray icon not found, using empty icon');
     }
+
+    tray = new Tray(trayIcon);
   } catch (error) {
     log.error('Failed to create tray:', error);
     return; // Skip tray creation if it fails
@@ -638,9 +649,27 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
+  // Disable logging during shutdown to prevent EIO errors
+  log.transports.console.level = false;
+  log.transports.file.level = false;
+
+  // Mark window as destroyed to prevent further IPC
+  if (mainWindow) {
+    mainWindow.removeAllListeners();
+  }
+
   stopServer();
   disconnectFromProxy();
   stopTailscaleServe();
+});
+
+// Handle uncaught exceptions during shutdown gracefully
+process.on('uncaughtException', (error) => {
+  if (error.code === 'EIO' || error.message.includes('EIO')) {
+    // Ignore EIO errors during shutdown - these are expected
+    return;
+  }
+  console.error('Uncaught exception:', error);
 });
 
 app.on('window-all-closed', () => {
