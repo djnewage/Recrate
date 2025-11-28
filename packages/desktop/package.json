@@ -71,6 +71,7 @@
     "linux": {
       "icon": "assets/icons/icon.png",
       "category": "Audio",
+      "maintainer": "Tristan Sacotte <tristan@recrate.app>",
       "target": [
         {
           "target": "AppImage",
@@ -98,6 +99,10 @@
       "repo": "Recrate"
     }
   },
-  "author": "Tristan Sacotte",
+  "author": {
+    "name": "Tristan Sacotte",
+    "email": "tristan@recrate.app"
+  },
+  "homepage": "https://github.com/djnewage/Recrate",
   "license": "MIT"
 }
