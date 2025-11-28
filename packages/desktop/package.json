@@ -85,12 +85,20 @@
     },
     "extraResources": [
       {
-        "from": "../server",
-        "to": "server",
-        "filter": [
-          "src/**/*",
-          "package.json"
-        ]
+        "from": "../server/src",
+        "to": "server/src"
+      },
+      {
+        "from": "../server/package.json",
+        "to": "server/package.json"
+      },
+      {
+        "from": "../server/node_modules",
+        "to": "server/node_modules"
+      },
+      {
+        "from": "../shared",
+        "to": "shared"
       }
     ]
   },
