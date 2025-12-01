@@ -197,16 +197,33 @@ class SeratoWriter {
   }
 
   /**
-   * Build track entry
+   * Build track entry with metadata (path, BPM, key)
    */
-  buildTrackEntry(trackPath) {
-    const pathStr = this.writeUTF16String(trackPath);
-    return this.writeTag('ptrk', pathStr);
+  buildTrackEntry(track) {
+    // Use original Serato path if available, otherwise fall back to filePath
+    // This ensures Serato recognizes the track and displays its metadata (BPM, key)
+    const pathToWrite = track.seratoPath || track.filePath;
+    logger.debug(`Writing to crate - seratoPath="${track.seratoPath}", filePath="${track.filePath}", pathToWrite="${pathToWrite}"`);
+    const ptrkTag = this.writeTag('ptrk', this.writeUTF16String(pathToWrite));
+
+    // BPM (optional)
+    let tbpmTag = Buffer.alloc(0);
+    if (track.bpm) {
+      tbpmTag = this.writeTag('tbpm', this.writeUTF16String(String(track.bpm)));
+    }
+
+    // Key (optional)
+    let tkeyTag = Buffer.alloc(0);
+    if (track.key) {
+      tkeyTag = this.writeTag('tkey', this.writeUTF16String(track.key));
+    }
+
+    return Buffer.concat([ptrkTag, tbpmTag, tkeyTag]);
   }
 
   /**
    * Build tracks section
-   * Each track needs its own otrk wrapper containing the ptrk tag
+   * Each track needs its own otrk wrapper containing ptrk, tbpm, tkey tags
    */
   buildTracksSection(tracks) {
     if (!tracks || tracks.length === 0) {
@@ -215,8 +232,8 @@ class SeratoWriter {
 
     // Each track gets wrapped in its own otrk tag
     const trackBuffers = tracks.map(track => {
-      const ptrkTag = this.buildTrackEntry(track.filePath);
-      return this.writeTag('otrk', ptrkTag);
+      const trackData = this.buildTrackEntry(track);  // Pass full track object for metadata
+      return this.writeTag('otrk', trackData);
     });
 
     return Buffer.concat(trackBuffers);
