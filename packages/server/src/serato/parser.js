@@ -249,8 +249,12 @@ class SeratoParser extends EventEmitter {
             const track = await this._createTrackObject(trackPath, true);
             if (track) {
               // Merge database metadata with track object
+              // Use rawSeratoPath (without leading /) for crate writing - this is what Serato expects
+              track.seratoPath = metadata.rawSeratoPath || metadata.filePath;
+              logger.debug(`Setting seratoPath="${track.seratoPath}" filePath="${track.filePath}" for track: ${track.title}`);
               track.bpm = metadata.bpm || track.bpm;
               track.key = metadata.key || track.key;
+              track.duration = metadata.duration || track.duration;
               tracksMap.set(trackPath, track); // Map operations are safe in single-threaded JS
               this.trackCache.set(track.id, track); // Add to track cache for instant lookups
             }
@@ -749,6 +753,7 @@ class SeratoParser extends EventEmitter {
       const pfilMarker = Buffer.from('pfil');
       const tbpmMarker = Buffer.from('tbpm');
       const tkeyMarker = Buffer.from('tkey');
+      const tlenMarker = Buffer.from('tlen'); // Track length/duration
 
       let offset = 0;
 
@@ -770,12 +775,16 @@ class SeratoParser extends EventEmitter {
           filePath: null,
           bpm: null,
           key: null,
+          duration: null,
         };
 
         // Extract file path
         let filePath = this._extractField(buffer, pfilMarker, otrkDataStart, otrkDataEnd);
         if (filePath) {
-          // Normalize path: ensure it starts with /
+          // Store the raw Serato path before normalization (for writing back to crate files)
+          track.rawSeratoPath = filePath;
+          logger.debug(`Raw path from database V2: "${filePath}"`);
+          // Normalize path for filesystem operations: ensure it starts with /
           if (!filePath.startsWith('/')) {
             filePath = '/' + filePath;
           }
@@ -797,10 +806,24 @@ class SeratoParser extends EventEmitter {
           track.key = key;
         }
 
+        // Extract duration (tlen stores duration as "MM:SS.ms" format, e.g., "03:45.50")
+        const durationStr = this._extractField(buffer, tlenMarker, otrkDataStart, otrkDataEnd);
+        if (durationStr) {
+          logger.debug(`Raw tlen value for track: "${durationStr}"`);
+          // Parse MM:SS.ms format to seconds
+          const match = durationStr.match(/^(\d+):(\d+)\.?(\d*)$/);
+          if (match) {
+            const minutes = parseInt(match[1], 10);
+            const seconds = parseInt(match[2], 10);
+            const ms = match[3] ? parseInt(match[3], 10) / 100 : 0;
+            track.duration = minutes * 60 + seconds + ms;
+          }
+        }
+
         // Only add valid audio file paths
         if (track.filePath && /\.(mp3|flac|wav|aac|m4a|ogg|aiff)$/i.test(track.filePath)) {
           trackMetadata.push(track);
-          logger.debug(`Found track: ${track.filePath} [BPM: ${track.bpm || 'N/A'}, Key: ${track.key || 'N/A'}]`);
+          logger.debug(`Found track: ${track.filePath} [BPM: ${track.bpm || 'N/A'}, Key: ${track.key || 'N/A'}, Duration: ${track.duration || 'N/A'}]`);
         }
 
         // Move to next track chunk
