@@ -3,7 +3,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CONNECTION_TYPES = {
   PROXY: 'proxy',
-  TAILSCALE: 'tailscale',
   LOCAL: 'local',
   MANUAL: 'manual',
   OFFLINE: 'offline',
@@ -83,8 +82,6 @@ export const useConnectionStore = create((set, get) => ({
           let type = CONNECTION_TYPES.LOCAL;
           if (lastIP.includes('/api/') && lastIP.startsWith('https://')) {
             type = CONNECTION_TYPES.PROXY;
-          } else if (lastIP.startsWith('100.')) {
-            type = CONNECTION_TYPES.TAILSCALE;
           }
 
           set({
@@ -98,22 +95,8 @@ export const useConnectionStore = create((set, get) => ({
         }
       }
 
-      // 2. Scan for Tailscale IP (100.x.x.x range)
-      console.log('Scanning for Tailscale server...');
-      const tailscaleIP = await get().scanTailscaleRange();
-      if (tailscaleIP) {
-        await AsyncStorage.setItem('lastServerIP', tailscaleIP);
-        set({
-          serverURL: tailscaleIP,
-          connectionType: CONNECTION_TYPES.TAILSCALE,
-          isConnected: true,
-          isSearching: false,
-          lastSuccessfulIP: tailscaleIP,
-        });
-        return tailscaleIP;
-      }
-
-      // 3. Scan local network (192.168.x.x)
+      // 2. Scan local network (192.168.x.x)
+      // Note: Tailscale scanning removed - using Railway cloud proxy instead
       console.log('Scanning local network...');
       const localIP = await get().scanLocalRange();
       if (localIP) {
@@ -143,27 +126,13 @@ export const useConnectionStore = create((set, get) => ({
     }
   },
 
-  // Scan Tailscale IP range
-  scanTailscaleRange: async () => {
-    // Try the HTTPS Tailscale URL
-    const tailscaleURL = 'https://tristans-macbook-pro.tailca1b53.ts.net';
-    console.log('Trying Tailscale HTTPS URL:', tailscaleURL);
-
-    const works = await get().testConnection(tailscaleURL);
-    if (works) {
-      console.log('Found Tailscale server via HTTPS');
-      return tailscaleURL;
-    }
-
-    console.log('Tailscale HTTPS connection failed');
-    return null;
-  },
-
   // Scan local network range
   scanLocalRange: async () => {
     // Get device's local IP to determine subnet
     // For now, try common router IPs
     const commonIPs = [
+      'http://localhost:3000',     // iOS Simulator uses localhost
+      'http://127.0.0.1:3000',     // Alternative localhost
       'http://192.168.1.131:3000', // Tristan's MacBook Pro
       'http://192.168.1.100:3000',
       'http://192.168.0.100:3000',
@@ -223,9 +192,6 @@ export const useConnectionStore = create((set, get) => ({
       if (url.includes('/api/') && url.startsWith('https://')) {
         connType = CONNECTION_TYPES.PROXY;
         console.log(`[ConnectionStore] Detected cloud proxy connection`);
-      } else if (url.includes('100.')) {
-        connType = CONNECTION_TYPES.TAILSCALE;
-        console.log(`[ConnectionStore] Detected Tailscale connection`);
       } else if (url.includes('192.168.') || url.includes('10.0.') || url.includes('localhost')) {
         connType = CONNECTION_TYPES.LOCAL;
         console.log(`[ConnectionStore] Detected local network connection`);
