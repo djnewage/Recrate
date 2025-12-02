@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
+    "prebuild": "node scripts/bundle-server.js",
+    "prebuild:mac": "node scripts/bundle-server.js",
+    "prebuild:win": "node scripts/bundle-server.js",
+    "prebuild:linux": "node scripts/bundle-server.js",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
@@ -85,22 +89,8 @@
     },
     "extraResources": [
       {
-        "from": "../server/src",
-        "to": "server/src",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "../server/package.json",
-        "to": "server/package.json"
-      },
-      {
-        "from": "../server/node_modules",
-        "to": "server/node_modules",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "../shared",
-        "to": "shared",
+        "from": "server-bundle",
+        "to": "server",
         "filter": ["**/*"]
       }
     ]
