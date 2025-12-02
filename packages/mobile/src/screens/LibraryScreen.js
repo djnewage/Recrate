@@ -10,12 +10,15 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useActionSheet } from '@expo/react-native-action-sheet';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
 import FilterModal from '../components/FilterModal';
 
 const LibraryScreen = ({ navigation }) => {
+  const { showActionSheetWithOptions } = useActionSheet();
+
   const {
     tracks,
     selectedTracks,
@@ -106,15 +109,36 @@ const LibraryScreen = ({ navigation }) => {
   };
 
   const handleTrackMenu = (track) => {
-    // TODO: Implement action sheet menu
-    Alert.alert(
-      track.title,
-      'Menu options coming soon',
-      [
-        { text: 'Play Now', onPress: () => handleTrackPress(track) },
-        { text: 'Add to Crate', onPress: () => navigation.navigate('Crates', { selectedTracks: [track.id] }) },
-        { text: 'Cancel', style: 'cancel' },
-      ]
+    const options = ['Play Now', 'Add to Crate', 'Cancel'];
+    const cancelButtonIndex = 2;
+
+    showActionSheetWithOptions(
+      {
+        options,
+        cancelButtonIndex,
+        title: track.title,
+        message: track.artist,
+        containerStyle: {
+          backgroundColor: COLORS.surface,
+        },
+        textStyle: {
+          color: COLORS.text,
+        },
+        titleTextStyle: {
+          color: COLORS.text,
+          fontWeight: 'bold',
+        },
+        messageTextStyle: {
+          color: COLORS.textSecondary,
+        },
+      },
+      (buttonIndex) => {
+        if (buttonIndex === 0) {
+          handleTrackPress(track);
+        } else if (buttonIndex === 1) {
+          navigation.navigate('Crates', { selectedTracks: [track.id] });
+        }
+      }
     );
   };
 

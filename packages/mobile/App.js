@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import NetInfo from '@react-native-community/netinfo';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ActionSheetProvider } from '@expo/react-native-action-sheet';
 import { COLORS } from './src/constants/theme';
 import { useConnectionStore } from './src/store/connectionStore';
 import useStore from './src/store/useStore';
@@ -217,12 +218,16 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-      <SafeAreaView style={styles.container}>
-        <NavigationContainer ref={navigationRef} linking={linking}>
-          <AppContent />
-        </NavigationContainer>
-      </SafeAreaView>
+      <ActionSheetProvider>
+        <>
+          <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+          <SafeAreaView style={styles.container}>
+            <NavigationContainer ref={navigationRef} linking={linking}>
+              <AppContent />
+            </NavigationContainer>
+          </SafeAreaView>
+        </>
+      </ActionSheetProvider>
     </GestureHandlerRootView>
   );
 }

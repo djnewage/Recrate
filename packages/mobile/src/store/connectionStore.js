@@ -130,10 +130,11 @@ export const useConnectionStore = create((set, get) => ({
   scanLocalRange: async () => {
     // Get device's local IP to determine subnet
     // For now, try common router IPs
+    // Common local network patterns - no hardcoded specific IPs
     const commonIPs = [
       'http://localhost:3000',     // iOS Simulator uses localhost
       'http://127.0.0.1:3000',     // Alternative localhost
-      'http://192.168.1.131:3000', // Tristan's MacBook Pro
+      // Common router-assigned IPs (generic patterns)
       'http://192.168.1.100:3000',
       'http://192.168.0.100:3000',
       'http://192.168.1.2:3000',

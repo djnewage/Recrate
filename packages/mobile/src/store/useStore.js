@@ -39,6 +39,8 @@ const useStore = create((set, get) => ({
   currentQueueIndex: -1,
   repeatMode: 'off', // 'off', 'track', 'queue'
   shuffleEnabled: false,
+  originalQueue: null, // For restoring queue order when shuffle is disabled
+  originalQueueIndex: null,
 
   // Search state
   searchQuery: '',
@@ -471,10 +473,77 @@ const useStore = create((set, get) => ({
     set({ repeatMode: nextMode });
   },
 
-  toggleShuffle: () => {
-    const { shuffleEnabled } = get();
-    // Note: Shuffle logic would need to be implemented in queue management
-    set({ shuffleEnabled: !shuffleEnabled });
+  toggleShuffle: async () => {
+    const { shuffleEnabled, queue, currentQueueIndex, currentTrack } = get();
+
+    if (queue.length <= 1) {
+      // No point shuffling with 0 or 1 track
+      set({ shuffleEnabled: !shuffleEnabled });
+      return;
+    }
+
+    if (!shuffleEnabled) {
+      // Enabling shuffle: Fisher-Yates algorithm, keep current track at position 0
+      const currentTrackInQueue = queue[currentQueueIndex];
+      const otherTracks = queue.filter((_, i) => i !== currentQueueIndex);
+
+      // Fisher-Yates shuffle
+      for (let i = otherTracks.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [otherTracks[i], otherTracks[j]] = [otherTracks[j], otherTracks[i]];
+      }
+
+      const shuffledQueue = [currentTrackInQueue, ...otherTracks];
+
+      // Update TrackPlayer queue
+      try {
+        await TrackPlayer.removeUpcomingTracks();
+        const upcomingTracks = shuffledQueue.slice(1).map(track =>
+          TrackPlayerService.formatTrackForPlayer(track)
+        );
+        await TrackPlayer.add(upcomingTracks);
+      } catch (error) {
+        console.error('Error updating TrackPlayer queue for shuffle:', error);
+      }
+
+      set({
+        shuffleEnabled: true,
+        queue: shuffledQueue,
+        currentQueueIndex: 0,
+        originalQueue: queue, // Store original order for unshuffle
+        originalQueueIndex: currentQueueIndex,
+      });
+    } else {
+      // Disabling shuffle: restore original order
+      const { originalQueue, originalQueueIndex } = get();
+
+      if (originalQueue && originalQueue.length > 0) {
+        // Find current track in original queue
+        const currentTrackIndex = originalQueue.findIndex(t => t.id === currentTrack?.id);
+        const newIndex = currentTrackIndex >= 0 ? currentTrackIndex : originalQueueIndex || 0;
+
+        // Update TrackPlayer queue back to original order
+        try {
+          await TrackPlayer.removeUpcomingTracks();
+          const upcomingTracks = originalQueue.slice(newIndex + 1).map(track =>
+            TrackPlayerService.formatTrackForPlayer(track)
+          );
+          await TrackPlayer.add(upcomingTracks);
+        } catch (error) {
+          console.error('Error restoring TrackPlayer queue:', error);
+        }
+
+        set({
+          shuffleEnabled: false,
+          queue: originalQueue,
+          currentQueueIndex: newIndex,
+          originalQueue: null,
+          originalQueueIndex: null,
+        });
+      } else {
+        set({ shuffleEnabled: false });
+      }
+    }
   },
 
   setQueue: async (tracks, startIndex = 0) => {
