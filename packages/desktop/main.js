@@ -7,9 +7,11 @@ const os = require('os');
 const fs = require('fs');
 const BinaryProxyClient = require('./src/binaryProxyClient');
 
-// Configure logging
-log.transports.file.level = 'info';
+// Configure logging - write to file for debugging packaged apps
+log.transports.file.level = 'debug';
+log.transports.file.resolvePathFn = () => path.join(app.getPath('logs'), 'main.log');
 log.info('Recrate Desktop starting...');
+log.info('Log file:', log.transports.file.getFile().path);
 
 const store = new Store();
 let mainWindow = null;
@@ -475,32 +477,77 @@ async function startServer() {
 
   log.info('Server args:', serverArgs);
 
-  // Try to use system node first, fall back to Electron's node
-  // In packaged apps, we need to rely on system Node.js or bundle it
-  let nodeCommand = 'node';
+  // Find Node.js executable
+  // GUI apps on macOS don't inherit shell PATH, so 'which node' often fails
+  // We need to explicitly check common Node.js installation locations
+  let nodeCommand = 'node'; // Default for development
 
-  // Check if we're in a packaged app
   if (app.isPackaged) {
-    // Try to find system node
-    try {
-      // Check if node is available on the system
-      const nodePath = execSync('which node', { encoding: 'utf8' }).trim();
-      nodeCommand = nodePath;
-      log.info('Using system node:', nodeCommand);
-    } catch (e) {
-      // No system node, use Electron's node via process.execPath with ELECTRON_RUN_AS_NODE
-      log.info('No system node found, using Electron as Node');
-      nodeCommand = process.execPath;
+    const nodeLocations = [
+      '/opt/homebrew/bin/node',      // Homebrew on Apple Silicon
+      '/usr/local/bin/node',         // Homebrew on Intel Mac
+      '/usr/bin/node',               // System Node.js
+      path.join(os.homedir(), '.nvm/current/bin/node'),  // NVM
+      path.join(os.homedir(), '.nvm/versions/node/v20/bin/node'),  // NVM specific
+      path.join(os.homedir(), '.nvm/versions/node/v22/bin/node'),  // NVM specific
+    ];
+
+    nodeCommand = null;
+    for (const loc of nodeLocations) {
+      log.debug('Checking for Node.js at:', loc);
+      if (fs.existsSync(loc)) {
+        nodeCommand = loc;
+        log.info('Found Node.js at:', nodeCommand);
+        break;
+      }
+    }
+
+    // Fallback: try 'which node' (may work if PATH is set)
+    if (!nodeCommand) {
+      try {
+        nodeCommand = execSync('which node', { encoding: 'utf8' }).trim();
+        log.info('Found Node.js via which:', nodeCommand);
+      } catch (e) {
+        log.error('Could not find Node.js installation');
+        // Show error dialog to user
+        dialog.showErrorBox(
+          'Node.js Required',
+          'Could not find Node.js on your system.\n\nPlease install Node.js from https://nodejs.org and restart the app.'
+        );
+        if (mainWindow) {
+          mainWindow.webContents.send('server-status', {
+            status: 'stopped',
+            error: 'Node.js not found. Please install from nodejs.org'
+          });
+        }
+        return;
+      }
     }
   }
+
+  log.info('Starting server with Node.js:', nodeCommand);
 
   serverProcess = spawn(nodeCommand, serverArgs, {
     env: {
       ...process.env,
       NODE_ENV: 'production',
-      ELECTRON_RUN_AS_NODE: '1'  // Makes Electron behave like Node.js
+      ELECTRON_RUN_AS_NODE: '1'  // Makes Electron behave like Node.js (used as fallback)
     },
     cwd: app.isPackaged ? path.dirname(serverPath) : undefined
+  });
+
+  // Handle spawn errors (e.g., Node.js not found, permission denied)
+  serverProcess.on('error', (err) => {
+    log.error('Failed to start server process:', err);
+    dialog.showErrorBox('Server Error', `Failed to start server: ${err.message}`);
+    serverProcess = null;
+    serverStatus = 'stopped';
+    if (mainWindow) {
+      mainWindow.webContents.send('server-status', {
+        status: 'stopped',
+        error: `Failed to start: ${err.message}`
+      });
+    }
   });
 
   serverProcess.stdout.on('data', async (data) => {
