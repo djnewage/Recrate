@@ -522,61 +522,17 @@ async function startServer() {
 
   log.info('Server args:', serverArgs);
 
-  // Find Node.js executable
-  // GUI apps on macOS don't inherit shell PATH, so 'which node' often fails
-  // We need to explicitly check common Node.js installation locations
-  let nodeCommand = 'node'; // Default for development
-
-  if (app.isPackaged) {
-    const nodeLocations = [
-      '/opt/homebrew/bin/node',      // Homebrew on Apple Silicon
-      '/usr/local/bin/node',         // Homebrew on Intel Mac
-      '/usr/bin/node',               // System Node.js
-      path.join(os.homedir(), '.nvm/current/bin/node'),  // NVM
-      path.join(os.homedir(), '.nvm/versions/node/v20/bin/node'),  // NVM specific
-      path.join(os.homedir(), '.nvm/versions/node/v22/bin/node'),  // NVM specific
-    ];
-
-    nodeCommand = null;
-    for (const loc of nodeLocations) {
-      log.debug('Checking for Node.js at:', loc);
-      if (fs.existsSync(loc)) {
-        nodeCommand = loc;
-        log.info('Found Node.js at:', nodeCommand);
-        break;
-      }
-    }
-
-    // Fallback: try 'which node' (may work if PATH is set)
-    if (!nodeCommand) {
-      try {
-        nodeCommand = execSync('which node', { encoding: 'utf8' }).trim();
-        log.info('Found Node.js via which:', nodeCommand);
-      } catch (e) {
-        log.error('Could not find Node.js installation');
-        // Show error dialog to user
-        dialog.showErrorBox(
-          'Node.js Required',
-          'Could not find Node.js on your system.\n\nPlease install Node.js from https://nodejs.org and restart the app.'
-        );
-        if (mainWindow) {
-          mainWindow.webContents.send('server-status', {
-            status: 'stopped',
-            error: 'Node.js not found. Please install from nodejs.org'
-          });
-        }
-        return;
-      }
-    }
-  }
-
-  log.info('Starting server with Node.js:', nodeCommand);
+  // Use Electron's bundled Node.js via process.execPath with ELECTRON_RUN_AS_NODE=1
+  // This eliminates the need for users to install Node.js separately
+  // Works on all platforms: Windows, macOS, and Linux
+  const nodeCommand = process.execPath;
+  log.info('Using Electron as Node.js:', nodeCommand);
 
   serverProcess = spawn(nodeCommand, serverArgs, {
     env: {
       ...process.env,
       NODE_ENV: 'production',
-      ELECTRON_RUN_AS_NODE: '1'  // Makes Electron behave like Node.js (used as fallback)
+      ELECTRON_RUN_AS_NODE: '1'  // Makes Electron behave like Node.js
     },
     cwd: app.isPackaged ? path.dirname(serverPath) : undefined
   });
