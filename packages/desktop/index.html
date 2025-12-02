@@ -486,6 +486,17 @@
       display: inline;
     }
 
+    /* Setup Wizard Error */
+    .setup-error {
+      background: rgba(255, 59, 48, 0.1);
+      color: var(--accent-red);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(255, 59, 48, 0.2);
+    }
+
     /* Setup Wizard Screen */
     #setup-screen {
       display: none;
@@ -757,6 +768,9 @@
           </div>
         </div>
 
+        <!-- Error message -->
+        <div id="setup-error" class="setup-error hidden"></div>
+
         <!-- Step 1: Serato Path -->
         <div id="setup-step-1" class="setup-step active">
           <div class="step-icon">📁</div>
@@ -770,7 +784,7 @@
             <button class="btn btn-secondary" onclick="browseSetupSerato()">Browse</button>
           </div>
           <div class="step-actions">
-            <button id="setup-next-1" class="btn btn-primary" onclick="goToStep(2)">Next →</button>
+            <button id="setup-next-1" class="btn btn-primary" onclick="validateAndGoToStep2()">Next →</button>
           </div>
         </div>
 
@@ -910,11 +924,26 @@
 
     // === Setup Wizard Functions ===
 
+    // Show setup error message
+    function showSetupError(message) {
+      const el = document.getElementById('setup-error');
+      el.textContent = message;
+      el.classList.remove('hidden');
+    }
+
+    // Hide setup error message
+    function hideSetupError() {
+      document.getElementById('setup-error').classList.add('hidden');
+    }
+
     async function showSetupWizard() {
       // Hide other screens
       document.getElementById('status-screen').style.display = 'none';
       document.getElementById('settings-screen').classList.remove('active');
       document.getElementById('setup-screen').classList.add('active');
+
+      // Clear any previous errors
+      hideSetupError();
 
       // Load auto-detected paths
       const config = await api.getConfig();
@@ -930,12 +959,34 @@
       // Update progress
       document.getElementById('current-step').textContent = stepNum;
       document.getElementById('progress-fill').style.width = `${stepNum * 50}%`;
+      // Clear errors when changing steps
+      hideSetupError();
+    }
+
+    // Validate Serato path before going to step 2
+    async function validateAndGoToStep2() {
+      const seratoPath = document.getElementById('setup-serato-path').value;
+
+      if (!seratoPath) {
+        showSetupError('Please select your Serato library folder.');
+        return;
+      }
+
+      const exists = await api.validatePath(seratoPath);
+      if (!exists) {
+        showSetupError('Serato folder not found at this location. Please select a valid _Serato_ folder.');
+        return;
+      }
+
+      hideSetupError();
+      goToStep(2);
     }
 
     async function browseSetupSerato() {
       const path = await api.selectDirectory('Select Serato Library Folder');
       if (path) {
         document.getElementById('setup-serato-path').value = path;
+        hideSetupError(); // Clear error when user selects a new path
       }
     }
 
@@ -943,6 +994,7 @@
       const path = await api.selectDirectory('Select Music Folder');
       if (path) {
         document.getElementById('setup-music-path').value = path;
+        hideSetupError(); // Clear error when user selects a new path
       }
     }
 
@@ -950,6 +1002,20 @@
       // Get paths from setup inputs
       const seratoPath = document.getElementById('setup-serato-path').value;
       const musicPath = document.getElementById('setup-music-path').value;
+
+      // Validate music path
+      if (!musicPath) {
+        showSetupError('Please select your music folder.');
+        return;
+      }
+
+      const exists = await api.validatePath(musicPath);
+      if (!exists) {
+        showSetupError('Music folder not found at this location. Please select a valid folder.');
+        return;
+      }
+
+      hideSetupError();
 
       // Save config
       const config = await api.getConfig();

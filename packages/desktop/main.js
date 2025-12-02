@@ -579,12 +579,18 @@ async function stopServer() {
     log.info('Stopping server...');
     try {
       await recrateService.stop();
+      log.info('Server stopped successfully');
     } catch (error) {
       log.error('Error stopping server:', error);
     }
     recrateService = null;
     serverStatus = 'stopped';
     updateTrayMenu();
+
+    // Notify UI that server stopped
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('server-status', { status: 'stopped' });
+    }
   }
 
   // Disconnect from proxy
@@ -597,7 +603,24 @@ async function stopServer() {
 // IPC Handlers
 // Setup wizard handlers
 ipcMain.handle('get-setup-complete', () => {
-  return store.get('setupComplete', false);
+  const setupComplete = store.get('setupComplete', false);
+  if (!setupComplete) return false;
+
+  // Also verify Serato path still exists - force wizard if path is invalid
+  const seratoPath = store.get('seratoPath', detectSeratoPath());
+  if (!seratoPath || !fs.existsSync(seratoPath)) {
+    log.info('Serato path not found, showing setup wizard:', seratoPath);
+    return false;
+  }
+
+  return true;
+});
+
+// Path validation handler
+ipcMain.handle('validate-path', (event, pathToCheck) => {
+  const exists = fs.existsSync(pathToCheck);
+  log.info(`Validating path: ${pathToCheck} - exists: ${exists}`);
+  return exists;
 });
 
 ipcMain.handle('set-setup-complete', () => {
@@ -670,8 +693,8 @@ ipcMain.handle('get-diagnostics', () => {
   };
 });
 
-ipcMain.handle('stop-server', () => {
-  stopServer();
+ipcMain.handle('stop-server', async () => {
+  await stopServer();
   return true;
 });
 
