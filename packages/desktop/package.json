@@ -1,6 +1,6 @@
 {
   "name": "@recrate/desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Recrate Desktop - Electron app for managing Serato library",
   "main": "main.js",
   "scripts": {
@@ -27,12 +27,14 @@
     "ws": "^8.14.2"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.1",
     "electron": "27.0.0",
     "electron-builder": "^24.6.4",
     "sharp": "^0.34.5"
   },
   "build": {
     "appId": "com.recrate.desktop",
+    "afterSign": "scripts/notarize.js",
     "productName": "Recrate",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
@@ -46,14 +48,25 @@
     "mac": {
       "category": "public.app-category.music",
       "icon": "assets/icons/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false,
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ]
     },
@@ -62,7 +75,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -79,11 +94,15 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "deb",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -91,7 +110,9 @@
       {
         "from": "server-bundle",
         "to": "server",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   },
