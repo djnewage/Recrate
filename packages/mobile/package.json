@@ -12,6 +12,7 @@
     "kill-server": "lsof -ti :3000 | xargs kill -9 || echo 'No server running on port 3000'"
   },
   "dependencies": {
+    "@expo/react-native-action-sheet": "^4.1.1",
     "@gorhom/bottom-sheet": "^5.2.6",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "^11.4.1",

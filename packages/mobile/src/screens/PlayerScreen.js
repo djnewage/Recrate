@@ -25,7 +25,6 @@ const PlayerScreen = ({ route, navigation }) => {
   const [showCratesModal, setShowCratesModal] = useState(false);
   const [selectedCrates, setSelectedCrates] = useState([]);
   const [isAddingToCrates, setIsAddingToCrates] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekPosition, setSeekPosition] = useState(0);
 
@@ -81,10 +80,6 @@ const PlayerScreen = ({ route, navigation }) => {
     } else {
       playTrack(track);
     }
-  };
-
-  const toggleFavorite = () => {
-    setIsFavorite(!isFavorite);
   };
 
   const handleSliderChange = (value) => {
@@ -244,16 +239,6 @@ const PlayerScreen = ({ route, navigation }) => {
             )}
           </View>
         </View>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={toggleFavorite}
-        >
-          <Ionicons
-            name={isFavorite ? "heart" : "heart-outline"}
-            size={32}
-            color={isFavorite ? "#FF6B9D" : "#FFFFFF"}
-          />
-        </TouchableOpacity>
       </View>
 
       {/* Progress Bar */}
@@ -502,12 +487,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: 'rgba(255, 255, 255, 0.5)',
     marginHorizontal: SPACING.xs,
-  },
-  actionButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   progressContainer: {
     paddingHorizontal: SPACING.xl,

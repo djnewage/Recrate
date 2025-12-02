@@ -9,11 +9,13 @@ import {
   TouchableOpacity,
   TextInput,
 } from 'react-native';
+import { useActionSheet } from '@expo/react-native-action-sheet';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
 
 const CrateDetailScreen = ({ route, navigation }) => {
+  const { showActionSheetWithOptions } = useActionSheet();
   const { crateId } = route.params;
   const { selectedCrate, isLoadingCrates, loadCrate, removeTrackFromCrate } = useStore();
   const [isEditMode, setIsEditMode] = useState(false);
@@ -121,15 +123,38 @@ const CrateDetailScreen = ({ route, navigation }) => {
   };
 
   const handleTrackMenu = (track) => {
-    // TODO: Implement action sheet menu
-    Alert.alert(
-      track.title,
-      'Menu options coming soon',
-      [
-        { text: 'Play Now', onPress: () => handleTrackPress(track) },
-        { text: 'Remove from Crate', style: 'destructive', onPress: () => handleRemoveTrack(track) },
-        { text: 'Cancel', style: 'cancel' },
-      ]
+    const options = ['Play Now', 'Remove from Crate', 'Cancel'];
+    const destructiveButtonIndex = 1;
+    const cancelButtonIndex = 2;
+
+    showActionSheetWithOptions(
+      {
+        options,
+        cancelButtonIndex,
+        destructiveButtonIndex,
+        title: track.title,
+        message: track.artist,
+        containerStyle: {
+          backgroundColor: COLORS.surface,
+        },
+        textStyle: {
+          color: COLORS.text,
+        },
+        titleTextStyle: {
+          color: COLORS.text,
+          fontWeight: 'bold',
+        },
+        messageTextStyle: {
+          color: COLORS.textSecondary,
+        },
+      },
+      (buttonIndex) => {
+        if (buttonIndex === 0) {
+          handleTrackPress(track);
+        } else if (buttonIndex === 1) {
+          handleRemoveTrack(track);
+        }
+      }
     );
   };
 
