@@ -406,6 +406,86 @@
       display: none !important;
     }
 
+    /* Error Toast */
+    .error-toast {
+      position: fixed;
+      bottom: 80px;
+      left: 16px;
+      right: 16px;
+      background: var(--accent-red);
+      color: #FFFFFF;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 1000;
+      display: none;
+      animation: slideUp 0.3s ease;
+      box-shadow: 0 4px 12px rgba(255, 59, 48, 0.3);
+    }
+
+    .error-toast.visible {
+      display: block;
+    }
+
+    .error-toast-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    .error-toast-message {
+      opacity: 0.9;
+      word-break: break-word;
+    }
+
+    .error-toast-close {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: none;
+      border: none;
+      color: #FFFFFF;
+      cursor: pointer;
+      padding: 4px;
+      opacity: 0.7;
+    }
+
+    .error-toast-close:hover {
+      opacity: 1;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* Button loading state */
+    .btn.loading {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+
+    .btn.loading .btn-text {
+      display: none;
+    }
+
+    .btn .btn-loading {
+      display: none;
+    }
+
+    .btn.loading .btn-loading {
+      display: inline;
+    }
+
     /* Setup Wizard Screen */
     #setup-screen {
       display: none;
@@ -624,7 +704,7 @@
     <!-- Settings Screen -->
     <div id="settings-screen" class="settings-screen">
       <header class="settings-header">
-        <span class="settings-title">Settings</span>
+        <span class="settings-title" onclick="toggleDebugPanel()" style="cursor: pointer;">Settings</span>
       </header>
 
       <div class="main-content">
@@ -654,6 +734,9 @@
         <button class="btn btn-secondary" onclick="showStatus()">Cancel</button>
         <button class="btn btn-primary" onclick="saveSettings()">Save</button>
       </footer>
+
+      <!-- Debug info (hidden by default, triple-click settings title to show) -->
+      <div id="debug-panel" class="hidden" style="padding: 16px; background: #f5f5f5; font-size: 11px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto;"></div>
     </div>
 
     <!-- Setup Wizard Screen -->
@@ -712,6 +795,15 @@
     </div>
   </div>
 
+  <!-- Error Toast -->
+  <div id="error-toast" class="error-toast">
+    <button class="error-toast-close" onclick="hideError()">✕</button>
+    <div class="error-toast-header">
+      <span>Server Error</span>
+    </div>
+    <div id="error-message" class="error-toast-message"></div>
+  </div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <script>
     // API reference
@@ -728,6 +820,50 @@
       cloud: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>',
       globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
     };
+
+    // Error toast timeout reference
+    let errorTimeout = null;
+
+    // Show error toast to user
+    function showError(message) {
+      const toast = document.getElementById('error-toast');
+      const messageEl = document.getElementById('error-message');
+
+      messageEl.textContent = message;
+      toast.classList.add('visible');
+
+      // Reset button loading state on error
+      setButtonLoading(false);
+
+      // Auto-hide after 10 seconds
+      if (errorTimeout) clearTimeout(errorTimeout);
+      errorTimeout = setTimeout(hideError, 10000);
+    }
+
+    // Hide error toast
+    function hideError() {
+      const toast = document.getElementById('error-toast');
+      toast.classList.remove('visible');
+      if (errorTimeout) {
+        clearTimeout(errorTimeout);
+        errorTimeout = null;
+      }
+    }
+
+    // Set button loading state
+    function setButtonLoading(loading) {
+      const btn = document.getElementById('toggle-btn');
+      const text = document.getElementById('toggle-text');
+
+      if (loading) {
+        btn.classList.add('loading');
+        btn.disabled = true;
+        text.textContent = 'Starting...';
+      } else {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    }
 
     // Initialize
     async function init() {
@@ -760,9 +896,16 @@
         await updateUI(status);
       });
 
-      // Listen for logs (silent)
-      api.onServerLog(() => {});
-      api.onServerError(() => {});
+      // Listen for logs
+      api.onServerLog((log) => {
+        console.log('Server log:', log);
+      });
+
+      // Listen for server errors - CRITICAL: display errors to user
+      api.onServerError((error) => {
+        console.error('Server error:', error);
+        showError(error);
+      });
     }
 
     // === Setup Wizard Functions ===
@@ -869,6 +1012,14 @@
       const toggleBtn = document.getElementById('toggle-btn');
       const toggleIcon = document.getElementById('toggle-icon');
       const toggleText = document.getElementById('toggle-text');
+
+      // Reset button loading state when status is confirmed
+      setButtonLoading(false);
+
+      // Show error if status includes an error
+      if (statusData?.error) {
+        showError(statusData.error);
+      }
 
       if (serverStatus === 'running') {
         // Update status indicator
@@ -1033,12 +1184,20 @@
 
     // Toggle server
     async function toggleServer() {
-      if (serverStatus === 'running') {
-        await api.stopServer();
-      } else {
-        await api.startServer();
+      try {
+        if (serverStatus === 'running') {
+          setButtonLoading(true);
+          document.getElementById('toggle-text').textContent = 'Stopping...';
+          await api.stopServer();
+        } else {
+          setButtonLoading(true);
+          await api.startServer();
+        }
+        setTimeout(updateServerStatus, 1000);
+      } catch (error) {
+        console.error('Toggle server error:', error);
+        showError(error.message || 'Failed to toggle server');
       }
-      setTimeout(updateServerStatus, 1000);
     }
 
     // Copy URL
@@ -1079,6 +1238,33 @@
       const path = await api.selectDirectory('Select Music Folder');
       if (path) {
         document.getElementById('music-path').value = path;
+      }
+    }
+
+    // Show debug diagnostics (triple-click settings title to activate)
+    let settingsClickCount = 0;
+    let settingsClickTimer = null;
+
+    async function toggleDebugPanel() {
+      settingsClickCount++;
+      if (settingsClickTimer) clearTimeout(settingsClickTimer);
+      settingsClickTimer = setTimeout(() => { settingsClickCount = 0; }, 500);
+
+      if (settingsClickCount >= 3) {
+        settingsClickCount = 0;
+        const panel = document.getElementById('debug-panel');
+        if (panel.classList.contains('hidden')) {
+          try {
+            const diag = await api.getDiagnostics();
+            panel.textContent = JSON.stringify(diag, null, 2);
+            panel.classList.remove('hidden');
+          } catch (e) {
+            panel.textContent = 'Error getting diagnostics: ' + e.message;
+            panel.classList.remove('hidden');
+          }
+        } else {
+          panel.classList.add('hidden');
+        }
       }
     }
 

@@ -642,6 +642,34 @@ ipcMain.handle('start-server', () => {
   return true;
 });
 
+// Diagnostics handler for debugging server startup issues
+ipcMain.handle('get-diagnostics', () => {
+  const serverBasePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'server', 'src')
+    : path.join(__dirname, '../server/src');
+
+  const configPath = path.join(serverBasePath, 'utils', 'config.js');
+  const serverPath = path.join(serverBasePath, 'index.js');
+  const nodeModulesPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'server', 'node_modules')
+    : path.join(__dirname, '../server/node_modules');
+
+  return {
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    serverBasePath,
+    configExists: fs.existsSync(configPath),
+    serverExists: fs.existsSync(serverPath),
+    nodeModulesExists: fs.existsSync(nodeModulesPath),
+    logPath: log.transports.file.getFile().path,
+    seratoPath: store.get('seratoPath', detectSeratoPath()),
+    musicPath: store.get('musicPath', path.join(os.homedir(), 'Music')),
+    seratoPathExists: fs.existsSync(store.get('seratoPath', detectSeratoPath())),
+    musicPathExists: fs.existsSync(store.get('musicPath', path.join(os.homedir(), 'Music')))
+  };
+});
+
 ipcMain.handle('stop-server', () => {
   stopServer();
   return true;

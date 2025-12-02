@@ -1,6 +1,6 @@
 {
   "name": "@recrate/desktop",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Recrate Desktop - Electron app for managing Serato library",
   "main": "main.js",
   "scripts": {
