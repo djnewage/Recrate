@@ -522,19 +522,106 @@ async function startServer() {
 
   log.info('Server args:', serverArgs);
 
-  // Use Electron's bundled Node.js via process.execPath with ELECTRON_RUN_AS_NODE=1
-  // This eliminates the need for users to install Node.js separately
-  // Works on all platforms: Windows, macOS, and Linux
-  const nodeCommand = process.execPath;
-  log.info('Using Electron as Node.js:', nodeCommand);
+  // Find Node.js executable
+  // We need system Node.js because ELECTRON_RUN_AS_NODE has module resolution issues
+  let nodeCommand = 'node'; // Default for development
+
+  if (app.isPackaged) {
+    log.info('Platform:', process.platform);
+
+    if (process.platform === 'win32') {
+      // Windows: check common Node.js installation locations
+      const windowsNodeLocations = [
+        path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe'),
+        path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'nodejs', 'node.exe'),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'nodejs', 'node.exe'),
+        path.join(os.homedir(), 'AppData', 'Roaming', 'nvm', 'current', 'node.exe'),
+        'C:\\Program Files\\nodejs\\node.exe',
+      ];
+
+      nodeCommand = null;
+      for (const loc of windowsNodeLocations) {
+        log.debug('Checking for Node.js at:', loc);
+        if (loc && fs.existsSync(loc)) {
+          nodeCommand = loc;
+          log.info('Found Node.js at:', nodeCommand);
+          break;
+        }
+      }
+
+      // Fallback: try 'where node' on Windows
+      if (!nodeCommand) {
+        try {
+          nodeCommand = execSync('where node', { encoding: 'utf8' }).trim().split('\n')[0];
+          log.info('Found Node.js via where:', nodeCommand);
+        } catch (e) {
+          log.error('Could not find Node.js installation on Windows');
+          dialog.showErrorBox(
+            'Node.js Required',
+            'Could not find Node.js on your system.\n\nPlease install Node.js from https://nodejs.org and restart the app.'
+          );
+          if (mainWindow) {
+            mainWindow.webContents.send('server-status', {
+              status: 'stopped',
+              error: 'Node.js not found. Please install from nodejs.org'
+            });
+          }
+          return;
+        }
+      }
+    } else {
+      // macOS/Linux: check common Node.js installation locations
+      const unixNodeLocations = [
+        '/opt/homebrew/bin/node',      // Homebrew on Apple Silicon
+        '/usr/local/bin/node',         // Homebrew on Intel Mac
+        '/usr/bin/node',               // System Node.js
+        path.join(os.homedir(), '.nvm/current/bin/node'),  // NVM
+        path.join(os.homedir(), '.nvm/versions/node/v20/bin/node'),  // NVM specific
+        path.join(os.homedir(), '.nvm/versions/node/v22/bin/node'),  // NVM specific
+      ];
+
+      nodeCommand = null;
+      for (const loc of unixNodeLocations) {
+        log.debug('Checking for Node.js at:', loc);
+        if (fs.existsSync(loc)) {
+          nodeCommand = loc;
+          log.info('Found Node.js at:', nodeCommand);
+          break;
+        }
+      }
+
+      // Fallback: try 'which node'
+      if (!nodeCommand) {
+        try {
+          nodeCommand = execSync('which node', { encoding: 'utf8' }).trim();
+          log.info('Found Node.js via which:', nodeCommand);
+        } catch (e) {
+          log.error('Could not find Node.js installation');
+          dialog.showErrorBox(
+            'Node.js Required',
+            'Could not find Node.js on your system.\n\nPlease install Node.js from https://nodejs.org and restart the app.'
+          );
+          if (mainWindow) {
+            mainWindow.webContents.send('server-status', {
+              status: 'stopped',
+              error: 'Node.js not found. Please install from nodejs.org'
+            });
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  log.info('Starting server with Node.js:', nodeCommand);
 
   serverProcess = spawn(nodeCommand, serverArgs, {
     env: {
       ...process.env,
-      NODE_ENV: 'production',
-      ELECTRON_RUN_AS_NODE: '1'  // Makes Electron behave like Node.js
+      NODE_ENV: 'production'
     },
-    cwd: app.isPackaged ? path.dirname(serverPath) : undefined
+    cwd: app.isPackaged ? path.dirname(serverPath) : undefined,
+    windowsHide: true  // Hide console window on Windows
   });
 
   // Handle spawn errors (e.g., Node.js not found, permission denied)
@@ -605,14 +692,15 @@ async function startServer() {
   });
 
   serverProcess.stderr.on('data', (data) => {
-    log.error('Server Error:', data.toString());
+    const errorOutput = data.toString();
+    log.error('Server stderr:', errorOutput);
     if (mainWindow) {
-      mainWindow.webContents.send('server-error', data.toString());
+      mainWindow.webContents.send('server-error', errorOutput);
     }
   });
 
-  serverProcess.on('close', (code) => {
-    log.info(`Server process exited with code ${code}`);
+  serverProcess.on('close', (code, signal) => {
+    log.info(`Server process exited with code ${code}, signal ${signal}`);
     serverProcess = null;
     serverStatus = 'stopped';
     updateTrayMenu();
