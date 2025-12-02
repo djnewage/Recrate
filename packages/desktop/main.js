@@ -1,20 +1,22 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
-const { spawn, execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const Store = require('electron-store');
 const log = require('electron-log');
 const os = require('os');
 const fs = require('fs');
 const BinaryProxyClient = require('./src/binaryProxyClient');
 
-// Configure logging
-log.transports.file.level = 'info';
+// Configure logging - write to file for debugging packaged apps
+log.transports.file.level = 'debug';
+log.transports.file.resolvePathFn = () => path.join(app.getPath('logs'), 'main.log');
 log.info('Recrate Desktop starting...');
+log.info('Log file:', log.transports.file.getFile().path);
 
 const store = new Store();
 let mainWindow = null;
 let tray = null;
-let serverProcess = null;
+let recrateService = null;  // Changed from serverProcess - now holds the service instance
 let tailscaleServeProcess = null;
 let proxyClient = null;
 let serverPort = 3000;
@@ -408,158 +410,156 @@ function disconnectFromProxy() {
   }
 }
 
-// Start Node.js server
+/**
+ * Kill any process using the specified port
+ * Prevents "EADDRINUSE" errors from stale processes
+ */
+function killProcessOnPort(port) {
+  try {
+    if (process.platform === 'win32') {
+      // Windows: find and kill process on port
+      const result = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const lines = result.trim().split('\n');
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && !isNaN(pid)) {
+          try {
+            execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' });
+            log.info(`Killed process ${pid} on port ${port}`);
+          } catch (e) {
+            // Process may have already exited
+          }
+        }
+      }
+    } else {
+      // macOS/Linux: use lsof to find and kill process
+      const result = execSync(`lsof -ti :${port}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const pids = result.trim().split('\n').filter(p => p);
+      for (const pid of pids) {
+        try {
+          execSync(`kill -9 ${pid}`, { stdio: 'ignore' });
+          log.info(`Killed process ${pid} on port ${port}`);
+        } catch (e) {
+          // Process may have already exited
+        }
+      }
+    }
+  } catch (e) {
+    // No process found on port, which is fine
+    log.debug(`No process found on port ${port}`);
+  }
+}
+
+// Start server in-process (no external Node.js required)
 async function startServer() {
-  if (serverProcess) {
+  if (recrateService) {
     log.info('Server already running');
     return;
   }
 
-  const config = {
+  const userConfig = {
     seratoPath: store.get('seratoPath', detectSeratoPath()),
-    musicPath: store.get('musicPath', path.join(os.homedir(), 'Music')),
+    musicPaths: [store.get('musicPath', path.join(os.homedir(), 'Music'))],
     port: store.get('port', 3000)
   };
 
-  serverPort = config.port;
+  serverPort = userConfig.port;
 
-  log.info('Starting server with config:', config);
+  // Kill any stale process on the port before starting
+  log.info('Checking for stale processes on port', serverPort);
+  killProcessOnPort(serverPort);
 
-  // In development, run from source
-  // In production, run bundled server
-  const serverPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'server', 'src', 'index.js')
-    : path.join(__dirname, '../server/src/index.js');
+  log.info('Starting server with config:', userConfig);
+  log.info('App is packaged:', app.isPackaged);
 
-  // Check if server file exists
-  if (!fs.existsSync(serverPath)) {
-    log.error('Server file not found:', serverPath);
-    if (mainWindow) {
-      mainWindow.webContents.send('server-error', `Server file not found: ${serverPath}`);
-      mainWindow.webContents.send('server-status', {
-        status: 'stopped',
-        error: 'Server files not found. Please reinstall the application.'
-      });
-    }
-    return;
-  }
+  try {
+    // Determine server paths
+    const serverBasePath = app.isPackaged
+      ? path.join(process.resourcesPath, 'server', 'src')
+      : path.join(__dirname, '../server/src');
 
-  // Pass paths as command-line arguments to handle special characters properly
-  const serverArgs = [
-    serverPath,
-    `--serato-path=${config.seratoPath}`,
-    `--music-path=${config.musicPath}`,
-    `--port=${config.port}`
-  ];
+    const configPath = path.join(serverBasePath, 'utils', 'config.js');
+    const serverPath = path.join(serverBasePath, 'index.js');
 
-  log.info('Server path:', serverPath);
-  log.info('Server args:', serverArgs);
+    log.info('Server base path:', serverBasePath);
+    log.info('Config path:', configPath);
+    log.info('Server path:', serverPath);
 
-  // Try to use system node first, fall back to Electron's node
-  // In packaged apps, we need to rely on system Node.js or bundle it
-  let nodeCommand = 'node';
-
-  // Check if we're in a packaged app
-  if (app.isPackaged) {
-    // Try to find system node
-    try {
-      // Check if node is available on the system
-      const nodePath = execSync('which node', { encoding: 'utf8' }).trim();
-      nodeCommand = nodePath;
-      log.info('Using system node:', nodeCommand);
-    } catch (e) {
-      // No system node, use Electron's node via process.execPath with ELECTRON_RUN_AS_NODE
-      log.info('No system node found, using Electron as Node');
-      nodeCommand = process.execPath;
-    }
-  }
-
-  serverProcess = spawn(nodeCommand, serverArgs, {
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      ELECTRON_RUN_AS_NODE: '1'  // Makes Electron behave like Node.js
-    },
-    cwd: app.isPackaged ? path.dirname(serverPath) : undefined
-  });
-
-  serverProcess.stdout.on('data', async (data) => {
-    const output = data.toString();
-    log.info('Server:', output);
-
-    // Send logs to renderer (wait for window to be ready)
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('server-log', output);
+    // Check if server files exist
+    if (!fs.existsSync(serverPath)) {
+      throw new Error(`Server file not found: ${serverPath}`);
     }
 
-    // Detect when server is ready
-    if (output.includes('running on port') || output.includes('Server running')) {
-      serverStatus = 'running';
-      updateTrayMenu();
-
-      // Connect to cloud proxy
-      await connectToProxy();
-
-      // Start Tailscale HTTPS serve (fallback option)
-      startTailscaleServe();
-
-      // Get connection info
-      const localIP = getLocalIP();
-      const tailscaleIP = getTailscaleIP();
-      const tailscaleInstalled = isTailscaleInstalled();
-
-      // Send status to renderer (with delay to ensure window is ready)
-      const sendStatus = () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          const proxyURL = proxyClient && proxyClient.isConnected()
-            ? getProxyURL()
-            : null;
-
-          mainWindow.webContents.send('server-status', {
-            status: 'running',
-            localURL: `http://${localIP}:${serverPort}`,
-            proxyURL,
-            proxyConnected: proxyClient && proxyClient.isConnected(),
-            tailscaleURL: tailscaleIP ? `http://${tailscaleIP}:${serverPort}` : null,
-            tailscaleHTTPSURL: tailscaleServeURL,
-            tailscaleInstalled,
-            config
-          });
-          log.info('Sent running status to renderer with proxy and Tailscale info');
-        }
-      };
-
-      // Send immediately and again after a delay to ensure it's received
-      sendStatus();
-      setTimeout(sendStatus, 500);
-      setTimeout(sendStatus, 1000);
+    // Check if node_modules exists (critical for packaged app)
+    if (app.isPackaged) {
+      const nodeModulesPath = path.join(process.resourcesPath, 'server', 'node_modules');
+      if (!fs.existsSync(nodeModulesPath)) {
+        throw new Error('Server dependencies not found. Please reinstall the application.');
+      }
+      log.info('Server node_modules found at:', nodeModulesPath);
     }
-  });
 
-  serverProcess.stderr.on('data', (data) => {
-    log.error('Server Error:', data.toString());
-    if (mainWindow) {
-      mainWindow.webContents.send('server-error', data.toString());
-    }
-  });
+    // Set runtime config before requiring the server
+    const serverConfig = require(configPath);
+    serverConfig.setRuntimeConfig(userConfig);
+    log.info('Runtime config set');
 
-  serverProcess.on('close', (code) => {
-    log.info(`Server process exited with code ${code}`);
-    serverProcess = null;
-    serverStatus = 'stopped';
+    // Require and instantiate the service
+    const RecrateService = require(serverPath);
+    recrateService = new RecrateService();
+    log.info('RecrateService instantiated');
+
+    // Initialize and start
+    await recrateService.initialize();
+    log.info('Server initialized');
+
+    await recrateService.start();
+    log.info('Server started');
+
+    serverStatus = 'running';
     updateTrayMenu();
 
-    if (mainWindow) {
-      mainWindow.webContents.send('server-status', {
-        status: 'stopped',
-        error: code !== 0 ? 'Server stopped with error. Check if port is already in use.' : null
-      });
-    }
-  });
+    // Connect to cloud proxy
+    await connectToProxy();
 
-  serverProcess.on('error', (error) => {
-    log.error('Server process error:', error);
-    serverProcess = null;
+    // Start Tailscale HTTPS serve (fallback option)
+    startTailscaleServe();
+
+    // Get connection info
+    const localIP = getLocalIP();
+    const tailscaleIP = getTailscaleIP();
+    const tailscaleInstalled = isTailscaleInstalled();
+
+    // Send status to renderer
+    const sendStatus = () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const proxyURL = proxyClient && proxyClient.isConnected()
+          ? getProxyURL()
+          : null;
+
+        mainWindow.webContents.send('server-status', {
+          status: 'running',
+          localURL: `http://${localIP}:${serverPort}`,
+          proxyURL,
+          proxyConnected: proxyClient && proxyClient.isConnected(),
+          tailscaleURL: tailscaleIP ? `http://${tailscaleIP}:${serverPort}` : null,
+          tailscaleHTTPSURL: tailscaleServeURL,
+          tailscaleInstalled,
+          config: userConfig
+        });
+        log.info('Sent running status to renderer');
+      }
+    };
+
+    // Send immediately and again after delays to ensure it's received
+    sendStatus();
+    setTimeout(sendStatus, 500);
+    setTimeout(sendStatus, 1000);
+
+  } catch (error) {
+    log.error('Failed to start server:', error);
+    recrateService = null;
     serverStatus = 'stopped';
     updateTrayMenu();
 
@@ -570,17 +570,27 @@ async function startServer() {
         error: error.message
       });
     }
-  });
+  }
 }
 
 // Stop server
-function stopServer() {
-  if (serverProcess) {
+async function stopServer() {
+  if (recrateService) {
     log.info('Stopping server...');
-    serverProcess.kill();
-    serverProcess = null;
+    try {
+      await recrateService.stop();
+      log.info('Server stopped successfully');
+    } catch (error) {
+      log.error('Error stopping server:', error);
+    }
+    recrateService = null;
     serverStatus = 'stopped';
     updateTrayMenu();
+
+    // Notify UI that server stopped
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('server-status', { status: 'stopped' });
+    }
   }
 
   // Disconnect from proxy
@@ -593,7 +603,24 @@ function stopServer() {
 // IPC Handlers
 // Setup wizard handlers
 ipcMain.handle('get-setup-complete', () => {
-  return store.get('setupComplete', false);
+  const setupComplete = store.get('setupComplete', false);
+  if (!setupComplete) return false;
+
+  // Also verify Serato path still exists - force wizard if path is invalid
+  const seratoPath = store.get('seratoPath', detectSeratoPath());
+  if (!seratoPath || !fs.existsSync(seratoPath)) {
+    log.info('Serato path not found, showing setup wizard:', seratoPath);
+    return false;
+  }
+
+  return true;
+});
+
+// Path validation handler
+ipcMain.handle('validate-path', (event, pathToCheck) => {
+  const exists = fs.existsSync(pathToCheck);
+  log.info(`Validating path: ${pathToCheck} - exists: ${exists}`);
+  return exists;
 });
 
 ipcMain.handle('set-setup-complete', () => {
@@ -638,8 +665,36 @@ ipcMain.handle('start-server', () => {
   return true;
 });
 
-ipcMain.handle('stop-server', () => {
-  stopServer();
+// Diagnostics handler for debugging server startup issues
+ipcMain.handle('get-diagnostics', () => {
+  const serverBasePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'server', 'src')
+    : path.join(__dirname, '../server/src');
+
+  const configPath = path.join(serverBasePath, 'utils', 'config.js');
+  const serverPath = path.join(serverBasePath, 'index.js');
+  const nodeModulesPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'server', 'node_modules')
+    : path.join(__dirname, '../server/node_modules');
+
+  return {
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    serverBasePath,
+    configExists: fs.existsSync(configPath),
+    serverExists: fs.existsSync(serverPath),
+    nodeModulesExists: fs.existsSync(nodeModulesPath),
+    logPath: log.transports.file.getFile().path,
+    seratoPath: store.get('seratoPath', detectSeratoPath()),
+    musicPath: store.get('musicPath', path.join(os.homedir(), 'Music')),
+    seratoPathExists: fs.existsSync(store.get('seratoPath', detectSeratoPath())),
+    musicPathExists: fs.existsSync(store.get('musicPath', path.join(os.homedir(), 'Music')))
+  };
+});
+
+ipcMain.handle('stop-server', async () => {
+  await stopServer();
   return true;
 });
 

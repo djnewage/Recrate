@@ -8,6 +8,7 @@ build/
 
 # Resources (bundled server)
 resources/server/
+server-bundle/
 
 # Logs
 *.log

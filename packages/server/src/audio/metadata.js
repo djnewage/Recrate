@@ -1,4 +1,14 @@
-const { parseFile } = require('music-metadata');
+// music-metadata is ESM-only, so we need dynamic import
+let parseFile = null;
+
+async function getParseFile() {
+  if (!parseFile) {
+    const mm = await import('music-metadata');
+    parseFile = mm.parseFile;
+  }
+  return parseFile;
+}
+
 const fs = require('fs').promises;
 const path = require('path');
 const logger = require('../utils/logger');
@@ -16,7 +26,8 @@ class MetadataExtractor {
    */
   async extractMetadata(filePath) {
     try {
-      const metadata = await parseFile(filePath, { skipCovers: false });
+      const parse = await getParseFile();
+      const metadata = await parse(filePath, { skipCovers: false });
 
       return {
         title: metadata.common.title || path.basename(filePath, path.extname(filePath)),
@@ -59,7 +70,8 @@ class MetadataExtractor {
    */
   async getArtwork(filePath) {
     try {
-      const metadata = await parseFile(filePath, { skipCovers: false });
+      const parse = await getParseFile();
+      const metadata = await parse(filePath, { skipCovers: false });
 
       if (metadata.common.picture && metadata.common.picture.length > 0) {
         const picture = metadata.common.picture[0];

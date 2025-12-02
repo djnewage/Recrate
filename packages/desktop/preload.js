@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Utils
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
+  validatePath: (path) => ipcRenderer.invoke('validate-path', path),
 
   // Tailscale
   getTailscaleInfo: () => ipcRenderer.invoke('get-tailscale-info'),
