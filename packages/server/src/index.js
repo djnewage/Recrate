@@ -119,10 +119,11 @@ class RecrateService {
       }
 
       logger.success("Recrate Service stopped gracefully");
-      process.exit(0);
+      // Note: Don't call process.exit() here - let the caller decide
+      // This allows the service to be used in-process (e.g., Electron main process)
     } catch (error) {
       logger.error("Error during shutdown:", error);
-      process.exit(1);
+      throw error; // Re-throw instead of process.exit() so caller can handle
     }
   }
 

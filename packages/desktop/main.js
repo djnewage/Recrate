@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
-const { spawn, execSync } = require('child_process');
+const { execSync } = require('child_process');
 const Store = require('electron-store');
 const log = require('electron-log');
 const os = require('os');
@@ -16,7 +16,7 @@ log.info('Log file:', log.transports.file.getFile().path);
 const store = new Store();
 let mainWindow = null;
 let tray = null;
-let serverProcess = null;
+let recrateService = null;  // Changed from serverProcess - now holds the service instance
 let tailscaleServeProcess = null;
 let proxyClient = null;
 let serverPort = 3000;
@@ -451,271 +451,115 @@ function killProcessOnPort(port) {
   }
 }
 
-// Start Node.js server
+// Start server in-process (no external Node.js required)
 async function startServer() {
-  if (serverProcess) {
+  if (recrateService) {
     log.info('Server already running');
     return;
   }
 
-  const config = {
+  const userConfig = {
     seratoPath: store.get('seratoPath', detectSeratoPath()),
-    musicPath: store.get('musicPath', path.join(os.homedir(), 'Music')),
+    musicPaths: [store.get('musicPath', path.join(os.homedir(), 'Music'))],
     port: store.get('port', 3000)
   };
 
-  serverPort = config.port;
+  serverPort = userConfig.port;
 
   // Kill any stale process on the port before starting
   log.info('Checking for stale processes on port', serverPort);
   killProcessOnPort(serverPort);
 
-  log.info('Starting server with config:', config);
+  log.info('Starting server with config:', userConfig);
   log.info('App is packaged:', app.isPackaged);
-  log.info('Resources path:', process.resourcesPath);
 
-  // In development, run from source
-  // In production, run bundled server
-  const serverPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'server', 'src', 'index.js')
-    : path.join(__dirname, '../server/src/index.js');
+  try {
+    // Determine server paths
+    const serverBasePath = app.isPackaged
+      ? path.join(process.resourcesPath, 'server', 'src')
+      : path.join(__dirname, '../server/src');
 
-  log.info('Server path:', serverPath);
+    const configPath = path.join(serverBasePath, 'utils', 'config.js');
+    const serverPath = path.join(serverBasePath, 'index.js');
 
-  // Check if server file exists
-  if (!fs.existsSync(serverPath)) {
-    log.error('Server file not found:', serverPath);
-    if (mainWindow) {
-      mainWindow.webContents.send('server-error', `Server file not found: ${serverPath}`);
-      mainWindow.webContents.send('server-status', {
-        status: 'stopped',
-        error: 'Server files not found. Please reinstall the application.'
-      });
+    log.info('Server base path:', serverBasePath);
+    log.info('Config path:', configPath);
+    log.info('Server path:', serverPath);
+
+    // Check if server files exist
+    if (!fs.existsSync(serverPath)) {
+      throw new Error(`Server file not found: ${serverPath}`);
     }
-    return;
-  }
 
-  // Check if node_modules exists (critical for packaged app)
-  if (app.isPackaged) {
-    const nodeModulesPath = path.join(process.resourcesPath, 'server', 'node_modules');
-    if (!fs.existsSync(nodeModulesPath)) {
-      log.error('Server node_modules not found:', nodeModulesPath);
-      if (mainWindow) {
-        mainWindow.webContents.send('server-error', `Server dependencies not found. The application may be corrupted.`);
-        mainWindow.webContents.send('server-status', {
-          status: 'stopped',
-          error: 'Server dependencies missing. Please reinstall the application.'
-        });
+    // Check if node_modules exists (critical for packaged app)
+    if (app.isPackaged) {
+      const nodeModulesPath = path.join(process.resourcesPath, 'server', 'node_modules');
+      if (!fs.existsSync(nodeModulesPath)) {
+        throw new Error('Server dependencies not found. Please reinstall the application.');
       }
-      return;
-    }
-    log.info('Server node_modules found at:', nodeModulesPath);
-  }
-
-  // Pass paths as command-line arguments to handle special characters properly
-  const serverArgs = [
-    serverPath,
-    `--serato-path=${config.seratoPath}`,
-    `--music-path=${config.musicPath}`,
-    `--port=${config.port}`
-  ];
-
-  log.info('Server args:', serverArgs);
-
-  // Find Node.js executable
-  // We need system Node.js because ELECTRON_RUN_AS_NODE has module resolution issues
-  let nodeCommand = 'node'; // Default for development
-
-  if (app.isPackaged) {
-    log.info('Platform:', process.platform);
-
-    if (process.platform === 'win32') {
-      // Windows: check common Node.js installation locations
-      const windowsNodeLocations = [
-        path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe'),
-        path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'nodejs', 'node.exe'),
-        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'nodejs', 'node.exe'),
-        path.join(os.homedir(), 'AppData', 'Roaming', 'nvm', 'current', 'node.exe'),
-        'C:\\Program Files\\nodejs\\node.exe',
-      ];
-
-      nodeCommand = null;
-      for (const loc of windowsNodeLocations) {
-        log.debug('Checking for Node.js at:', loc);
-        if (loc && fs.existsSync(loc)) {
-          nodeCommand = loc;
-          log.info('Found Node.js at:', nodeCommand);
-          break;
-        }
-      }
-
-      // Fallback: try 'where node' on Windows
-      if (!nodeCommand) {
-        try {
-          nodeCommand = execSync('where node', { encoding: 'utf8' }).trim().split('\n')[0];
-          log.info('Found Node.js via where:', nodeCommand);
-        } catch (e) {
-          log.error('Could not find Node.js installation on Windows');
-          dialog.showErrorBox(
-            'Node.js Required',
-            'Could not find Node.js on your system.\n\nPlease install Node.js from https://nodejs.org and restart the app.'
-          );
-          if (mainWindow) {
-            mainWindow.webContents.send('server-status', {
-              status: 'stopped',
-              error: 'Node.js not found. Please install from nodejs.org'
-            });
-          }
-          return;
-        }
-      }
-    } else {
-      // macOS/Linux: check common Node.js installation locations
-      const unixNodeLocations = [
-        '/opt/homebrew/bin/node',      // Homebrew on Apple Silicon
-        '/usr/local/bin/node',         // Homebrew on Intel Mac
-        '/usr/bin/node',               // System Node.js
-        path.join(os.homedir(), '.nvm/current/bin/node'),  // NVM
-        path.join(os.homedir(), '.nvm/versions/node/v20/bin/node'),  // NVM specific
-        path.join(os.homedir(), '.nvm/versions/node/v22/bin/node'),  // NVM specific
-      ];
-
-      nodeCommand = null;
-      for (const loc of unixNodeLocations) {
-        log.debug('Checking for Node.js at:', loc);
-        if (fs.existsSync(loc)) {
-          nodeCommand = loc;
-          log.info('Found Node.js at:', nodeCommand);
-          break;
-        }
-      }
-
-      // Fallback: try 'which node'
-      if (!nodeCommand) {
-        try {
-          nodeCommand = execSync('which node', { encoding: 'utf8' }).trim();
-          log.info('Found Node.js via which:', nodeCommand);
-        } catch (e) {
-          log.error('Could not find Node.js installation');
-          dialog.showErrorBox(
-            'Node.js Required',
-            'Could not find Node.js on your system.\n\nPlease install Node.js from https://nodejs.org and restart the app.'
-          );
-          if (mainWindow) {
-            mainWindow.webContents.send('server-status', {
-              status: 'stopped',
-              error: 'Node.js not found. Please install from nodejs.org'
-            });
-          }
-          return;
-        }
-      }
-    }
-  }
-
-  log.info('Starting server with Node.js:', nodeCommand);
-
-  serverProcess = spawn(nodeCommand, serverArgs, {
-    env: {
-      ...process.env,
-      NODE_ENV: 'production'
-    },
-    cwd: app.isPackaged ? path.dirname(serverPath) : undefined,
-    windowsHide: true  // Hide console window on Windows
-  });
-
-  // Handle spawn errors (e.g., Node.js not found, permission denied)
-  serverProcess.on('error', (err) => {
-    log.error('Failed to start server process:', err);
-    dialog.showErrorBox('Server Error', `Failed to start server: ${err.message}`);
-    serverProcess = null;
-    serverStatus = 'stopped';
-    if (mainWindow) {
-      mainWindow.webContents.send('server-status', {
-        status: 'stopped',
-        error: `Failed to start: ${err.message}`
-      });
-    }
-  });
-
-  serverProcess.stdout.on('data', async (data) => {
-    const output = data.toString();
-    log.info('Server:', output);
-
-    // Send logs to renderer (wait for window to be ready)
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('server-log', output);
+      log.info('Server node_modules found at:', nodeModulesPath);
     }
 
-    // Detect when server is ready
-    if (output.includes('running on port') || output.includes('Server running')) {
-      serverStatus = 'running';
-      updateTrayMenu();
+    // Set runtime config before requiring the server
+    const serverConfig = require(configPath);
+    serverConfig.setRuntimeConfig(userConfig);
+    log.info('Runtime config set');
 
-      // Connect to cloud proxy
-      await connectToProxy();
+    // Require and instantiate the service
+    const RecrateService = require(serverPath);
+    recrateService = new RecrateService();
+    log.info('RecrateService instantiated');
 
-      // Start Tailscale HTTPS serve (fallback option)
-      startTailscaleServe();
+    // Initialize and start
+    await recrateService.initialize();
+    log.info('Server initialized');
 
-      // Get connection info
-      const localIP = getLocalIP();
-      const tailscaleIP = getTailscaleIP();
-      const tailscaleInstalled = isTailscaleInstalled();
+    await recrateService.start();
+    log.info('Server started');
 
-      // Send status to renderer (with delay to ensure window is ready)
-      const sendStatus = () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          const proxyURL = proxyClient && proxyClient.isConnected()
-            ? getProxyURL()
-            : null;
-
-          mainWindow.webContents.send('server-status', {
-            status: 'running',
-            localURL: `http://${localIP}:${serverPort}`,
-            proxyURL,
-            proxyConnected: proxyClient && proxyClient.isConnected(),
-            tailscaleURL: tailscaleIP ? `http://${tailscaleIP}:${serverPort}` : null,
-            tailscaleHTTPSURL: tailscaleServeURL,
-            tailscaleInstalled,
-            config
-          });
-          log.info('Sent running status to renderer with proxy and Tailscale info');
-        }
-      };
-
-      // Send immediately and again after a delay to ensure it's received
-      sendStatus();
-      setTimeout(sendStatus, 500);
-      setTimeout(sendStatus, 1000);
-    }
-  });
-
-  serverProcess.stderr.on('data', (data) => {
-    const errorOutput = data.toString();
-    log.error('Server stderr:', errorOutput);
-    if (mainWindow) {
-      mainWindow.webContents.send('server-error', errorOutput);
-    }
-  });
-
-  serverProcess.on('close', (code, signal) => {
-    log.info(`Server process exited with code ${code}, signal ${signal}`);
-    serverProcess = null;
-    serverStatus = 'stopped';
+    serverStatus = 'running';
     updateTrayMenu();
 
-    if (mainWindow) {
-      mainWindow.webContents.send('server-status', {
-        status: 'stopped',
-        error: code !== 0 ? 'Server stopped with error. Check if port is already in use.' : null
-      });
-    }
-  });
+    // Connect to cloud proxy
+    await connectToProxy();
 
-  serverProcess.on('error', (error) => {
-    log.error('Server process error:', error);
-    serverProcess = null;
+    // Start Tailscale HTTPS serve (fallback option)
+    startTailscaleServe();
+
+    // Get connection info
+    const localIP = getLocalIP();
+    const tailscaleIP = getTailscaleIP();
+    const tailscaleInstalled = isTailscaleInstalled();
+
+    // Send status to renderer
+    const sendStatus = () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const proxyURL = proxyClient && proxyClient.isConnected()
+          ? getProxyURL()
+          : null;
+
+        mainWindow.webContents.send('server-status', {
+          status: 'running',
+          localURL: `http://${localIP}:${serverPort}`,
+          proxyURL,
+          proxyConnected: proxyClient && proxyClient.isConnected(),
+          tailscaleURL: tailscaleIP ? `http://${tailscaleIP}:${serverPort}` : null,
+          tailscaleHTTPSURL: tailscaleServeURL,
+          tailscaleInstalled,
+          config: userConfig
+        });
+        log.info('Sent running status to renderer');
+      }
+    };
+
+    // Send immediately and again after delays to ensure it's received
+    sendStatus();
+    setTimeout(sendStatus, 500);
+    setTimeout(sendStatus, 1000);
+
+  } catch (error) {
+    log.error('Failed to start server:', error);
+    recrateService = null;
     serverStatus = 'stopped';
     updateTrayMenu();
 
@@ -726,15 +570,19 @@ async function startServer() {
         error: error.message
       });
     }
-  });
+  }
 }
 
 // Stop server
-function stopServer() {
-  if (serverProcess) {
+async function stopServer() {
+  if (recrateService) {
     log.info('Stopping server...');
-    serverProcess.kill();
-    serverProcess = null;
+    try {
+      await recrateService.stop();
+    } catch (error) {
+      log.error('Error stopping server:', error);
+    }
+    recrateService = null;
     serverStatus = 'stopped';
     updateTrayMenu();
   }

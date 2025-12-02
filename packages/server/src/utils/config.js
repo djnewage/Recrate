@@ -1,9 +1,29 @@
 const path = require("path");
 const os = require("os");
-require("dotenv").config({
-  path: path.join(__dirname, "..", "..", ".env"),
-  override: true
-});
+
+// Runtime config can be set programmatically (e.g., from Electron main process)
+let runtimeConfig = null;
+
+/**
+ * Set runtime configuration (call before accessing config properties)
+ * @param {Object} cfg - Configuration object
+ * @param {string} cfg.seratoPath - Path to Serato library
+ * @param {string[]} cfg.musicPaths - Array of music directories
+ * @param {number} cfg.port - Server port
+ */
+function setRuntimeConfig(cfg) {
+  runtimeConfig = cfg;
+}
+
+// Only load .env if not in Electron packaged app
+try {
+  require("dotenv").config({
+    path: path.join(__dirname, "..", "..", ".env"),
+    override: true
+  });
+} catch (e) {
+  // dotenv may not be available or .env may not exist - that's fine
+}
 
 /**
  * Auto-detect Serato installation path based on OS
@@ -86,20 +106,26 @@ function getMusicPaths() {
 
 /**
  * Configuration object
- * Priority: Command-line args > Environment variables > Defaults
+ * Priority: Runtime config > Command-line args > Environment variables > Defaults
  */
 const config = {
   // Serato configuration
   serato: {
-    path: cmdArgs['serato-path'] || process.env.SERATO_PATH || detectSeratoPath(),
-    musicPaths: getMusicPaths(), // Array of music directories to scan
+    get path() {
+      return runtimeConfig?.seratoPath || cmdArgs['serato-path'] || process.env.SERATO_PATH || detectSeratoPath();
+    },
+    get musicPaths() {
+      return runtimeConfig?.musicPaths || getMusicPaths();
+    },
     databaseFile: "database V2",
     cratesDir: "Subcrates",
   },
 
   // Server configuration
   server: {
-    port: parseInt(cmdArgs['port'], 10) || parseInt(process.env.PORT, 10) || 3000,
+    get port() {
+      return runtimeConfig?.port || parseInt(cmdArgs['port'], 10) || parseInt(process.env.PORT, 10) || 3000;
+    },
     host: cmdArgs['host'] || process.env.HOST || "0.0.0.0",
   },
 
@@ -123,3 +149,4 @@ const config = {
 };
 
 module.exports = config;
+module.exports.setRuntimeConfig = setRuntimeConfig;
