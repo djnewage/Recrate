@@ -424,12 +424,16 @@ async function startServer() {
   serverPort = config.port;
 
   log.info('Starting server with config:', config);
+  log.info('App is packaged:', app.isPackaged);
+  log.info('Resources path:', process.resourcesPath);
 
   // In development, run from source
   // In production, run bundled server
   const serverPath = app.isPackaged
     ? path.join(process.resourcesPath, 'server', 'src', 'index.js')
     : path.join(__dirname, '../server/src/index.js');
+
+  log.info('Server path:', serverPath);
 
   // Check if server file exists
   if (!fs.existsSync(serverPath)) {
@@ -444,6 +448,23 @@ async function startServer() {
     return;
   }
 
+  // Check if node_modules exists (critical for packaged app)
+  if (app.isPackaged) {
+    const nodeModulesPath = path.join(process.resourcesPath, 'server', 'node_modules');
+    if (!fs.existsSync(nodeModulesPath)) {
+      log.error('Server node_modules not found:', nodeModulesPath);
+      if (mainWindow) {
+        mainWindow.webContents.send('server-error', `Server dependencies not found. The application may be corrupted.`);
+        mainWindow.webContents.send('server-status', {
+          status: 'stopped',
+          error: 'Server dependencies missing. Please reinstall the application.'
+        });
+      }
+      return;
+    }
+    log.info('Server node_modules found at:', nodeModulesPath);
+  }
+
   // Pass paths as command-line arguments to handle special characters properly
   const serverArgs = [
     serverPath,
@@ -452,7 +473,6 @@ async function startServer() {
     `--port=${config.port}`
   ];
 
-  log.info('Server path:', serverPath);
   log.info('Server args:', serverArgs);
 
   // Try to use system node first, fall back to Electron's node
