@@ -16,12 +16,53 @@ interface Release {
 }
 
 interface DownloadLinks {
-  mac: string | null
+  macArm: string | null
   macIntel: string | null
   windows: string | null
   version: string | null
-  macSize: string | null
+  macArmSize: string | null
+  macIntelSize: string | null
   windowsSize: string | null
+}
+
+/**
+ * Detect if user is on Apple Silicon Mac
+ * Uses WebGL renderer info as a reliable detection method
+ */
+function isAppleSilicon(): boolean {
+  // Check if we're on macOS first
+  const isMac = navigator.platform.toLowerCase().includes('mac') ||
+    navigator.userAgent.toLowerCase().includes('mac')
+
+  if (!isMac) return false
+
+  // Try WebGL detection for Apple Silicon
+  try {
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+    if (gl) {
+      const debugInfo = (gl as WebGLRenderingContext).getExtension('WEBGL_debug_renderer_info')
+      if (debugInfo) {
+        const renderer = (gl as WebGLRenderingContext).getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+        // Apple Silicon GPUs contain "Apple" in the renderer string
+        // Intel Macs have "Intel" in the renderer string
+        if (renderer.includes('Apple M') || renderer.includes('Apple GPU')) {
+          return true
+        }
+      }
+    }
+  } catch {
+    // WebGL not available, fall back to other detection
+  }
+
+  // Fallback: Check userAgent for ARM architecture hints
+  // Modern Safari on Apple Silicon may include this
+  if (navigator.userAgent.includes('ARM')) {
+    return true
+  }
+
+  // Default to Intel for older/unknown Macs (safer choice, Rosetta handles arm64)
+  return false
 }
 
 type DownloadState = 'idle' | 'downloading' | 'complete' | 'error'
@@ -36,16 +77,23 @@ function formatBytes(bytes: number): string {
 
 function App() {
   const [downloads, setDownloads] = useState<DownloadLinks>({
-    mac: null,
+    macArm: null,
     macIntel: null,
     windows: null,
     version: null,
-    macSize: null,
+    macArmSize: null,
+    macIntelSize: null,
     windowsSize: null,
   })
   const [loading, setLoading] = useState(true)
   const [macDownloadState, setMacDownloadState] = useState<DownloadState>('idle')
   const [winDownloadState, setWinDownloadState] = useState<DownloadState>('idle')
+  const [isAppleSiliconMac, setIsAppleSiliconMac] = useState(false)
+
+  // Detect chip type on mount
+  useEffect(() => {
+    setIsAppleSiliconMac(isAppleSilicon())
+  }, [])
 
   useEffect(() => {
     async function fetchLatestRelease() {
@@ -67,24 +115,24 @@ function App() {
           (a) => a.name.endsWith('.exe')
         )
 
-        const macAsset = macArm || macIntel
-
         setDownloads({
-          mac: macAsset?.browser_download_url || null,
+          macArm: macArm?.browser_download_url || null,
           macIntel: macIntel?.browser_download_url || null,
           windows: windows?.browser_download_url || null,
           version: release.tag_name,
-          macSize: macAsset ? formatBytes(macAsset.size) : null,
+          macArmSize: macArm ? formatBytes(macArm.size) : null,
+          macIntelSize: macIntel ? formatBytes(macIntel.size) : null,
           windowsSize: windows ? formatBytes(windows.size) : null,
         })
       } catch {
         // No releases available yet - this is expected for new/private repos
         setDownloads({
-          mac: null,
+          macArm: null,
           macIntel: null,
           windows: null,
           version: null,
-          macSize: null,
+          macArmSize: null,
+          macIntelSize: null,
           windowsSize: null,
         })
       } finally {
@@ -361,56 +409,77 @@ function App() {
           </motion.div>
 
           <div className="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            {/* macOS Download */}
-            <motion.button
-              onClick={() => handleDownload(downloads.mac, 'mac')}
-              disabled={loading || !downloads.mac}
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className={`flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border transition-all group text-left ${
-                loading || !downloads.mac
-                  ? 'border-white/5 opacity-60 cursor-not-allowed'
-                  : 'border-white/10 hover:border-purple-500/50 hover:scale-105 cursor-pointer'
-              }`}
-            >
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center flex-shrink-0">
-                <Apple size={32} className="text-white" />
-              </div>
-              <div className="text-left flex-grow">
-                <div className="text-sm text-gray-400 mb-1">Download for</div>
-                <div className="text-2xl font-bold">macOS</div>
-                <div className="text-sm text-gray-500">
-                  {loading ? 'Checking...' : downloads.mac ? `Apple Silicon & Intel${downloads.macSize ? ` • ${downloads.macSize}` : ''}` : 'Coming Soon'}
-                </div>
-              </div>
-              <div className="ml-auto flex-shrink-0">
-                <AnimatePresence mode="wait">
-                  {loading ? (
-                    <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <Loader2 size={20} className="text-gray-400 animate-spin" />
-                    </motion.div>
-                  ) : macDownloadState === 'downloading' ? (
-                    <motion.div key="downloading" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
-                      <Loader2 size={20} className="text-purple-400 animate-spin" />
-                    </motion.div>
-                  ) : macDownloadState === 'complete' ? (
-                    <motion.div key="complete" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
-                      <Check size={20} className="text-green-400" />
-                    </motion.div>
-                  ) : !downloads.mac ? (
-                    <motion.div key="unavailable" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <AlertCircle size={20} className="text-gray-500" />
-                    </motion.div>
-                  ) : (
-                    <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <Download size={20} className="text-gray-400 group-hover:text-purple-400 transition-colors" />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </motion.button>
+            {/* macOS Download - Auto-detects Apple Silicon vs Intel */}
+            {(() => {
+              const macDownloadUrl = isAppleSiliconMac ? downloads.macArm : downloads.macIntel
+              const macSize = isAppleSiliconMac ? downloads.macArmSize : downloads.macIntelSize
+              const chipLabel = isAppleSiliconMac ? 'Apple Silicon' : 'Intel'
+              const hasMacDownload = macDownloadUrl !== null
+
+              return (
+                <motion.button
+                  onClick={() => handleDownload(macDownloadUrl, 'mac')}
+                  disabled={loading || !hasMacDownload}
+                  initial={{ opacity: 0, x: -30 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.2 }}
+                  className={`flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border transition-all group text-left ${
+                    loading || !hasMacDownload
+                      ? 'border-white/5 opacity-60 cursor-not-allowed'
+                      : 'border-white/10 hover:border-purple-500/50 hover:scale-105 cursor-pointer'
+                  }`}
+                >
+                  <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center flex-shrink-0">
+                    <Apple size={32} className="text-white" />
+                  </div>
+                  <div className="text-left flex-grow">
+                    <div className="text-sm text-gray-400 mb-1">Download for</div>
+                    <div className="text-2xl font-bold">macOS</div>
+                    <div className="text-sm text-gray-500">
+                      {loading ? 'Checking...' : hasMacDownload ? `${chipLabel}${macSize ? ` • ${macSize}` : ''}` : 'Coming Soon'}
+                    </div>
+                    {/* Show link to other version */}
+                    {!loading && hasMacDownload && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDownload(isAppleSiliconMac ? downloads.macIntel : downloads.macArm, 'mac')
+                        }}
+                        className="text-xs text-purple-400 hover:text-purple-300 mt-1 underline"
+                      >
+                        Need {isAppleSiliconMac ? 'Intel' : 'Apple Silicon'} version?
+                      </button>
+                    )}
+                  </div>
+                  <div className="ml-auto flex-shrink-0">
+                    <AnimatePresence mode="wait">
+                      {loading ? (
+                        <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <Loader2 size={20} className="text-gray-400 animate-spin" />
+                        </motion.div>
+                      ) : macDownloadState === 'downloading' ? (
+                        <motion.div key="downloading" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
+                          <Loader2 size={20} className="text-purple-400 animate-spin" />
+                        </motion.div>
+                      ) : macDownloadState === 'complete' ? (
+                        <motion.div key="complete" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
+                          <Check size={20} className="text-green-400" />
+                        </motion.div>
+                      ) : !hasMacDownload ? (
+                        <motion.div key="unavailable" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <AlertCircle size={20} className="text-gray-500" />
+                        </motion.div>
+                      ) : (
+                        <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <Download size={20} className="text-gray-400 group-hover:text-purple-400 transition-colors" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.button>
+              )
+            })()}
 
             {/* Windows Download */}
             <motion.button
