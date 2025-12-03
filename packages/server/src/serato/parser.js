@@ -304,11 +304,22 @@ class SeratoParser extends EventEmitter {
 
         for (const track of scannedTracks) {
           if (!tracksMap.has(track.filePath)) {
-            // For directory-scanned tracks, set seratoPath to filePath
-            // This ensures tracks not in the database can still be added to crates
+            // For directory-scanned tracks, set seratoPath for crate writing
+            // Serato on Windows expects paths like "Users/djnew/Music/..." (no drive letter, forward slashes)
             if (!track.seratoPath) {
-              track.seratoPath = track.filePath;
-              logger.info(`[PATH DEBUG] Directory scanned track - setting seratoPath to filePath: "${track.filePath}"`);
+              let seratoPath = track.filePath;
+              // Convert Windows paths (C:\Users\...) to Serato format (Users/...)
+              // Serato strips the drive letter and uses forward slashes
+              const windowsDriveMatch = seratoPath.match(/^[A-Za-z]:[\\/](.*)$/);
+              if (windowsDriveMatch) {
+                // Remove drive letter and convert backslashes to forward slashes
+                seratoPath = windowsDriveMatch[1].replace(/\\/g, '/');
+              } else if (seratoPath.startsWith('/')) {
+                // Mac path - remove leading slash for Serato format
+                seratoPath = seratoPath.substring(1);
+              }
+              track.seratoPath = seratoPath;
+              logger.info(`[PATH DEBUG] Directory scanned track - setting seratoPath="${track.seratoPath}" from filePath="${track.filePath}"`);
             }
             tracksMap.set(track.filePath, track);
             this.trackCache.set(track.id, track); // Add to track cache for instant lookups
@@ -902,8 +913,11 @@ class SeratoParser extends EventEmitter {
 
         filePath = filePath.trim();
 
-        // Normalize path: ensure it starts with /
-        if (filePath && !filePath.startsWith('/')) {
+        // Normalize path for filesystem operations
+        // On Mac: paths like "Users/Music/song.mp3" need leading /
+        // On Windows: paths like "C:/Music/song.mp3" should not get leading /
+        const isWindowsPath = /^[A-Za-z]:[\\/]/.test(filePath);
+        if (!isWindowsPath && filePath && !filePath.startsWith('/')) {
           filePath = '/' + filePath;
         }
 
