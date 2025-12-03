@@ -4,6 +4,8 @@ const { SeratoParser } = require("./serato/parser");
 const { SeratoWriter } = require("./serato/writer");
 const AudioStreamer = require("./audio/streamer");
 const APIServer = require("./api/server");
+const chokidar = require("chokidar");
+const path = require("path");
 
 /**
  * Recrate Service - Main orchestrator
@@ -90,10 +92,88 @@ class RecrateService {
       logger.info("Starting background library indexing...");
       logger.info("Note: Library will be available once indexing completes (may take a few minutes for large libraries)");
       this.parser.startBackgroundIndexing();
+
+      // Start file watcher for Subcrates folder
+      this._startCrateWatcher();
     } catch (error) {
       logger.error("Failed to start service:", error);
       throw error;
     }
+  }
+
+  /**
+   * Start watching the Subcrates folder for changes
+   * This detects when Serato modifies crate files externally
+   */
+  _startCrateWatcher() {
+    const subcratesPath = path.join(config.serato.path, "Subcrates");
+    logger.info(`Starting crate file watcher on: ${subcratesPath}`);
+
+    this.watcher = chokidar.watch(subcratesPath, {
+      persistent: true,
+      ignoreInitial: true,
+      awaitWriteFinish: {
+        stabilityThreshold: 500,
+        pollInterval: 100,
+      },
+    });
+
+    this.watcher.on("change", (filePath) => {
+      if (filePath.endsWith(".crate")) {
+        const crateName = path.basename(filePath, ".crate");
+        logger.info(`[WATCHER] Crate file changed: ${crateName}`);
+        this.parser.invalidateCache("crates-list");
+        this.parser.invalidateCache(`crate-${this._slugify(crateName)}`);
+
+        // Broadcast update to connected clients
+        if (this.apiServer && this.apiServer.io) {
+          this.apiServer.io.emit("crate:updated", { crateName, filePath });
+        }
+      }
+    });
+
+    this.watcher.on("add", (filePath) => {
+      if (filePath.endsWith(".crate")) {
+        const crateName = path.basename(filePath, ".crate");
+        logger.info(`[WATCHER] New crate file detected: ${crateName}`);
+        this.parser.invalidateCache("crates-list");
+
+        // Broadcast update to connected clients
+        if (this.apiServer && this.apiServer.io) {
+          this.apiServer.io.emit("crate:added", { crateName, filePath });
+        }
+      }
+    });
+
+    this.watcher.on("unlink", (filePath) => {
+      if (filePath.endsWith(".crate")) {
+        const crateName = path.basename(filePath, ".crate");
+        logger.info(`[WATCHER] Crate file deleted: ${crateName}`);
+        this.parser.invalidateCache("crates-list");
+        this.parser.invalidateCache(`crate-${this._slugify(crateName)}`);
+
+        // Broadcast update to connected clients
+        if (this.apiServer && this.apiServer.io) {
+          this.apiServer.io.emit("crate:deleted", { crateName, filePath });
+        }
+      }
+    });
+
+    this.watcher.on("error", (error) => {
+      logger.error("[WATCHER] Error:", error);
+    });
+
+    logger.success("Crate file watcher started");
+  }
+
+  /**
+   * Convert name to URL-friendly slug (matches parser.slugify)
+   */
+  _slugify(name) {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
   }
 
   /**
@@ -110,7 +190,8 @@ class RecrateService {
 
       // Stop file watcher
       if (this.watcher) {
-        await this.watcher.stop();
+        await this.watcher.close();
+        logger.info("Crate file watcher stopped");
       }
 
       // Stop service discovery

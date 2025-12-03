@@ -8,6 +8,33 @@ function createCrateRoutes(parser, writer = null) {
   const router = express.Router();
 
   /**
+   * POST /api/crates/refresh
+   * Force refresh crate cache (useful when Serato modifies crates externally)
+   */
+  router.post('/refresh', async (req, res) => {
+    try {
+      logger.info('[CRATE REFRESH] Invalidating crate cache...');
+      parser.invalidateCache('crates-list');
+
+      // Also invalidate individual crate caches
+      const crates = await parser.getAllCrates();
+      for (const crate of crates) {
+        parser.invalidateCache(`crate-${crate.id}`);
+      }
+
+      logger.info(`[CRATE REFRESH] Cache invalidated for ${crates.length} crates`);
+
+      res.json({
+        message: 'Crate cache refreshed successfully',
+        cratesRefreshed: crates.length,
+      });
+    } catch (error) {
+      logger.error('Error refreshing crate cache:', error);
+      res.status(500).json({ error: 'Failed to refresh crate cache' });
+    }
+  });
+
+  /**
    * GET /api/crates
    * List all crates (metadata only)
    */

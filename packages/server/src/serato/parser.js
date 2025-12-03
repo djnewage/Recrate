@@ -304,6 +304,12 @@ class SeratoParser extends EventEmitter {
 
         for (const track of scannedTracks) {
           if (!tracksMap.has(track.filePath)) {
+            // For directory-scanned tracks, set seratoPath to filePath
+            // This ensures tracks not in the database can still be added to crates
+            if (!track.seratoPath) {
+              track.seratoPath = track.filePath;
+              logger.info(`[PATH DEBUG] Directory scanned track - setting seratoPath to filePath: "${track.filePath}"`);
+            }
             tracksMap.set(track.filePath, track);
             this.trackCache.set(track.id, track); // Add to track cache for instant lookups
             addedFromScan++;
@@ -783,11 +789,16 @@ class SeratoParser extends EventEmitter {
         if (filePath) {
           // Store the raw Serato path before normalization (for writing back to crate files)
           track.rawSeratoPath = filePath;
-          logger.debug(`Raw path from database V2: "${filePath}"`);
-          // Normalize path for filesystem operations: ensure it starts with /
-          if (!filePath.startsWith('/')) {
+          logger.info(`[PATH DEBUG] Raw path from database V2: "${filePath}"`);
+
+          // Normalize path for filesystem operations
+          // On Mac: paths like "Users/Music/song.mp3" need leading /
+          // On Windows: paths like "C:/Music/song.mp3" should not get leading /
+          const isWindowsPath = /^[A-Za-z]:[\\/]/.test(filePath);
+          if (!isWindowsPath && !filePath.startsWith('/')) {
             filePath = '/' + filePath;
           }
+          logger.info(`[PATH DEBUG] Normalized filePath: "${filePath}" (isWindowsPath: ${isWindowsPath})`);
           track.filePath = filePath;
         }
 

@@ -203,7 +203,17 @@ class SeratoWriter {
     // Use original Serato path if available, otherwise fall back to filePath
     // This ensures Serato recognizes the track and displays its metadata (BPM, key)
     const pathToWrite = track.seratoPath || track.filePath;
-    logger.debug(`Writing to crate - seratoPath="${track.seratoPath}", filePath="${track.filePath}", pathToWrite="${pathToWrite}"`);
+
+    // DEBUG LOGGING - Log what's being written to the crate
+    logger.info(`[CRATE DEBUG] Track being WRITTEN to crate:`);
+    logger.info(`  - title: ${track.title}`);
+    logger.info(`  - artist: ${track.artist}`);
+    logger.info(`  - seratoPath: ${track.seratoPath || 'NULL/UNDEFINED'}`);
+    logger.info(`  - filePath: ${track.filePath}`);
+    logger.info(`  - pathToWrite (final): ${pathToWrite}`);
+    logger.info(`  - bpm: ${track.bpm}`);
+    logger.info(`  - key: ${track.key}`);
+
     const ptrkTag = this.writeTag('ptrk', this.writeUTF16String(pathToWrite));
 
     // BPM (optional)
@@ -338,6 +348,17 @@ class SeratoWriter {
       if (!track) {
         throw new TrackNotFoundError(`Track not found: ${trackId}`);
       }
+
+      // DEBUG LOGGING - Log track before adding to crate
+      logger.info(`[CRATE DEBUG] Track BEFORE adding to crate:`);
+      logger.info(`  - trackId: ${trackId}`);
+      logger.info(`  - title: ${track.title}`);
+      logger.info(`  - artist: ${track.artist}`);
+      logger.info(`  - bpm: ${track.bpm}`);
+      logger.info(`  - key: ${track.key}`);
+      logger.info(`  - filePath: ${track.filePath}`);
+      logger.info(`  - seratoPath: ${track.seratoPath}`);
+      logger.info(`  - rawSeratoPath: ${track.rawSeratoPath || 'NOT SET'}`);
 
       // Skip if track already in crate (check by file path, not ID)
       const alreadyExists = crate.tracks.some(t => t.filePath === track.filePath);
