@@ -1,5 +1,10 @@
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
 /**
  * Simple colored logger for console output
+ * Also writes to a log file for debugging in packaged Electron apps
  */
 class Logger {
   constructor() {
@@ -29,6 +34,59 @@ class Logger {
       bgCyan: '\x1b[46m',
       bgWhite: '\x1b[47m',
     };
+
+    // Set up file logging for debugging
+    this.logFile = null;
+    this._initFileLogging();
+  }
+
+  /**
+   * Initialize file logging
+   */
+  _initFileLogging() {
+    try {
+      // Determine log directory based on platform
+      let logDir;
+      if (process.platform === 'win32') {
+        logDir = path.join(process.env.APPDATA || os.homedir(), 'Recrate', 'logs');
+      } else if (process.platform === 'darwin') {
+        logDir = path.join(os.homedir(), 'Library', 'Logs', 'Recrate');
+      } else {
+        logDir = path.join(os.homedir(), '.recrate', 'logs');
+      }
+
+      // Create log directory if it doesn't exist
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+
+      this.logFile = path.join(logDir, 'server.log');
+
+      // Write startup marker
+      const startMsg = `\n${'='.repeat(60)}\nServer logger started at ${new Date().toISOString()}\n${'='.repeat(60)}\n`;
+      fs.appendFileSync(this.logFile, startMsg);
+    } catch (error) {
+      // Silently fail if we can't set up file logging
+      console.error('Failed to initialize file logging:', error.message);
+    }
+  }
+
+  /**
+   * Write to log file
+   */
+  _writeToFile(level, ...args) {
+    if (!this.logFile) return;
+
+    try {
+      const timestamp = this.getTimestamp();
+      const message = args.map(arg =>
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ');
+      const line = `${timestamp} [${level}] ${message}\n`;
+      fs.appendFileSync(this.logFile, line);
+    } catch (error) {
+      // Silently fail
+    }
   }
 
   /**
@@ -53,6 +111,7 @@ class Logger {
    */
   info(...args) {
     this.format('INFO', this.colors.cyan, ...args);
+    this._writeToFile('INFO', ...args);
   }
 
   /**
@@ -60,6 +119,7 @@ class Logger {
    */
   error(...args) {
     this.format('ERROR', this.colors.red, ...args);
+    this._writeToFile('ERROR', ...args);
   }
 
   /**
@@ -67,6 +127,7 @@ class Logger {
    */
   warn(...args) {
     this.format('WARN', this.colors.yellow, ...args);
+    this._writeToFile('WARN', ...args);
   }
 
   /**
@@ -74,6 +135,7 @@ class Logger {
    */
   debug(...args) {
     this.format('DEBUG', this.colors.magenta, ...args);
+    this._writeToFile('DEBUG', ...args);
   }
 
   /**
@@ -81,6 +143,7 @@ class Logger {
    */
   success(...args) {
     this.format('SUCCESS', this.colors.green, ...args);
+    this._writeToFile('SUCCESS', ...args);
   }
 }
 
