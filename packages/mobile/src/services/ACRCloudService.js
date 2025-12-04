@@ -2,8 +2,12 @@ import * as FileSystem from 'expo-file-system/legacy';
 import CryptoJS from 'crypto-js';
 import { API_CONFIG } from '../constants/config';
 
+// Cloud API URL for track identification credentials
+// This is the primary source - works without desktop app
+const CLOUD_API_URL = 'https://steadfast-forgiveness-production.up.railway.app';
+
 /**
- * Get the current server URL from connection store
+ * Get the current server URL from connection store (desktop server)
  */
 const getServerURL = () => {
   try {
@@ -32,12 +36,29 @@ const buildStringToSign = (httpMethod, httpUri, accessKey, dataType, signatureVe
 
 export const ACRCloudService = {
   /**
-   * Check if track identification is configured on the server
+   * Check if track identification is available
+   * Tries cloud first, then desktop server
    */
   async hasCredentials() {
+    // Try cloud first
+    try {
+      const cloudResponse = await fetch(`${CLOUD_API_URL}/api/identify/status`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const cloudData = await cloudResponse.json();
+      if (cloudData.configured) {
+        return true;
+      }
+    } catch (error) {
+      console.log('Cloud API not available, trying desktop server...');
+    }
+
+    // Fall back to desktop server
     try {
       const serverURL = getServerURL();
-      const response = await fetch(`${serverURL}/api/identify/status`);
+      const response = await fetch(`${serverURL}/api/identify/status`, {
+        signal: AbortSignal.timeout(5000),
+      });
       const data = await response.json();
       return data.configured === true;
     } catch (error) {
@@ -47,14 +68,34 @@ export const ACRCloudService = {
   },
 
   /**
-   * Fetch ACRCloud credentials from server
+   * Fetch ACRCloud credentials
+   * Tries cloud first (works without desktop), then desktop server
    */
   async fetchCredentials() {
-    const serverURL = getServerURL();
-    const response = await fetch(`${serverURL}/api/identify/credentials`);
-    if (!response.ok) {
-      throw new Error('Track identification not configured on server');
+    // Try cloud first - this is the primary source for end users
+    try {
+      console.log('Trying cloud API for credentials...');
+      const cloudResponse = await fetch(`${CLOUD_API_URL}/api/identify/credentials`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (cloudResponse.ok) {
+        console.log('Got credentials from cloud API');
+        return cloudResponse.json();
+      }
+    } catch (error) {
+      console.log('Cloud API not available, trying desktop server...');
     }
+
+    // Fall back to desktop server (for local development/testing)
+    console.log('Trying desktop server for credentials...');
+    const serverURL = getServerURL();
+    const response = await fetch(`${serverURL}/api/identify/credentials`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      throw new Error('Track identification not configured. Please connect to desktop app or check cloud service.');
+    }
+    console.log('Got credentials from desktop server');
     return response.json();
   },
 
