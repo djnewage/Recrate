@@ -201,3 +201,29 @@ Test incrementally:
 - **Total specification lines:** ~3,500 lines across 13 documents
 - **Modules to implement:** 19 files
 - **API endpoints:** 12 endpoints
+
+## Known Issues & TODOs
+
+### Security: Remove Hardcoded ACRCloud API Credentials
+**Priority: HIGH**
+**File:** `packages/mobile/src/services/ACRCloudService.js`
+
+The ACRCloud API credentials (access key, access secret, host) are currently hardcoded in the service file. These need to be:
+1. Removed from the codebase
+2. Moved to environment variables or a secure configuration
+3. Optionally proxied through the backend server to hide credentials from the mobile app entirely
+
+### Bug: Recording Error After 4+ Sequential Identifications
+**Priority: MEDIUM**
+**File:** `packages/mobile/src/services/AudioRecordingService.js`
+
+When using the track identification feature multiple times in a row (4+ sequential recordings), a "recorder not prepared" error occurs. This is likely due to:
+- iOS audio session not fully releasing between recordings
+- Race condition in cleanup/setup cycle
+- expo-av recording state not being properly reset
+
+Potential fixes to investigate:
+- Add longer delays between recordings
+- Implement a recording queue/cooldown
+- Check expo-av documentation for proper cleanup patterns
+- Consider using a different recording approach for rapid sequential use
