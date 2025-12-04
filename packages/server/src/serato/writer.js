@@ -28,6 +28,16 @@ class TrackNotFoundError extends Error {
   }
 }
 
+class ParentCrateNotFoundError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ParentCrateNotFoundError';
+  }
+}
+
+// Serato uses %% as delimiter for subcrate hierarchy in filenames
+const SUBCRATE_DELIMITER = '%%';
+
 /**
  * Serato Writer - Write to Serato crate files
  * Implements full binary format for Serato ScratchLive/DJ Pro compatibility
@@ -292,20 +302,40 @@ class SeratoWriter {
   }
 
   /**
-   * Create a new crate
+   * Create a new crate (optionally as a subcrate of a parent)
+   * @param {string} name - Display name for the crate
+   * @param {string|null} color - Optional color
+   * @param {string|null} parentId - Optional parent crate ID for creating subcrates
    */
-  async createCrate(name, color = null) {
+  async createCrate(name, color = null, parentId = null) {
     this.checkReadOnly();
     this.validateCrateName(name);
 
-    const cratePath = this.getCratePath(name);
+    // Build the full path for the crate file
+    let fullPath = name;
+    let parentPath = null;
+    let depth = 0;
+
+    if (parentId) {
+      // Look up parent crate to get its fullPath
+      const parentCrate = await this.parser.getCrateById(parentId);
+      if (!parentCrate) {
+        throw new ParentCrateNotFoundError(`Parent crate not found: ${parentId}`);
+      }
+      parentPath = parentCrate.fullPath;
+      fullPath = `${parentCrate.fullPath}${SUBCRATE_DELIMITER}${name}`;
+      depth = parentCrate.depth + 1;
+      logger.info(`Creating subcrate "${name}" under parent "${parentCrate.name}" (fullPath: ${fullPath})`);
+    }
+
+    const cratePath = this.getCratePath(fullPath);
 
     // Check if crate already exists
     if (fsSync.existsSync(cratePath)) {
-      throw new CrateExistsError(`Crate "${name}" already exists`);
+      throw new CrateExistsError(`Crate "${fullPath}" already exists`);
     }
 
-    logger.info(`Creating crate: ${name}`);
+    logger.info(`Creating crate: ${fullPath}`);
 
     // Build empty crate
     const crateData = this.buildCrateBinary(name, []);
@@ -316,11 +346,15 @@ class SeratoWriter {
     // Invalidate parser cache
     this.parser.invalidateCache();
 
-    logger.success(`Created crate: ${name}`);
+    logger.success(`Created crate: ${fullPath}`);
 
     return {
-      id: this.parser.slugify(name),
+      id: this.parser.slugify(fullPath),
       name,
+      fullPath,
+      parentId: parentId,
+      parentPath: parentPath,
+      depth: depth,
       trackCount: 0,
       color,
     };
@@ -336,10 +370,11 @@ class SeratoWriter {
 
     // Parse existing crate
     const crate = await this.parser.parseCrate(crateId);
-    const cratePath = this.getCratePath(crate.name);
+    const crateFullPath = crate.fullPath || crate.name;
+    const cratePath = this.getCratePath(crateFullPath);
 
     // Backup existing crate
-    await this.backupCrate(crate.name);
+    await this.backupCrate(crateFullPath);
 
     // Get track details
     const newTracks = [];
@@ -399,10 +434,11 @@ class SeratoWriter {
 
     // Parse existing crate
     const crate = await this.parser.parseCrate(crateId);
-    const cratePath = this.getCratePath(crate.name);
+    const crateFullPath = crate.fullPath || crate.name;
+    const cratePath = this.getCratePath(crateFullPath);
 
     // Backup existing crate
-    await this.backupCrate(crate.name);
+    await this.backupCrate(crateFullPath);
 
     // Remove track
     const updatedTracks = crate.tracks.filter(t => t.id !== trackId);
@@ -440,10 +476,11 @@ class SeratoWriter {
 
     // Parse crate to get name
     const crate = await this.parser.parseCrate(crateId);
-    const cratePath = this.getCratePath(crate.name);
+    const crateFullPath = crate.fullPath || crate.name;
+    const cratePath = this.getCratePath(crateFullPath);
 
     // Backup before deleting
-    const backupPath = await this.backupCrate(crate.name);
+    const backupPath = await this.backupCrate(crateFullPath);
 
     // Delete crate file
     await fs.unlink(cratePath);
@@ -451,7 +488,7 @@ class SeratoWriter {
     // Invalidate cache
     this.parser.invalidateCache();
 
-    logger.success(`Deleted crate: ${crate.name} (backup: ${path.basename(backupPath)})`);
+    logger.success(`Deleted crate: ${crateFullPath} (backup: ${path.basename(backupPath)})`);
 
     return {
       deleted: true,
@@ -465,4 +502,5 @@ module.exports = {
   ReadOnlyError,
   CrateExistsError,
   TrackNotFoundError,
+  ParentCrateNotFoundError,
 };

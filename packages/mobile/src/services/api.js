@@ -75,8 +75,8 @@ export const apiService = {
     return response.data.crate;
   },
 
-  createCrate: async (name, color) => {
-    const response = await api.post(ENDPOINTS.CRATES, { name, color });
+  createCrate: async (name, color, parentId = null) => {
+    const response = await api.post(ENDPOINTS.CRATES, { name, color, parentId });
     return response.data;
   },
 

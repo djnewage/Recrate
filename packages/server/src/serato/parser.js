@@ -32,6 +32,10 @@ class CrateNotFoundError extends Error {
   }
 }
 
+// Serato uses %% as delimiter for subcrate hierarchy in filenames
+// e.g., "ParentCrate%%ChildCrate%%GrandchildCrate.crate"
+const SUBCRATE_DELIMITER = '%%';
+
 /**
  * Serato Parser - Reads Serato database and crate files
  * Uses a simplified approach: directory scanning + metadata extraction
@@ -252,9 +256,20 @@ class SeratoParser extends EventEmitter {
               // Use rawSeratoPath (without leading /) for crate writing - this is what Serato expects
               track.seratoPath = metadata.rawSeratoPath || metadata.filePath;
               logger.debug(`Setting seratoPath="${track.seratoPath}" filePath="${track.filePath}" for track: ${track.title}`);
+              // Merge title and artist from database (prefer database values as they're from Serato)
+              if (metadata.title) {
+                track.title = metadata.title;
+              }
+              if (metadata.artist) {
+                track.artist = metadata.artist;
+              }
               track.bpm = metadata.bpm || track.bpm;
               track.key = metadata.key || track.key;
               track.duration = metadata.duration || track.duration;
+              // Merge hasBeenPlayed from database (boolean flag)
+              if (metadata.hasBeenPlayed !== undefined) {
+                track.hasBeenPlayed = metadata.hasBeenPlayed;
+              }
               tracksMap.set(trackPath, track); // Map operations are safe in single-threaded JS
               this.trackCache.set(track.id, track); // Add to track cache for instant lookups
             }
@@ -330,6 +345,47 @@ class SeratoParser extends EventEmitter {
 
       logger.info(`Found ${addedFromScan} additional tracks from directory scan`);
 
+      // Parse history sessions to get actual play counts
+      this.indexingStatus.progress.message = 'Calculating play counts from history...';
+      this._emitProgress({ message: 'Calculating play counts from history...' });
+
+      const playCounts = await this._parseHistoryForPlayCounts();
+
+      // Merge play counts into tracks
+      if (playCounts.size > 0) {
+        let matchedPlayCounts = 0;
+        for (const track of tracksMap.values()) {
+          // Try matching by seratoPath (without leading /) or filePath
+          const seratoPath = track.seratoPath || (track.filePath.startsWith('/') ? track.filePath.substring(1) : track.filePath);
+          const normalizedPath = seratoPath.replace(/\\/g, '/');
+
+          // Try direct match first
+          let playCount = playCounts.get(normalizedPath);
+
+          // If no direct match, try with leading /
+          if (playCount === undefined) {
+            playCount = playCounts.get('/' + normalizedPath);
+          }
+
+          // Try matching just the filename for relocated files
+          if (playCount === undefined) {
+            const filename = path.basename(normalizedPath);
+            for (const [historyPath, count] of playCounts) {
+              if (path.basename(historyPath) === filename) {
+                playCount = count;
+                break;
+              }
+            }
+          }
+
+          if (playCount !== undefined && playCount > 0) {
+            track.playCount = playCount;
+            matchedPlayCounts++;
+          }
+        }
+        logger.success(`Matched play counts for ${matchedPlayCounts} tracks`);
+      }
+
       const tracks = Array.from(tracksMap.values());
       logger.success(`Total library: ${tracks.length} tracks`);
 
@@ -390,34 +446,52 @@ class SeratoParser extends EventEmitter {
 
       const crates = await Promise.all(
         crateFiles.map(async (file) => {
-          const name = path.basename(file, '.crate');
-          const filePath = path.join(this.cratesDir, file);
+          const fullPath = path.basename(file, '.crate');
+          const cratePath = path.join(this.cratesDir, file);
+
+          // Parse hierarchy from filename using %% delimiter
+          const pathParts = fullPath.split(SUBCRATE_DELIMITER);
+          const name = pathParts[pathParts.length - 1]; // Last part is display name
+          const parentPath = pathParts.length > 1
+            ? pathParts.slice(0, -1).join(SUBCRATE_DELIMITER)
+            : null;
+          const depth = pathParts.length - 1;
 
           // Quick count of tracks without full parsing
           let trackCount = 0;
           let lastModified = null;
           try {
-            const fileContent = await fs.readFile(filePath);
+            const fileContent = await fs.readFile(cratePath);
             trackCount = this._countTracksInCrate(fileContent);
 
             // Get file modification time
-            const stats = await fs.stat(filePath);
+            const stats = await fs.stat(cratePath);
             lastModified = stats.mtime.getTime();
           } catch (error) {
             logger.warn(`Error counting tracks in ${name}:`, error.message);
           }
 
           return {
-            id: this.slugify(name),
+            id: this.slugify(fullPath),
             name: name,
+            fullPath: fullPath, // Full path with %% for file operations
+            parentId: parentPath ? this.slugify(parentPath) : null,
+            parentPath: parentPath,
+            depth: depth,
             trackCount: trackCount,
-            filePath: filePath,
+            filePath: cratePath,
             lastModified: lastModified,
           };
         })
       );
 
-      logger.success(`Found ${crates.length} crates`);
+      // Sort crates: root crates first, then by depth, then alphabetically
+      crates.sort((a, b) => {
+        if (a.depth !== b.depth) return a.depth - b.depth;
+        return a.name.localeCompare(b.name);
+      });
+
+      logger.success(`Found ${crates.length} crates (${crates.filter(c => c.depth === 0).length} root, ${crates.filter(c => c.depth > 0).length} subcrates)`);
       this.cache.set(cacheKey, crates);
       return crates;
     } catch (error) {
@@ -456,16 +530,42 @@ class SeratoParser extends EventEmitter {
       // Match tracks by file path (with intelligent resolution for moved files)
       const tracks = [];
       for (const trackPath of trackPaths) {
-        // Try exact match first (fastest)
+        logger.info(`[CRATE PARSE] Looking for track with path: ${trackPath}`);
+
+        // Try exact match on filePath first (fastest)
         let track = library.find(t => t.filePath === trackPath);
 
-        // If no exact match, try resolving the path
+        if (track) {
+          logger.info(`[CRATE PARSE] Found via filePath match:`);
+          logger.info(`  - id: ${track.id}`);
+          logger.info(`  - title: ${track.title}`);
+          logger.info(`  - artist: ${track.artist}`);
+          logger.info(`  - filePath: ${track.filePath}`);
+        }
+
+        // If no match, try matching on seratoPath
+        if (!track) {
+          const seratoStylePath = trackPath.startsWith('/') ? trackPath.substring(1) : trackPath;
+          track = library.find(t => t.seratoPath === seratoStylePath || t.seratoPath === trackPath);
+          if (track) {
+            logger.info(`[CRATE PARSE] Found via seratoPath match:`);
+            logger.info(`  - id: ${track.id}`);
+            logger.info(`  - title: ${track.title}`);
+            logger.info(`  - artist: ${track.artist}`);
+            logger.info(`  - seratoPath: ${track.seratoPath}`);
+          }
+        }
+
+        // If still no match, try resolving the path
         if (!track) {
           const resolvedPath = await pathResolver.resolvePath(trackPath);
           if (resolvedPath) {
             track = library.find(t => t.filePath === resolvedPath);
             if (track) {
-              logger.debug(`Crate track resolved: ${trackPath} -> ${resolvedPath}`);
+              logger.info(`[CRATE PARSE] Found via path resolution: ${trackPath} -> ${resolvedPath}`);
+              logger.info(`  - id: ${track.id}`);
+              logger.info(`  - title: ${track.title}`);
+              logger.info(`  - artist: ${track.artist}`);
             }
           }
         }
@@ -473,13 +573,17 @@ class SeratoParser extends EventEmitter {
         if (track) {
           tracks.push(track);
         } else {
-          logger.debug(`Crate track not found in library: ${trackPath}`);
+          logger.warn(`[CRATE PARSE] Track NOT FOUND in library: ${trackPath}`);
         }
       }
 
       const result = {
         id: crate.id,
         name: crate.name,
+        fullPath: crate.fullPath,
+        parentId: crate.parentId,
+        parentPath: crate.parentPath,
+        depth: crate.depth,
         trackCount: tracks.length,
         tracks: tracks,
       };
@@ -493,6 +597,15 @@ class SeratoParser extends EventEmitter {
       logger.error('Error parsing crate:', error.message);
       throw new ParseError(`Failed to parse crate: ${error.message}`);
     }
+  }
+
+  /**
+   * Get a crate by ID (without tracks, just metadata)
+   * Used for looking up parent crate when creating subcrates
+   */
+  async getCrateById(crateId) {
+    const crates = await this.getAllCrates();
+    return crates.find(c => c.id === crateId) || null;
   }
 
   /**
@@ -677,6 +790,8 @@ class SeratoParser extends EventEmitter {
         bpm: metadata?.bpm || null,
         key: metadata?.key || null,
         trackNumber: metadata?.trackNumber || null,
+        playCount: 0, // Actual play count calculated from History sessions
+        hasBeenPlayed: false, // Boolean flag from bply marker
         fileSize: stats.size,
         format: metadata?.format || ext.substring(1).toUpperCase(),
         addedAt: stats.birthtime,
@@ -737,6 +852,129 @@ class SeratoParser extends EventEmitter {
   }
 
   /**
+   * Extract a boolean/byte field from buffer (for fields starting with 'b' like bply)
+   * These fields store a single byte value (0 or 1 for boolean, or integer value)
+   * @private
+   */
+  _extractBoolField(buffer, marker, startOffset, endOffset) {
+    try {
+      const fieldIndex = buffer.indexOf(marker, startOffset);
+      if (fieldIndex === -1 || fieldIndex >= endOffset) return null;
+
+      const lengthOffset = fieldIndex + 4;
+      if (lengthOffset + 4 > buffer.length) return null;
+
+      const length = buffer.readUInt32BE(lengthOffset);
+      const dataStart = lengthOffset + 4;
+
+      if (dataStart + length > buffer.length) return null;
+
+      // Boolean/byte fields typically have length 1
+      if (length === 1) {
+        return buffer.readUInt8(dataStart);
+      }
+      // Some integer fields may have length 4
+      if (length === 4) {
+        return buffer.readUInt32BE(dataStart);
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Parse History session files to count actual play counts per track
+   * Returns a Map of normalized file path -> play count
+   * @private
+   */
+  async _parseHistoryForPlayCounts() {
+    const playCounts = new Map();
+    const historyDir = path.join(this.seratoPath, 'History', 'Sessions');
+
+    try {
+      const files = await fs.readdir(historyDir);
+      const sessionFiles = files.filter(f => f.endsWith('.session'));
+
+      logger.info(`Parsing ${sessionFiles.length} history session files for play counts...`);
+
+      for (const sessionFile of sessionFiles) {
+        try {
+          const buffer = await fs.readFile(path.join(historyDir, sessionFile));
+
+          // Session files use 'oent' markers for entries, with 'adat' containing track data
+          // Inside adat, there's a field with numeric type 0x02 that contains the file path
+          const oentMarker = Buffer.from('oent');
+          let offset = 0;
+
+          while (offset < buffer.length - 8) {
+            const oentIndex = buffer.indexOf(oentMarker, offset);
+            if (oentIndex === -1) break;
+
+            // Read entry length
+            const lengthOffset = oentIndex + 4;
+            if (lengthOffset + 4 > buffer.length) break;
+
+            const entryLength = buffer.readUInt32BE(lengthOffset);
+            const entryStart = lengthOffset + 4;
+            const entryEnd = entryStart + entryLength;
+
+            if (entryEnd > buffer.length) break;
+
+            // Look for 'adat' marker within this entry
+            const adatMarker = Buffer.from('adat');
+            const adatIndex = buffer.indexOf(adatMarker, entryStart);
+
+            if (adatIndex !== -1 && adatIndex < entryEnd) {
+              const adatLengthOffset = adatIndex + 4;
+              if (adatLengthOffset + 4 <= buffer.length) {
+                const adatLength = buffer.readUInt32BE(adatLengthOffset);
+                const adatDataStart = adatLengthOffset + 4;
+                const adatDataEnd = Math.min(adatDataStart + adatLength, buffer.length);
+
+                // Parse the adat chunk - look for file path field (type 0x02)
+                // Format: type(4 bytes) + length(4 bytes) + data
+                let adatOffset = adatDataStart;
+                while (adatOffset < adatDataEnd - 8) {
+                  const fieldType = buffer.readUInt32BE(adatOffset);
+                  const fieldLength = buffer.readUInt32BE(adatOffset + 4);
+                  const fieldDataStart = adatOffset + 8;
+
+                  if (fieldType === 0x02 && fieldLength > 0) {
+                    // This is the file path field (UTF-16BE encoded)
+                    const pathData = buffer.subarray(fieldDataStart, fieldDataStart + fieldLength);
+                    const filePath = this._decodeUTF16BE(pathData);
+
+                    if (filePath) {
+                      // Normalize the path for consistent counting
+                      const normalizedPath = filePath.replace(/\\/g, '/');
+                      const currentCount = playCounts.get(normalizedPath) || 0;
+                      playCounts.set(normalizedPath, currentCount + 1);
+                    }
+                  }
+
+                  adatOffset = fieldDataStart + fieldLength;
+                  if (fieldLength === 0) break; // Prevent infinite loop
+                }
+              }
+            }
+
+            offset = entryEnd;
+          }
+        } catch (sessionError) {
+          logger.debug(`Error parsing session file ${sessionFile}: ${sessionError.message}`);
+        }
+      }
+
+      logger.success(`Parsed play counts for ${playCounts.size} unique tracks from history`);
+      return playCounts;
+    } catch (error) {
+      logger.warn(`Could not parse history for play counts: ${error.message}`);
+      return playCounts;
+    }
+  }
+
+  /**
    * Count tracks in crate file without full parsing
    * @private
    */
@@ -771,6 +1009,9 @@ class SeratoParser extends EventEmitter {
       const tbpmMarker = Buffer.from('tbpm');
       const tkeyMarker = Buffer.from('tkey');
       const tlenMarker = Buffer.from('tlen'); // Track length/duration
+      const tsngMarker = Buffer.from('tsng'); // Track title/song name
+      const tartMarker = Buffer.from('tart'); // Track artist
+      const bplyMarker = Buffer.from('bply'); // Has been played (boolean)
 
       let offset = 0;
 
@@ -793,6 +1034,9 @@ class SeratoParser extends EventEmitter {
           bpm: null,
           key: null,
           duration: null,
+          title: null,
+          artist: null,
+          hasBeenPlayed: false, // bply is a boolean, not actual play count
         };
 
         // Extract file path
@@ -840,6 +1084,24 @@ class SeratoParser extends EventEmitter {
             const ms = match[3] ? parseInt(match[3], 10) / 100 : 0;
             track.duration = minutes * 60 + seconds + ms;
           }
+        }
+
+        // Extract title (song name)
+        const title = this._extractField(buffer, tsngMarker, otrkDataStart, otrkDataEnd);
+        if (title) {
+          track.title = title;
+        }
+
+        // Extract artist
+        const artist = this._extractField(buffer, tartMarker, otrkDataStart, otrkDataEnd);
+        if (artist) {
+          track.artist = artist;
+        }
+
+        // Extract has been played flag (bply is a boolean, not actual play count)
+        const hasPlayed = this._extractBoolField(buffer, bplyMarker, otrkDataStart, otrkDataEnd);
+        if (hasPlayed !== null) {
+          track.hasBeenPlayed = hasPlayed === 1;
         }
 
         // Only add valid audio file paths
