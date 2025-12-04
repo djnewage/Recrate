@@ -31,8 +31,9 @@ router.get('/health', (req, res) => {
 /**
  * GET /api/identify/status
  * Check if ACRCloud credentials are configured
+ * Note: Router is mounted at /api, so this becomes /api/identify/status
  */
-router.get('/api/identify/status', (req, res) => {
+router.get('/identify/status', (req, res) => {
   const accessKey = process.env.ACRCLOUD_ACCESS_KEY;
   const accessSecret = process.env.ACRCLOUD_ACCESS_SECRET;
   const host = process.env.ACRCLOUD_HOST;
@@ -46,8 +47,9 @@ router.get('/api/identify/status', (req, res) => {
 /**
  * GET /api/identify/credentials
  * Returns ACRCloud credentials for direct API calls from mobile
+ * Note: Router is mounted at /api, so this becomes /api/identify/credentials
  */
-router.get('/api/identify/credentials', (req, res) => {
+router.get('/identify/credentials', (req, res) => {
   const accessKey = process.env.ACRCLOUD_ACCESS_KEY;
   const accessSecret = process.env.ACRCLOUD_ACCESS_SECRET;
   const host = process.env.ACRCLOUD_HOST;
