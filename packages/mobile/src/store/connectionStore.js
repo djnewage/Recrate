@@ -6,6 +6,7 @@ const CONNECTION_TYPES = {
   LOCAL: 'local',
   MANUAL: 'manual',
   OFFLINE: 'offline',
+  DEMO: 'demo',
 };
 
 export const useConnectionStore = create((set, get) => ({
@@ -15,6 +16,7 @@ export const useConnectionStore = create((set, get) => ({
   isConnected: false,
   isSearching: false,
   lastSuccessfulIP: null,
+  hasEverConnected: null, // null = unknown, true/false after check
 
   // Actions
   setConnectionType: (type) => set({ connectionType: type }),
@@ -218,6 +220,33 @@ export const useConnectionStore = create((set, get) => ({
       connectionType: CONNECTION_TYPES.OFFLINE,
       isConnected: false,
     });
+  },
+
+  // Enter demo mode (for App Store review)
+  enterDemoMode: () => {
+    console.log('[ConnectionStore] Entering demo mode');
+    set({
+      serverURL: 'demo://',
+      connectionType: CONNECTION_TYPES.DEMO,
+      isConnected: true,
+    });
+  },
+
+  // Check if in demo mode
+  isDemoMode: () => get().connectionType === CONNECTION_TYPES.DEMO,
+
+  // Check if user has ever connected before (for first launch detection)
+  checkHasEverConnected: async () => {
+    try {
+      const lastIP = await AsyncStorage.getItem('lastServerIP');
+      const hasConnected = !!lastIP;
+      set({ hasEverConnected: hasConnected });
+      return hasConnected;
+    } catch (error) {
+      console.error('Error checking connection history:', error);
+      set({ hasEverConnected: false });
+      return false;
+    }
   },
 }));
 
