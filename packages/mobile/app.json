@@ -19,16 +19,25 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Recrate needs camera access to scan QR codes for connecting to your server.",
         "NSLocalNetworkUsageDescription": "Recrate needs local network access to connect to your music server on your home network and via Tailscale VPN.",
-        "NSBonjourServices": ["_http._tcp"],
+        "NSBonjourServices": [
+          "_http._tcp"
+        ],
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
         },
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       },
       "entitlements": {
-        "com.apple.developer.networking.vpn.api": ["allow-vpn"],
-        "com.apple.developer.networking.networkextension": ["app-proxy-provider", "packet-tunnel-provider"],
+        "com.apple.developer.networking.vpn.api": [
+          "allow-vpn"
+        ],
+        "com.apple.developer.networking.networkextension": [
+          "app-proxy-provider",
+          "packet-tunnel-provider"
+        ],
         "com.apple.developer.networking.multipath": true
       }
     },
@@ -37,7 +46,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a1a"
       },
-      "permissions": ["CAMERA", "FOREGROUND_SERVICE", "WAKE_LOCK"],
+      "permissions": [
+        "CAMERA",
+        "FOREGROUND_SERVICE",
+        "WAKE_LOCK"
+      ],
       "edgeToEdgeEnabled": true,
       "package": "com.recrate.app"
     },
@@ -49,6 +62,9 @@
         "projectId": "99558d9b-96b2-4206-963e-38a26a0bb971"
       }
     },
-    "owner": "djnewage"
+    "owner": "djnewage",
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }

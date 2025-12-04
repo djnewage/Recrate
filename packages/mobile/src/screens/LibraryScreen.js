@@ -15,6 +15,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
 import FilterModal from '../components/FilterModal';
+import IdentifyTrackModal from '../components/IdentifyTrackModal';
 
 const LibraryScreen = ({ navigation }) => {
   const { showActionSheetWithOptions } = useActionSheet();
@@ -40,6 +41,9 @@ const LibraryScreen = ({ navigation }) => {
     isFilterActive,
     getFilteredTracks,
     toggleFilterDrawer,
+    isIdentifyModalVisible,
+    showIdentifyModal,
+    hideIdentifyModal,
   } = useStore();
 
   const [sortBy, setSortBy] = useState('title');
@@ -223,14 +227,22 @@ const LibraryScreen = ({ navigation }) => {
                     : ''
                 } tracks`}
           </Text>
-          <TouchableOpacity
-            style={styles.editButton}
-            onPress={handleEditPress}
-          >
-            <Text style={styles.editButtonText}>
-              {isEditMode ? 'Cancel' : 'Edit'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.identifyButton}
+              onPress={showIdentifyModal}
+            >
+              <Ionicons name="mic" size={20} color={COLORS.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={handleEditPress}
+            >
+              <Text style={styles.editButtonText}>
+                {isEditMode ? 'Cancel' : 'Edit'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {selectedTracks.length > 0 && (
           <Text style={styles.subtitle}>
@@ -388,6 +400,13 @@ const LibraryScreen = ({ navigation }) => {
 
       {/* Filter Modal */}
       <FilterModal />
+
+      {/* Identify Track Modal */}
+      <IdentifyTrackModal
+        visible={isIdentifyModalVisible}
+        onClose={hideIdentifyModal}
+        navigation={navigation}
+      />
     </View>
   );
 };
@@ -422,6 +441,17 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
     marginTop: SPACING.xs,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  identifyButton: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
   },
   editButton: {
     paddingHorizontal: SPACING.sm,
