@@ -40,8 +40,8 @@ export const AudioRecordingService = {
         playsInSilentModeIOS: true,
       });
 
-      // Small delay to let iOS audio system settle
-      await delay(100);
+      // Delay to let iOS audio system settle (increased for stability with sequential recordings)
+      await delay(300);
     } finally {
       isCleaningUp = false;
     }
@@ -63,8 +63,8 @@ export const AudioRecordingService = {
       playsInSilentModeIOS: true,
     });
 
-    // Small delay after mode change
-    await delay(50);
+    // Delay after mode change (increased for stability with sequential recordings)
+    await delay(150);
 
     // Create new recording
     const { recording } = await Audio.Recording.createAsync(
@@ -88,6 +88,8 @@ export const AudioRecordingService = {
 
       // Stop and unload
       await currentRecording.stopAndUnloadAsync();
+      // Allow audio session to settle before mode change
+      await delay(200);
     } catch (e) {
       // Try to get URI even if stop failed
       if (!uri && currentRecording) {

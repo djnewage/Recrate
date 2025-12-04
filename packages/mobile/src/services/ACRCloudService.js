@@ -1,19 +1,18 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import * as SecureStore from 'expo-secure-store';
 import CryptoJS from 'crypto-js';
+import { API_CONFIG } from '../constants/config';
 
-// Storage keys for ACRCloud credentials
-const STORAGE_KEYS = {
-  ACCESS_KEY: 'acrcloud_access_key',
-  ACCESS_SECRET: 'acrcloud_access_secret',
-  HOST: 'acrcloud_host',
-};
-
-// Default credentials (built into app)
-const DEFAULT_CREDENTIALS = {
-  accessKey: 'cb6473506947e456e408817b0b1f766c',
-  accessSecret: '8rTTwKOTYaXoveIRqwgSwP1iXwIrGhHt0fLsqkvk',
-  host: 'identify-us-west-2.acrcloud.com',
+/**
+ * Get the current server URL from connection store
+ */
+const getServerURL = () => {
+  try {
+    const { useConnectionStore } = require('../store/connectionStore');
+    const { serverURL } = useConnectionStore.getState();
+    return serverURL || API_CONFIG.BASE_URL;
+  } catch {
+    return API_CONFIG.BASE_URL;
+  }
 };
 
 /**
@@ -28,74 +27,50 @@ const generateSignature = (stringToSign, accessSecret) => {
  * Build the string to sign for ACRCloud authentication
  */
 const buildStringToSign = (httpMethod, httpUri, accessKey, dataType, signatureVersion, timestamp) => {
-  return [
-    httpMethod,
-    httpUri,
-    accessKey,
-    dataType,
-    signatureVersion,
-    timestamp,
-  ].join('\n');
+  return [httpMethod, httpUri, accessKey, dataType, signatureVersion, timestamp].join('\n');
 };
 
 export const ACRCloudService = {
   /**
-   * Save ACRCloud credentials to secure storage
-   */
-  async saveCredentials(accessKey, accessSecret, host = DEFAULT_HOST) {
-    await SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_KEY, accessKey);
-    await SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_SECRET, accessSecret);
-    await SecureStore.setItemAsync(STORAGE_KEYS.HOST, host);
-  },
-
-  /**
-   * Get ACRCloud credentials from secure storage, falling back to defaults
-   */
-  async getCredentials() {
-    const accessKey = await SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_KEY);
-    const accessSecret = await SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_SECRET);
-    const host = await SecureStore.getItemAsync(STORAGE_KEYS.HOST);
-
-    return {
-      accessKey: accessKey || DEFAULT_CREDENTIALS.accessKey,
-      accessSecret: accessSecret || DEFAULT_CREDENTIALS.accessSecret,
-      host: host || DEFAULT_CREDENTIALS.host,
-    };
-  },
-
-  /**
-   * Check if credentials are configured (always true since we have defaults)
+   * Check if track identification is configured on the server
    */
   async hasCredentials() {
-    return true;
+    try {
+      const serverURL = getServerURL();
+      const response = await fetch(`${serverURL}/api/identify/status`);
+      const data = await response.json();
+      return data.configured === true;
+    } catch (error) {
+      console.error('Error checking identify status:', error);
+      return false;
+    }
   },
 
   /**
-   * Clear stored credentials
+   * Fetch ACRCloud credentials from server
    */
-  async clearCredentials() {
-    await SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_KEY);
-    await SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_SECRET);
-    await SecureStore.deleteItemAsync(STORAGE_KEYS.HOST);
+  async fetchCredentials() {
+    const serverURL = getServerURL();
+    const response = await fetch(`${serverURL}/api/identify/credentials`);
+    if (!response.ok) {
+      throw new Error('Track identification not configured on server');
+    }
+    return response.json();
   },
 
   /**
    * Identify a track from an audio file
+   * Fetches credentials from server, then calls ACRCloud directly
    * @param {string} audioUri - Local URI to the audio file
    * @returns {Promise<{success: boolean, track?: object, error?: string}>}
    */
   async identify(audioUri) {
-    const credentials = await this.getCredentials();
-
-    if (!credentials.accessKey || !credentials.accessSecret) {
-      return {
-        success: false,
-        error: 'ACRCloud credentials not configured. Please add your API keys in Settings.',
-      };
-    }
-
     try {
-      // Read audio file info
+      // Fetch credentials from server
+      console.log('Fetching credentials from server...');
+      const credentials = await this.fetchCredentials();
+
+      // Check if file exists
       const fileInfo = await FileSystem.getInfoAsync(audioUri);
       if (!fileInfo.exists) {
         return { success: false, error: 'Audio file not found' };
@@ -119,7 +94,7 @@ export const ACRCloudService = {
       );
       const signature = generateSignature(stringToSign, credentials.accessSecret);
 
-      // Create form data
+      // Create form data - React Native will handle file upload
       const formData = new FormData();
       formData.append('sample', {
         uri: audioUri,
@@ -133,14 +108,20 @@ export const ACRCloudService = {
       formData.append('sample_bytes', sampleBytes.toString());
       formData.append('timestamp', timestamp);
 
-      // Make request
+      console.log(`Calling ACRCloud directly: https://${credentials.host}/v1/identify`);
+
+      // Call ACRCloud directly (not through server proxy)
       const response = await fetch(`https://${credentials.host}/v1/identify`, {
         method: 'POST',
         body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
       });
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `ACRCloud error: ${response.status}`,
+        };
+      }
 
       const result = await response.json();
       return this.parseResult(result);
@@ -173,9 +154,9 @@ export const ACRCloudService = {
         2000: 'Invalid recording - please try again',
         2001: 'Recording too short - please record longer',
         3000: 'Service busy - please try again',
-        3001: 'Invalid access key - check your credentials',
+        3001: 'Invalid access key - check server credentials',
         3003: 'API limit exceeded - try again later',
-        3006: 'Invalid signature - check your credentials',
+        3006: 'Invalid signature - check server credentials',
       };
 
       return {
@@ -198,11 +179,11 @@ export const ACRCloudService = {
       success: true,
       track: {
         title: music.title || 'Unknown Title',
-        artist: music.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
+        artist: music.artists?.map((a) => a.name).join(', ') || 'Unknown Artist',
         album: music.album?.name || null,
         releaseDate: music.release_date || null,
         duration: music.duration_ms ? Math.round(music.duration_ms / 1000) : null,
-        genres: music.genres?.map(g => g.name) || [],
+        genres: music.genres?.map((g) => g.name) || [],
         label: music.label || null,
         externalIds: {
           isrc: music.external_ids?.isrc,
@@ -213,11 +194,33 @@ export const ACRCloudService = {
           deezer: music.external_metadata?.deezer?.track?.id,
           youtube: music.external_metadata?.youtube?.vid,
         },
-        score: music.score, // Confidence score from ACRCloud
-        playOffsetMs: music.play_offset_ms, // Where in the track the sample matched
+        score: music.score,
+        playOffsetMs: music.play_offset_ms,
       },
-      raw: music, // Include raw response for debugging
+      raw: music,
     };
+  },
+
+  /**
+   * @deprecated Credentials are now managed server-side
+   */
+  async saveCredentials() {
+    console.warn('ACRCloudService.saveCredentials is deprecated. Credentials are managed server-side.');
+  },
+
+  /**
+   * @deprecated Credentials are now managed server-side
+   */
+  async getCredentials() {
+    console.warn('ACRCloudService.getCredentials is deprecated. Credentials are managed server-side.');
+    return {};
+  },
+
+  /**
+   * @deprecated Credentials are now managed server-side
+   */
+  async clearCredentials() {
+    console.warn('ACRCloudService.clearCredentials is deprecated. Credentials are managed server-side.');
   },
 };
 

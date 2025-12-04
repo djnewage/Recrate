@@ -11,6 +11,7 @@ const createCrateRoutes = require('./routes/crates');
 const { createStreamingRoutes, createArtworkRoutes } = require('./routes/streaming');
 const createSearchRoutes = require('./routes/search');
 const createConfigRoutes = require('./routes/config');
+const createIdentifyRoutes = require('./routes/identify');
 const AudioWebSocketServer = require('./websocket-server');
 
 /**
@@ -37,7 +38,7 @@ class APIServer {
 
     // Middleware
     this.app.use(cors());
-    this.app.use(express.json());
+    this.app.use(express.json({ limit: '50mb' })); // Increased for base64 audio uploads
     this.app.use(morgan('dev'));
 
     // Rate limiting middleware
@@ -53,6 +54,7 @@ class APIServer {
     this.app.use('/api/artwork', createArtworkRoutes(this.streamer));
     this.app.use('/api/search', createSearchRoutes(this.parser));
     this.app.use('/api/config', createConfigRoutes(this.parser));
+    this.app.use('/api/identify', createIdentifyRoutes());
 
     // 404 handler
     this.app.use((req, res) => {
