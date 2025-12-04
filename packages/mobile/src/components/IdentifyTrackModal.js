@@ -79,6 +79,8 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
 
   useEffect(() => {
     if (visible) {
+      // Force cleanup when modal becomes visible to ensure clean audio session
+      AudioRecordingService.cleanupPreviousRecording();
       setState('idle');
       setError(null);
       setRecognizedTrack(null);
@@ -222,7 +224,9 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
     navigation.navigate('Player', { track });
   };
 
-  const handleTryAgain = () => {
+  const handleTryAgain = async () => {
+    // Force cleanup before trying again to ensure clean audio session
+    await AudioRecordingService.cleanupPreviousRecording();
     setState('idle');
     setError(null);
     setRecognizedTrack(null);

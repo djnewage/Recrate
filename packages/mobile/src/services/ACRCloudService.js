@@ -7,6 +7,24 @@ import { API_CONFIG } from '../constants/config';
 const CLOUD_API_URL = 'https://steadfast-forgiveness-production.up.railway.app';
 
 /**
+ * Create a fetch with timeout (React Native compatible)
+ */
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 5000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+/**
  * Get the current server URL from connection store (desktop server)
  */
 const getServerURL = () => {
@@ -42,9 +60,7 @@ export const ACRCloudService = {
   async hasCredentials() {
     // Try cloud first
     try {
-      const cloudResponse = await fetch(`${CLOUD_API_URL}/api/identify/status`, {
-        signal: AbortSignal.timeout(5000),
-      });
+      const cloudResponse = await fetchWithTimeout(`${CLOUD_API_URL}/api/identify/status`);
       const cloudData = await cloudResponse.json();
       if (cloudData.configured) {
         return true;
@@ -56,9 +72,7 @@ export const ACRCloudService = {
     // Fall back to desktop server
     try {
       const serverURL = getServerURL();
-      const response = await fetch(`${serverURL}/api/identify/status`, {
-        signal: AbortSignal.timeout(5000),
-      });
+      const response = await fetchWithTimeout(`${serverURL}/api/identify/status`);
       const data = await response.json();
       return data.configured === true;
     } catch (error) {
@@ -75,9 +89,7 @@ export const ACRCloudService = {
     // Try cloud first - this is the primary source for end users
     try {
       console.log('Trying cloud API for credentials...');
-      const cloudResponse = await fetch(`${CLOUD_API_URL}/api/identify/credentials`, {
-        signal: AbortSignal.timeout(5000),
-      });
+      const cloudResponse = await fetchWithTimeout(`${CLOUD_API_URL}/api/identify/credentials`);
       if (cloudResponse.ok) {
         console.log('Got credentials from cloud API');
         return cloudResponse.json();
@@ -89,9 +101,7 @@ export const ACRCloudService = {
     // Fall back to desktop server (for local development/testing)
     console.log('Trying desktop server for credentials...');
     const serverURL = getServerURL();
-    const response = await fetch(`${serverURL}/api/identify/credentials`, {
-      signal: AbortSignal.timeout(5000),
-    });
+    const response = await fetchWithTimeout(`${serverURL}/api/identify/credentials`);
     if (!response.ok) {
       throw new Error('Track identification not configured. Please connect to desktop app or check cloud service.');
     }
