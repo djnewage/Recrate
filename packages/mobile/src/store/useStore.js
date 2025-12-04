@@ -58,6 +58,9 @@ const useStore = create((set, get) => ({
   isFilterDrawerOpen: false,
   isFilterActive: false,
 
+  // Track identification state
+  isIdentifyModalVisible: false,
+
   // Library actions
   loadLibrary: async (params = {}, append = false) => {
     set({ isLoadingLibrary: true, libraryError: null });
@@ -703,6 +706,33 @@ const useStore = create((set, get) => ({
 
       return true;
     });
+  },
+
+  // Track identification actions
+  showIdentifyModal: () => set({ isIdentifyModalVisible: true }),
+  hideIdentifyModal: () => set({ isIdentifyModalVisible: false }),
+
+  // Find track in all crates (loads each crate to check)
+  findTrackInAllCrates: async (trackId) => {
+    const { crates } = get();
+    const cratesWithTrack = [];
+
+    for (const crate of crates) {
+      try {
+        const crateDetail = await apiService.getCrate(crate.id);
+        if (crateDetail.tracks?.some(t => t.id === trackId)) {
+          cratesWithTrack.push({
+            id: crate.id,
+            name: crate.name,
+            fullPath: crate.fullPath || crate.name,
+          });
+        }
+      } catch (e) {
+        // Skip crates that fail to load
+      }
+    }
+
+    return cratesWithTrack;
   },
 }));
 

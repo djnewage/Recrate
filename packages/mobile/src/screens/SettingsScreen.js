@@ -9,9 +9,11 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
+import ACRCloudService from '../services/ACRCloudService';
 
 const SettingsScreen = ({ navigation }) => {
   const [installations, setInstallations] = useState([]);
@@ -25,6 +27,14 @@ const SettingsScreen = ({ navigation }) => {
   const [manualMusicPath, setManualMusicPath] = useState('');
   const [manualSeratoPath, setManualSeratoPath] = useState('');
 
+  // ACRCloud settings
+  const [showACRCloud, setShowACRCloud] = useState(false);
+  const [acrAccessKey, setAcrAccessKey] = useState('');
+  const [acrAccessSecret, setAcrAccessSecret] = useState('');
+  const [acrHost, setAcrHost] = useState('identify-us-west-2.acrcloud.com');
+  const [isSavingACR, setIsSavingACR] = useState(false);
+  const [hasACRCredentials, setHasACRCredentials] = useState(false);
+
   const { resetLibrary, loadLibrary } = useStore();
 
   useEffect(() => {
@@ -34,12 +44,65 @@ const SettingsScreen = ({ navigation }) => {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      await Promise.all([loadConfig(), scanForLibraries()]);
+      await Promise.all([loadConfig(), scanForLibraries(), loadACRCloudConfig()]);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadACRCloudConfig = async () => {
+    try {
+      const credentials = await ACRCloudService.getCredentials();
+      setHasACRCredentials(!!(credentials.accessKey && credentials.accessSecret));
+      if (credentials.accessKey) setAcrAccessKey(credentials.accessKey);
+      if (credentials.accessSecret) setAcrAccessSecret(credentials.accessSecret);
+      if (credentials.host) setAcrHost(credentials.host);
+    } catch (error) {
+      console.error('Error loading ACRCloud config:', error);
+    }
+  };
+
+  const saveACRCloudConfig = async () => {
+    if (!acrAccessKey.trim() || !acrAccessSecret.trim()) {
+      Alert.alert('Missing Fields', 'Please enter both Access Key and Access Secret');
+      return;
+    }
+
+    try {
+      setIsSavingACR(true);
+      await ACRCloudService.saveCredentials(acrAccessKey, acrAccessSecret, acrHost);
+      setHasACRCredentials(true);
+      Alert.alert('Saved', 'ACRCloud credentials saved successfully');
+      setShowACRCloud(false);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save credentials');
+      console.error('Error saving ACRCloud config:', error);
+    } finally {
+      setIsSavingACR(false);
+    }
+  };
+
+  const clearACRCloudConfig = async () => {
+    Alert.alert(
+      'Clear Credentials',
+      'Are you sure you want to remove your ACRCloud credentials?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            await ACRCloudService.clearCredentials();
+            setAcrAccessKey('');
+            setAcrAccessSecret('');
+            setAcrHost('identify-us-west-2.acrcloud.com');
+            setHasACRCredentials(false);
+          },
+        },
+      ]
+    );
   };
 
   const loadConfig = async () => {
@@ -324,6 +387,101 @@ const SettingsScreen = ({ navigation }) => {
           )}
         </View>
 
+        {/* ACRCloud Settings */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.advancedToggle}
+            onPress={() => setShowACRCloud(!showACRCloud)}
+          >
+            <View style={styles.acrToggleRow}>
+              <View style={styles.acrToggleLeft}>
+                <Ionicons name="mic" size={20} color={COLORS.primary} />
+                <Text style={styles.advancedToggleText}>
+                  {showACRCloud ? '▼' : '▶'} Track Identification
+                </Text>
+              </View>
+              {hasACRCredentials && (
+                <View style={styles.configuredBadge}>
+                  <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
+                  <Text style={styles.configuredText}>Configured</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {showACRCloud && (
+            <View style={styles.advancedContent}>
+              <Text style={styles.advancedHint}>
+                ACRCloud enables track identification via audio fingerprinting.
+                Sign up at console.acrcloud.com to get your API credentials.
+              </Text>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Access Key</Text>
+                <TextInput
+                  style={styles.input}
+                  value={acrAccessKey}
+                  onChangeText={setAcrAccessKey}
+                  placeholder="Enter your ACRCloud Access Key"
+                  placeholderTextColor={COLORS.textSecondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Access Secret</Text>
+                <TextInput
+                  style={styles.input}
+                  value={acrAccessSecret}
+                  onChangeText={setAcrAccessSecret}
+                  placeholder="Enter your ACRCloud Access Secret"
+                  placeholderTextColor={COLORS.textSecondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Host Region</Text>
+                <TextInput
+                  style={styles.input}
+                  value={acrHost}
+                  onChangeText={setAcrHost}
+                  placeholder="identify-us-west-2.acrcloud.com"
+                  placeholderTextColor={COLORS.textSecondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <View style={styles.acrButtonRow}>
+                <TouchableOpacity
+                  style={[styles.saveButton, isSavingACR && styles.saveButtonDisabled]}
+                  onPress={saveACRCloudConfig}
+                  disabled={isSavingACR}
+                >
+                  {isSavingACR ? (
+                    <ActivityIndicator size="small" color={COLORS.text} />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Save Credentials</Text>
+                  )}
+                </TouchableOpacity>
+
+                {hasACRCredentials && (
+                  <TouchableOpacity
+                    style={styles.clearCredentialsButton}
+                    onPress={clearACRCloudConfig}
+                  >
+                    <Text style={styles.clearCredentialsText}>Clear</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+
         {/* Info Box */}
         <View style={styles.infoBox}>
           <Text style={styles.infoTitle}>💡 How It Works</Text>
@@ -580,6 +738,50 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.textSecondary,
+  },
+  acrToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  acrToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  configuredBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs / 2,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  configuredText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.success,
+    fontWeight: '600',
+  },
+  acrButtonRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.md,
+  },
+  clearCredentialsButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    paddingHorizontal: SPACING.lg,
+  },
+  clearCredentialsText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.error,
   },
 });
 
