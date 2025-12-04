@@ -8,7 +8,7 @@ import useStore from '../store/useStore';
 
 const MiniPlayer = () => {
   const navigation = useNavigation();
-  const { currentTrack, isPlaying, pauseTrack, resumeTrack, stopTrack } =
+  const { currentTrack, isPlaying, pauseTrack, resumeTrack, stopTrack, playNext } =
     useStore();
 
   // Get real playback progress from TrackPlayer
@@ -24,6 +24,10 @@ const MiniPlayer = () => {
 
   const handleStop = () => {
     stopTrack();
+  };
+
+  const handleNext = () => {
+    playNext();
   };
 
   const formatTime = (seconds) => {
@@ -51,6 +55,12 @@ const MiniPlayer = () => {
         />
       </View>
       <View style={styles.content}>
+        {/* BPM Badge */}
+        {currentTrack.bpm && (
+          <View style={styles.bpmBadge}>
+            <Text style={styles.bpmText}>{Math.round(currentTrack.bpm)}</Text>
+          </View>
+        )}
         <TouchableOpacity
           style={styles.info}
           onPress={handleOpenPlayer}
@@ -79,9 +89,15 @@ const MiniPlayer = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.button}
+            onPress={handleNext}
+          >
+            <Ionicons name="play-skip-forward" size={20} color={COLORS.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.buttonSecondary}
             onPress={handleStop}
           >
-            <Ionicons name="stop" size={20} color={COLORS.text} />
+            <Ionicons name="stop" size={18} color={COLORS.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -107,6 +123,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: SPACING.md,
+  },
+  bpmBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#06B6D4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.sm,
+  },
+  bpmText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   info: {
     flex: 1,
@@ -137,6 +167,14 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonSecondary: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
   },

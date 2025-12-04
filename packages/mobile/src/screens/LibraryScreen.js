@@ -105,7 +105,10 @@ const LibraryScreen = ({ navigation }) => {
       Alert.alert('No tracks selected', 'Please select tracks to add to a crate');
       return;
     }
-    navigation.navigate('Crates', { selectedTracks });
+    navigation.navigate('Crates', {
+      screen: 'CratesList',
+      params: { selectedTracks },
+    });
   };
 
   const handleTrackMenu = (track) => {
@@ -136,7 +139,10 @@ const LibraryScreen = ({ navigation }) => {
         if (buttonIndex === 0) {
           handleTrackPress(track);
         } else if (buttonIndex === 1) {
-          navigation.navigate('Crates', { selectedTracks: [track.id] });
+          navigation.navigate('Crates', {
+            screen: 'CratesList',
+            params: { selectedTracks: [track.id] },
+          });
         }
       }
     );

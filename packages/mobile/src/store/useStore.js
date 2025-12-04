@@ -26,6 +26,8 @@ const useStore = create((set, get) => ({
 
   // Crates state
   crates: [],
+  crateTree: [], // Nested tree structure for display
+  expandedCrates: {}, // Track which crates are expanded { [id]: boolean }
   selectedCrate: null,
   isLoadingCrates: false,
   cratesError: null,
@@ -207,12 +209,53 @@ const useStore = create((set, get) => ({
     });
   },
 
+  // Helper to build tree from flat crate list
+  buildCrateTree: (flatCrates) => {
+    // Create a map for quick lookup
+    const crateMap = new Map();
+    flatCrates.forEach(crate => {
+      crateMap.set(crate.id, { ...crate, children: [] });
+    });
+
+    const tree = [];
+
+    // Build tree structure
+    flatCrates.forEach(crate => {
+      const crateWithChildren = crateMap.get(crate.id);
+      if (crate.parentId && crateMap.has(crate.parentId)) {
+        // Add to parent's children
+        crateMap.get(crate.parentId).children.push(crateWithChildren);
+      } else {
+        // Root level crate
+        tree.push(crateWithChildren);
+      }
+    });
+
+    // Sort children at each level
+    const sortChildren = (nodes) => {
+      nodes.sort((a, b) => a.name.localeCompare(b.name));
+      nodes.forEach(node => {
+        if (node.children.length > 0) {
+          sortChildren(node.children);
+        }
+      });
+    };
+    sortChildren(tree);
+
+    return tree;
+  },
+
   // Crates actions
   loadCrates: async () => {
     set({ isLoadingCrates: true, cratesError: null });
     try {
       const data = await apiService.getCrates();
-      set({ crates: data.crates, isLoadingCrates: false });
+      const crateTree = get().buildCrateTree(data.crates);
+      set({
+        crates: data.crates,
+        crateTree: crateTree,
+        isLoadingCrates: false,
+      });
     } catch (error) {
       set({ cratesError: error.message, isLoadingCrates: false });
     }
@@ -228,15 +271,35 @@ const useStore = create((set, get) => ({
     }
   },
 
-  createCrate: async (name, color) => {
+  createCrate: async (name, color, parentId = null) => {
     try {
-      await apiService.createCrate(name, color);
+      await apiService.createCrate(name, color, parentId);
       await get().loadCrates();
       return true;
     } catch (error) {
       set({ cratesError: error.message });
       return false;
     }
+  },
+
+  toggleCrateExpanded: (crateId) => {
+    const { expandedCrates } = get();
+    set({
+      expandedCrates: {
+        ...expandedCrates,
+        [crateId]: !expandedCrates[crateId],
+      },
+    });
+  },
+
+  setCrateExpanded: (crateId, expanded) => {
+    const { expandedCrates } = get();
+    set({
+      expandedCrates: {
+        ...expandedCrates,
+        [crateId]: expanded,
+      },
+    });
   },
 
   addTracksToCrate: async (crateId, trackIds) => {

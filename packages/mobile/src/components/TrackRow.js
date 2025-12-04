@@ -30,9 +30,11 @@ const TrackRow = ({ track, onPress, onLongPress, onMenuPress, isSelected }) => {
         <Text style={styles.subtitle} numberOfLines={1}>
           {track.artist || 'Unknown Artist'} · {formatDuration(track.duration)}
         </Text>
-        {track.key && (
+        {(track.key || track.playCount > 0) && (
           <Text style={styles.metadata}>
-            Key: {track.key}
+            {track.key && `Key: ${track.key}`}
+            {track.key && track.playCount > 0 && ' · '}
+            {track.playCount > 0 && `Plays: ${track.playCount}`}
           </Text>
         )}
       </View>

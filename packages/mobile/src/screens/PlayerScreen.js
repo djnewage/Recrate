@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   Image,
   Modal,
-  FlatList,
+  ScrollView,
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
@@ -17,6 +17,7 @@ import TextTicker from 'react-native-text-ticker';
 import { useProgress } from 'react-native-track-player';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
+import { apiService } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -33,6 +34,9 @@ const PlayerScreen = ({ route, navigation }) => {
 
   const {
     crates,
+    crateTree,
+    expandedCrates,
+    toggleCrateExpanded,
     loadCrates,
     addTracksToCrate,
     isPlaying,
@@ -124,40 +128,76 @@ const PlayerScreen = ({ route, navigation }) => {
     }
   };
 
-  const renderCrateItem = ({ item }) => {
-    const isSelected = selectedCrates.includes(item.id);
+  // Recursive component for rendering crate tree with selection
+  const CrateSelectTreeItem = ({ crate, depth }) => {
+    const isSelected = selectedCrates.includes(crate.id);
+    const hasChildren = crate.children && crate.children.length > 0;
+    const isExpanded = expandedCrates[crate.id];
 
     return (
-      <TouchableOpacity
-        style={[
-          styles.crateSelectItem,
-          isSelected && styles.crateSelectItemActive,
-        ]}
-        onPress={() => toggleCrateSelection(item.id)}
-      >
-        <View style={styles.crateSelectInfo}>
-          <Text style={styles.crateSelectName}>{item.name}</Text>
-          <Text style={styles.crateSelectCount}>
-            {item.trackCount || 0} tracks
-          </Text>
-        </View>
-        <View
+      <View>
+        <TouchableOpacity
           style={[
-            styles.checkbox,
-            isSelected && styles.checkboxActive,
+            styles.crateSelectItem,
+            isSelected && styles.crateSelectItemActive,
+            { paddingLeft: SPACING.md + depth * 20 },
           ]}
+          onPress={() => toggleCrateSelection(crate.id)}
         >
-          {isSelected && (
-            <Ionicons name="checkmark" size={16} color={COLORS.text} />
+          {/* Expand/Collapse button for parent crates */}
+          {hasChildren ? (
+            <TouchableOpacity
+              style={styles.expandButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                toggleCrateExpanded(crate.id);
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                size={16}
+                color={COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.expandPlaceholder} />
           )}
-        </View>
-      </TouchableOpacity>
+
+          <View style={styles.crateSelectInfo}>
+            <Text style={styles.crateSelectName}>{crate.name}</Text>
+            <Text style={styles.crateSelectCount}>
+              {crate.trackCount || 0} tracks
+              {hasChildren ? ` · ${crate.children.length} subcrate${crate.children.length > 1 ? 's' : ''}` : ''}
+            </Text>
+          </View>
+
+          <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
+            {isSelected && (
+              <Ionicons name="checkmark" size={16} color={COLORS.text} />
+            )}
+          </View>
+        </TouchableOpacity>
+
+        {/* Render children if expanded */}
+        {hasChildren && isExpanded && (
+          <View>
+            {crate.children.map(child => (
+              <CrateSelectTreeItem
+                key={child.id}
+                crate={child}
+                depth={depth + 1}
+              />
+            ))}
+          </View>
+        )}
+      </View>
     );
   };
 
   // Get artwork URL if available
   const artworkUrl = track.hasArtwork
-    ? `http://localhost:3000/api/artwork/${track.id}`
+    ? apiService.getArtworkUrl(track.id)
     : null;
 
   return (
@@ -173,7 +213,6 @@ const PlayerScreen = ({ route, navigation }) => {
         >
           <Ionicons name="chevron-down" size={28} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Now Playing</Text>
         <TouchableOpacity
           style={styles.headerButton}
           onPress={() => setShowCratesModal(true)}
@@ -334,21 +373,26 @@ const PlayerScreen = ({ route, navigation }) => {
             </Text>
 
             <View style={styles.cratesListContainer}>
-              {crates.length === 0 ? (
+              {crateTree.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Ionicons name="folder-open-outline" size={48} color={COLORS.textSecondary} />
                   <Text style={styles.emptyStateText}>No crates available</Text>
                   <Text style={styles.emptyStateSubtext}>Create a crate in the Crates tab first</Text>
                 </View>
               ) : (
-                <FlatList
-                  data={crates}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderCrateItem}
+                <ScrollView
                   style={styles.cratesList}
                   contentContainerStyle={styles.cratesListContent}
                   showsVerticalScrollIndicator={false}
-                />
+                >
+                  {crateTree.map(crate => (
+                    <CrateSelectTreeItem
+                      key={crate.id}
+                      crate={crate}
+                      depth={0}
+                    />
+                  ))}
+                </ScrollView>
               )}
             </View>
 
@@ -404,20 +448,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
   artworkContainer: {
     alignItems: 'center',
     marginTop: SPACING.xl,
     marginBottom: SPACING.xl,
   },
   artworkShadow: {
-    width: width * 0.55,
-    height: width * 0.55,
-    borderRadius: (width * 0.55) / 2,
+    width: width * 0.75,
+    height: width * 0.75,
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -430,14 +469,14 @@ const styles = StyleSheet.create({
   artwork: {
     width: '100%',
     height: '100%',
-    borderRadius: (width * 0.55) / 2,
+    borderRadius: 16,
     borderWidth: 3,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   artworkPlaceholder: {
     width: '100%',
     height: '100%',
-    borderRadius: (width * 0.55) / 2,
+    borderRadius: 16,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -537,14 +576,12 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'flex-end',
+    backgroundColor: COLORS.background,
   },
   modalContent: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: BORDER_RADIUS.lg,
-    borderTopRightRadius: BORDER_RADIUS.lg,
-    maxHeight: '80%',
+    flex: 1,
+    backgroundColor: COLORS.background,
+    paddingTop: SPACING.xl,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -567,8 +604,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.sm,
   },
   cratesListContainer: {
-    minHeight: 200,
-    maxHeight: 400,
+    flex: 1,
   },
   cratesList: {
     flex: 1,
@@ -576,7 +612,7 @@ const styles = StyleSheet.create({
   cratesListContent: {
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.md,
-    paddingTop: SPACING.xs,
+    paddingTop: SPACING.sm,
   },
   emptyState: {
     alignItems: 'center',
@@ -600,15 +636,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     backgroundColor: COLORS.background,
-    marginVertical: SPACING.xs,
+    marginVertical: 2,
     borderRadius: BORDER_RADIUS.md,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   crateSelectItemActive: {
     borderColor: COLORS.primary,
+  },
+  expandButton: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.xs,
+  },
+  expandPlaceholder: {
+    width: 24,
+    marginRight: SPACING.xs,
   },
   crateSelectInfo: {
     flex: 1,

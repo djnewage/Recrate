@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { StatusBar, SafeAreaView, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
@@ -43,15 +43,19 @@ function CratesStack() {
         headerShown: false,
       }}
     >
-      <Stack.Screen name="Crates" component={CratesScreen} />
+      <Stack.Screen name="CratesList" component={CratesScreen} />
       <Stack.Screen
         name="CrateDetail"
         component={CrateDetailScreen}
         options={{
           headerShown: true,
           title: '',
-          headerBackVisible: true,
+          headerBackTitle: '',
           headerBackTitleVisible: false,
+          headerStyle: {
+            backgroundColor: COLORS.background,
+          },
+          headerShadowVisible: false,
         }}
       />
     </Stack.Navigator>
@@ -79,6 +83,12 @@ function TabNavigator({ navigation }) {
           fontWeight: '600',
         },
       }}
+      tabBar={(props) => (
+        <>
+          <MiniPlayer />
+          <BottomTabBar {...props} />
+        </>
+      )}
     >
       <Tab.Screen
         name="Library"
@@ -132,12 +142,11 @@ function RootNavigator() {
   );
 }
 
-// Wrapper component to include MiniPlayer inside NavigationContainer
+// Wrapper component for NavigationContainer
 function AppContent() {
   return (
     <View style={{ flex: 1 }}>
       <RootNavigator />
-      <MiniPlayer />
     </View>
   );
 }

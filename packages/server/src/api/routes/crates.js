@@ -75,7 +75,8 @@ function createCrateRoutes(parser, writer = null) {
 
   /**
    * POST /api/crates
-   * Create a new crate
+   * Create a new crate (optionally as a subcrate)
+   * Body: { name: string, color?: string, parentId?: string }
    */
   router.post('/', async (req, res) => {
     try {
@@ -85,13 +86,13 @@ function createCrateRoutes(parser, writer = null) {
         });
       }
 
-      const { name, color = '#FF0000' } = req.body;
+      const { name, color = '#FF0000', parentId = null } = req.body;
 
       if (!name) {
         return res.status(400).json({ error: 'Crate name is required' });
       }
 
-      const crate = await writer.createCrate(name, color);
+      const crate = await writer.createCrate(name, color, parentId);
       parser.invalidateCache(); // Clear cache
 
       res.status(201).json({
@@ -101,6 +102,9 @@ function createCrateRoutes(parser, writer = null) {
     } catch (error) {
       if (error.name === 'CrateExistsError') {
         return res.status(409).json({ error: 'Crate already exists' });
+      }
+      if (error.name === 'ParentCrateNotFoundError') {
+        return res.status(404).json({ error: 'Parent crate not found' });
       }
 
       logger.error('Error creating crate:', error);
