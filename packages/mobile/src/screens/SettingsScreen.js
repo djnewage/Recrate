@@ -33,7 +33,7 @@ const SettingsScreen = ({ navigation }) => {
   const [hasACRCredentials, setHasACRCredentials] = useState(false);
 
   const { resetLibrary, loadLibrary } = useStore();
-  const { connectionType, enterDemoMode } = useConnectionStore();
+  const { connectionType, enterDemoMode, disconnect } = useConnectionStore();
 
   useEffect(() => {
     loadData();
@@ -413,7 +413,34 @@ const SettingsScreen = ({ navigation }) => {
                 ? 'You are currently in demo mode with sample data.'
                 : 'Preview the app with sample data - no server required.'}
             </Text>
-            {connectionType !== CONNECTION_TYPES.DEMO && (
+            {connectionType === CONNECTION_TYPES.DEMO ? (
+              <TouchableOpacity
+                style={styles.exitDemoButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Exit Demo Mode',
+                    'This will disconnect and return to the connection screen.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Exit Demo',
+                        onPress: () => {
+                          resetDemoState();
+                          disconnect();
+                          resetLibrary();
+                          navigation.reset({
+                            index: 0,
+                            routes: [{ name: 'Connection' }],
+                          });
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.exitDemoButtonText}>Exit Demo Mode</Text>
+              </TouchableOpacity>
+            ) : (
               <TouchableOpacity
                 style={styles.demoButton}
                 onPress={handleEnterDemoMode}
@@ -770,6 +797,21 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.primary,
+  },
+  exitDemoButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    marginTop: SPACING.md,
+    alignItems: 'center',
+  },
+  exitDemoButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: '#EF4444',
   },
 });
 

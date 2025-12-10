@@ -239,15 +239,17 @@ export const demoApiService = {
     return { valid: true, demo: true };
   },
 
-  // Streaming URLs - return demo placeholder
+  // Streaming URLs - return actual audio URL from demo track data
   getStreamUrl: (trackId) => {
-    // Return a special demo:// URL that the player will handle
-    return `demo://audio/${trackId}`;
+    const track = getDemoTrackById(trackId);
+    // Return the actual Pixabay audio URL from the track data
+    return track?.streamUrl || null;
   },
 
   getArtworkUrl: (trackId) => {
-    // Return a placeholder - could be a local asset or generated
-    return `demo://artwork/${trackId}`;
+    // Return a placeholder image for demo tracks
+    // Using a generic music note icon from a CDN
+    return 'https://cdn-icons-png.flaticon.com/512/3844/3844724.png';
   },
 };
 
