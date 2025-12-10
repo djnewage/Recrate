@@ -3,18 +3,19 @@
  * Provides realistic DJ library data without requiring server connection
  */
 
-// Royalty-free audio samples from Pixabay for demo playback
+// Royalty-free sample audio from SoundHelix (reliable, always available)
+// These are full-length electronic music tracks perfect for demo purposes
 const DEMO_AUDIO_URLS = [
-  'https://cdn.pixabay.com/audio/2022/10/25/audio_946bc6eb19.mp3', // Electronic
-  'https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3', // Lo-Fi
-  'https://cdn.pixabay.com/audio/2022/08/02/audio_884fe92c21.mp3', // Deep House
-  'https://cdn.pixabay.com/audio/2024/11/14/audio_a4cd4e4087.mp3', // Hip Hop
-  'https://cdn.pixabay.com/audio/2022/08/04/audio_2dde668d05.mp3', // Tropical
-  'https://cdn.pixabay.com/audio/2024/09/10/audio_6e5d7d1912.mp3', // Chill
-  'https://cdn.pixabay.com/audio/2024/04/02/audio_3bac3e9e03.mp3', // Tech
-  'https://cdn.pixabay.com/audio/2023/10/24/audio_a08906a4b5.mp3', // Funky
-  'https://cdn.pixabay.com/audio/2024/09/03/audio_6fbd76b0a4.mp3', // Upbeat
-  'https://cdn.pixabay.com/audio/2024/06/06/audio_44cc098882.mp3', // Energetic
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3',
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3',
 ];
 
 // Helper to assign audio URLs cyclically
