@@ -210,7 +210,7 @@ export const demoApiService = {
     await simulateDelay(250);
     const results = searchDemoTracks(query);
     return {
-      tracks: results.slice(0, limit),
+      results: results.slice(0, limit),
       total: results.length,
       query,
     };
