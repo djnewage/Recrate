@@ -120,9 +120,10 @@ export async function setupPlayer() {
  * Convert Recrate track object to TrackPlayer track format
  */
 export function formatTrackForPlayer(track) {
-  // In demo mode, use bundled placeholder audio (or fallback URL)
+  // In demo mode, use the streamUrl from demo track data (Pixabay audio)
+  // or fall back to the API service which also handles demo mode
   const audioUrl = isDemoMode()
-    ? (demoAudioUri || 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav')
+    ? (track.streamUrl || apiService.getStreamUrl(track.id))
     : apiService.getStreamUrl(track.id);
 
   // In demo mode, don't try to load artwork from server
