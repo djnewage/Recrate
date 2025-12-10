@@ -86,7 +86,14 @@ export const demoApiService = {
   // Crates endpoints
   getCrates: async () => {
     await simulateDelay(200);
-    return { crates: demoCrateState };
+    // Transform crates to include trackCount for UI display
+    const transformCrate = (crate) => ({
+      ...crate,
+      trackCount: crate.trackIds?.length || 0,
+      children: crate.children?.map(transformCrate) || [],
+    });
+    const cratesWithCount = demoCrateState.map(transformCrate);
+    return { crates: cratesWithCount };
   },
 
   getCrate: async (crateId) => {
