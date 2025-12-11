@@ -10,6 +10,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import AudioRecordingService from '../services/AudioRecordingService';
 import ACRCloudService from '../services/ACRCloudService';
@@ -17,9 +18,10 @@ import TrackMatchingService from '../services/TrackMatchingService';
 import useStore from '../store/useStore';
 import TrackRow from './TrackRow';
 
-const RECORDING_DURATION = 5;
+const RECORDING_DURATION = 10;
 
 const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
+  const insets = useSafeAreaInsets();
   const [state, setState] = useState('idle');
   const [error, setError] = useState(null);
   const [recognizedTrack, setRecognizedTrack] = useState(null);
@@ -381,16 +383,25 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
               <Text style={styles.sectionTitle}>IN CRATES</Text>
               <View style={styles.sectionCard}>
                 {matchedCrates.map((crate, idx) => (
-                  <View
+                  <TouchableOpacity
                     key={crate.id}
                     style={[
                       styles.listItem,
                       idx < matchedCrates.length - 1 && styles.listItemBorder
                     ]}
+                    onPress={() => {
+                      onClose();
+                      navigation.navigate('Crates', {
+                        screen: 'CrateDetail',
+                        params: { crateId: crate.id, crateName: crate.name }
+                      });
+                    }}
+                    activeOpacity={0.7}
                   >
                     <Ionicons name="folder" size={18} color={COLORS.primary} />
                     <Text style={styles.listItemText} numberOfLines={1}>{crate.fullPath}</Text>
-                  </View>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -428,7 +439,7 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.container}>
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+        <TouchableOpacity style={[styles.closeButton, { top: insets.top + 10 }]} onPress={onClose}>
           <Ionicons name="close" size={28} color={COLORS.textSecondary} />
         </TouchableOpacity>
 
@@ -449,7 +460,7 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  closeButton: { position: 'absolute', top: SPACING.xl + 10, right: SPACING.lg, zIndex: 10, padding: SPACING.sm },
+  closeButton: { position: 'absolute', right: SPACING.lg, zIndex: 10, padding: SPACING.sm },
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: SPACING.xl },
   rippleContainer: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center' },
   ripple: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: COLORS.primary },
