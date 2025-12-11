@@ -12,8 +12,9 @@ const normalizeString = (str) => {
   if (!str) return '';
   return str
     .toLowerCase()
-    .replace(/[^\w\s]/g, '') // Remove punctuation
-    .replace(/\s+/g, ' ')    // Normalize whitespace
+    .replace(/[\/&,]/g, ' ')  // Replace separators with spaces FIRST
+    .replace(/[^\w\s]/g, '')  // Then remove other punctuation
+    .replace(/\s+/g, ' ')     // Normalize whitespace
     .trim();
 };
 
