@@ -24,9 +24,12 @@ const ConnectionScreen = ({ navigation }) => {
     serverURL,
     isConnected,
     isSearching,
+    hasEverConnected,
     findServer,
     connectManually,
     disconnect,
+    enterDemoMode,
+    checkHasEverConnected,
   } = useConnectionStore();
 
   const [showManualModal, setShowManualModal] = useState(false);
@@ -35,11 +38,20 @@ const ConnectionScreen = ({ navigation }) => {
   const [connectionError, setConnectionError] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  // Auto-detect server on mount
+  // Check connection history and optionally auto-connect on mount
   useEffect(() => {
-    if (!isConnected && !isSearching) {
-      findServer();
-    }
+    const initConnection = async () => {
+      // First, check if user has ever connected before
+      const hasConnected = await checkHasEverConnected();
+
+      // Only auto-connect if user has connected before
+      // This ensures first-time users (like Apple reviewers) see the welcome screen
+      if (hasConnected && !isConnected && !isSearching) {
+        findServer();
+      }
+    };
+
+    initConnection();
   }, []);
 
   // Navigate to main app when connected
@@ -169,6 +181,20 @@ const ConnectionScreen = ({ navigation }) => {
               <Text style={styles.secondaryButtonText}>Enter IP</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Demo Mode Button - Prominent for first-time users */}
+          <TouchableOpacity
+            style={styles.demoButton}
+            onPress={enterDemoMode}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="play-circle-outline" size={24} color={COLORS.primary} />
+            <View style={styles.demoButtonTextContainer}>
+              <Text style={styles.demoButtonTitle}>Try Demo Mode</Text>
+              <Text style={styles.demoButtonSubtitle}>Preview app without server connection</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
         </>
       )}
 
@@ -353,6 +379,32 @@ const styles = StyleSheet.create({
     width: 1,
     height: 24,
     backgroundColor: COLORS.border,
+  },
+  demoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderRadius: BORDER_RADIUS.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.xl,
+    gap: SPACING.md,
+    width: '100%',
+  },
+  demoButtonTextContainer: {
+    flex: 1,
+  },
+  demoButtonTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  demoButtonSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
   },
   helpSection: {
     marginTop: 'auto',

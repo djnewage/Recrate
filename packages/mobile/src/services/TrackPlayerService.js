@@ -5,7 +5,38 @@ import TrackPlayer, {
   RepeatMode,
   State,
 } from 'react-native-track-player';
+import { Asset } from 'expo-asset';
 import apiService from './api';
+import { useConnectionStore, CONNECTION_TYPES } from '../store/connectionStore';
+
+// Bundled demo audio for App Store review - silent MP3 that works offline
+let demoAudioUri = null;
+
+// Load the bundled demo audio asset
+const getDemoAudioUri = async () => {
+  if (demoAudioUri) return demoAudioUri;
+
+  try {
+    const asset = Asset.fromModule(require('../../assets/demo-audio.mp3'));
+    await asset.downloadAsync();
+    demoAudioUri = asset.localUri || asset.uri;
+    console.log('[TrackPlayer] Demo audio loaded:', demoAudioUri);
+    return demoAudioUri;
+  } catch (error) {
+    console.error('[TrackPlayer] Failed to load demo audio:', error);
+    // Fallback to a reliable external URL if bundled asset fails
+    return 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav';
+  }
+};
+
+// Check if in demo mode
+const isDemoMode = () => {
+  try {
+    return useConnectionStore.getState().connectionType === CONNECTION_TYPES.DEMO;
+  } catch {
+    return false;
+  }
+};
 
 /**
  * Setup TrackPlayer with capabilities and configuration
@@ -74,6 +105,10 @@ export async function setupPlayer() {
     });
 
     console.log('TrackPlayer setup complete with optimized buffering');
+
+    // Preload demo audio asset for instant playback in demo mode
+    getDemoAudioUri().catch(() => {});
+
     return true;
   } catch (error) {
     console.error('Error setting up TrackPlayer:', error);
@@ -85,11 +120,20 @@ export async function setupPlayer() {
  * Convert Recrate track object to TrackPlayer track format
  */
 export function formatTrackForPlayer(track) {
+  // In demo mode, use the streamUrl from demo track data (Pixabay audio)
+  // or fall back to the API service which also handles demo mode
+  const audioUrl = isDemoMode()
+    ? (track.streamUrl || apiService.getStreamUrl(track.id))
+    : apiService.getStreamUrl(track.id);
+
+  // In demo mode, don't try to load artwork from server
+  const artworkUrl = isDemoMode() ? undefined : (track.hasArtwork ? apiService.getArtworkUrl(track.id) : undefined);
+
   return {
-    url: apiService.getStreamUrl(track.id),
+    url: audioUrl,
     title: track.title || 'Unknown Title',
     artist: track.artist || 'Unknown Artist',
-    artwork: track.hasArtwork ? apiService.getArtworkUrl(track.id) : undefined,
+    artwork: artworkUrl,
     duration: track.duration || 0,
     // Store custom metadata
     id: track.id,
@@ -120,6 +164,11 @@ export async function addTracksToQueue(tracks) {
  * This significantly reduces playback start delay
  */
 export async function preloadTrack(track) {
+  // Skip preloading in demo mode - demo audio doesn't need it
+  if (isDemoMode()) {
+    return;
+  }
+
   try {
     const streamUrl = apiService.getStreamUrl(track.id);
 

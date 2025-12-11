@@ -46,6 +46,8 @@ out/
 .expo/
 .expo-shared/
 web-build/
+ios/
+android/
 
 # Electron
 # Electron build outputs are in packages/desktop/dist/

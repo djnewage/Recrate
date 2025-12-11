@@ -14,6 +14,8 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
 import ACRCloudService from '../services/ACRCloudService';
+import { useConnectionStore, CONNECTION_TYPES } from '../store/connectionStore';
+import { resetDemoState } from '../services/demoApiService';
 
 const SettingsScreen = ({ navigation }) => {
   const [installations, setInstallations] = useState([]);
@@ -31,6 +33,7 @@ const SettingsScreen = ({ navigation }) => {
   const [hasACRCredentials, setHasACRCredentials] = useState(false);
 
   const { resetLibrary, loadLibrary } = useStore();
+  const { connectionType, enterDemoMode, disconnect } = useConnectionStore();
 
   useEffect(() => {
     loadData();
@@ -139,6 +142,30 @@ const SettingsScreen = ({ navigation }) => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleEnterDemoMode = () => {
+    Alert.alert(
+      'Switch to Demo Mode',
+      'This will disconnect from the server and use demo data instead. You can reconnect anytime from the connection screen.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Enter Demo Mode',
+          onPress: async () => {
+            // Reset demo data to fresh state
+            resetDemoState();
+            // Enter demo mode
+            enterDemoMode();
+            // Reset and reload library with demo data
+            resetLibrary();
+            await loadLibrary();
+            // Navigate back to main
+            navigation.goBack();
+          },
+        },
+      ]
+    );
   };
 
   const saveManualConfig = async () => {
@@ -364,6 +391,63 @@ const SettingsScreen = ({ navigation }) => {
                 ? 'ACRCloud is configured on the server. You can use track identification.'
                 : 'ACRCloud credentials need to be configured on the server to enable track identification.'}
             </Text>
+          </View>
+        </View>
+
+        {/* Demo Mode Section */}
+        <View style={styles.section}>
+          <View style={styles.demoSection}>
+            <View style={styles.demoHeader}>
+              <View style={styles.demoHeaderLeft}>
+                <Ionicons name="play-circle-outline" size={20} color={COLORS.primary} />
+                <Text style={styles.advancedToggleText}>Demo Mode</Text>
+              </View>
+              {connectionType === CONNECTION_TYPES.DEMO && (
+                <View style={styles.demoBadge}>
+                  <Text style={styles.demoBadgeText}>ACTIVE</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.demoHint}>
+              {connectionType === CONNECTION_TYPES.DEMO
+                ? 'You are currently in demo mode with sample data.'
+                : 'Preview the app with sample data - no server required.'}
+            </Text>
+            {connectionType === CONNECTION_TYPES.DEMO ? (
+              <TouchableOpacity
+                style={styles.exitDemoButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Exit Demo Mode',
+                    'This will disconnect and return to the connection screen.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Exit Demo',
+                        onPress: () => {
+                          resetDemoState();
+                          disconnect();
+                          resetLibrary();
+                          navigation.reset({
+                            index: 0,
+                            routes: [{ name: 'Connection' }],
+                          });
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.exitDemoButtonText}>Exit Demo Mode</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.demoButton}
+                onPress={handleEnterDemoMode}
+              >
+                <Text style={styles.demoButtonText}>Enter Demo Mode</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -669,6 +753,65 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
     marginTop: SPACING.sm,
+  },
+  demoSection: {
+    paddingVertical: SPACING.md,
+  },
+  demoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  demoHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  demoBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs / 2,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  demoBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  demoHint: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.sm,
+  },
+  demoButton: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    marginTop: SPACING.md,
+    alignItems: 'center',
+  },
+  demoButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  exitDemoButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    marginTop: SPACING.md,
+    alignItems: 'center',
+  },
+  exitDemoButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: '#EF4444',
   },
 });
 
