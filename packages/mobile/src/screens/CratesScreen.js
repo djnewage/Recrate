@@ -14,6 +14,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
+import useSubscription from '../hooks/useSubscription';
+import useSubscriptionStore from '../store/subscriptionStore';
+import { LockBadge } from '../components/UpgradePrompt';
 
 // Recursive component for rendering crate tree items
 const CrateTreeItem = ({
@@ -109,6 +112,15 @@ const CratesScreen = ({ navigation, route }) => {
     clearSelection,
   } = useStore();
 
+  const {
+    isPremium,
+    canCreateCrate,
+    canCreateSubcrate,
+    remainingFreeCrates,
+    showPaywall,
+    FEATURES,
+  } = useSubscription();
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCrateName, setNewCrateName] = useState('');
   const [selectedParentId, setSelectedParentId] = useState(null); // For subcrate creation
@@ -124,6 +136,13 @@ const CratesScreen = ({ navigation, route }) => {
     }, [])
   );
 
+  // Update subscription store with crate count for gating
+  useEffect(() => {
+    // Count only top-level crates for the free tier limit
+    const topLevelCrateCount = crateTree.length;
+    useSubscriptionStore.getState().updateCrateCount(topLevelCrateCount);
+  }, [crateTree]);
+
   useEffect(() => {
     // If coming from Library with selected tracks via route params
     if (route.params?.selectedTracks?.length > 0) {
@@ -134,9 +153,25 @@ const CratesScreen = ({ navigation, route }) => {
   // Use route params if available, otherwise fall back to store selection
   const selectedTracks = routeSelectedTracks.length > 0 ? routeSelectedTracks : storeSelectedTracks;
 
+  const handleCreateButtonPress = () => {
+    // Check if user can create a crate
+    if (!canCreateCrate) {
+      showPaywall(FEATURES.UNLIMITED_CRATES);
+      return;
+    }
+    setShowCreateModal(true);
+  };
+
   const handleCreateCrate = async () => {
     if (!newCrateName.trim()) {
       Alert.alert('Error', 'Please enter a crate name');
+      return;
+    }
+
+    // Check subcrate permission
+    if (selectedParentId && !canCreateSubcrate) {
+      setShowCreateModal(false);
+      showPaywall(FEATURES.NESTED_CRATES);
       return;
     }
 
@@ -289,10 +324,11 @@ const CratesScreen = ({ navigation, route }) => {
           <Text style={styles.subtitle}>{crates.length} crates</Text>
         </View>
         <TouchableOpacity
-          style={styles.createButton}
-          onPress={() => setShowCreateModal(true)}
+          style={[styles.createButton, !canCreateCrate && styles.createButtonLocked]}
+          onPress={handleCreateButtonPress}
         >
           <Text style={styles.createButtonText}>Create</Text>
+          {!canCreateCrate && <LockBadge size="small" />}
         </TouchableOpacity>
       </View>
 
@@ -415,56 +451,74 @@ const CratesScreen = ({ navigation, route }) => {
               autoFocus
             />
 
-            {/* Parent Crate Picker */}
-            <Text style={styles.modalLabel}>Parent Crate (optional)</Text>
-            <ScrollView style={styles.parentPicker} nestedScrollEnabled>
-              <TouchableOpacity
-                style={[
-                  styles.parentPickerItem,
-                  selectedParentId === null && styles.parentPickerItemSelected,
-                ]}
-                onPress={() => setSelectedParentId(null)}
-              >
-                <Ionicons
-                  name="home-outline"
-                  size={18}
-                  color={selectedParentId === null ? COLORS.primary : COLORS.textSecondary}
-                />
-                <Text
-                  style={[
-                    styles.parentPickerText,
-                    selectedParentId === null && styles.parentPickerTextSelected,
-                  ]}
-                >
-                  Root level (no parent)
-                </Text>
-              </TouchableOpacity>
-              {crates.map(crate => (
-                <TouchableOpacity
-                  key={crate.id}
-                  style={[
-                    styles.parentPickerItem,
-                    { paddingLeft: 16 + (crate.depth || 0) * 16 },
-                    selectedParentId === crate.id && styles.parentPickerItemSelected,
-                  ]}
-                  onPress={() => setSelectedParentId(crate.id)}
-                >
-                  <Ionicons
-                    name="folder-outline"
-                    size={18}
-                    color={selectedParentId === crate.id ? COLORS.primary : COLORS.textSecondary}
-                  />
-                  <Text
+            {/* Parent Crate Picker - Premium only */}
+            {isPremium ? (
+              <>
+                <Text style={styles.modalLabel}>Parent Crate (optional)</Text>
+                <ScrollView style={styles.parentPicker} nestedScrollEnabled>
+                  <TouchableOpacity
                     style={[
-                      styles.parentPickerText,
-                      selectedParentId === crate.id && styles.parentPickerTextSelected,
+                      styles.parentPickerItem,
+                      selectedParentId === null && styles.parentPickerItemSelected,
                     ]}
+                    onPress={() => setSelectedParentId(null)}
                   >
-                    {crate.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                    <Ionicons
+                      name="home-outline"
+                      size={18}
+                      color={selectedParentId === null ? COLORS.primary : COLORS.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.parentPickerText,
+                        selectedParentId === null && styles.parentPickerTextSelected,
+                      ]}
+                    >
+                      Root level (no parent)
+                    </Text>
+                  </TouchableOpacity>
+                  {crates.map(crate => (
+                    <TouchableOpacity
+                      key={crate.id}
+                      style={[
+                        styles.parentPickerItem,
+                        { paddingLeft: 16 + (crate.depth || 0) * 16 },
+                        selectedParentId === crate.id && styles.parentPickerItemSelected,
+                      ]}
+                      onPress={() => setSelectedParentId(crate.id)}
+                    >
+                      <Ionicons
+                        name="folder-outline"
+                        size={18}
+                        color={selectedParentId === crate.id ? COLORS.primary : COLORS.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.parentPickerText,
+                          selectedParentId === crate.id && styles.parentPickerTextSelected,
+                        ]}
+                      >
+                        {crate.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.nestedCratesPromo}
+                onPress={() => {
+                  setShowCreateModal(false);
+                  showPaywall(FEATURES.NESTED_CRATES);
+                }}
+              >
+                <Ionicons name="git-branch" size={18} color={COLORS.primary} />
+                <Text style={styles.nestedCratesPromoText}>
+                  Upgrade to create nested crates
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            )}
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -518,10 +572,18 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.primary,
+    position: 'relative',
+  },
+  createButtonLocked: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   createButtonText: {
     fontSize: FONT_SIZES.md,
@@ -763,6 +825,22 @@ const styles = StyleSheet.create({
   parentPickerTextSelected: {
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  nestedCratesPromo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.2)',
+  },
+  nestedCratesPromoText: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
   },
 });
 
