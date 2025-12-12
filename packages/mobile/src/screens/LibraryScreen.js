@@ -13,9 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useActionSheet } from '@expo/react-native-action-sheet';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
+import useSubscription from '../hooks/useSubscription';
 import TrackRow from '../components/TrackRow';
 import FilterModal from '../components/FilterModal';
 import IdentifyTrackModal from '../components/IdentifyTrackModal';
+import { LockBadge } from '../components/UpgradePrompt';
 
 const LibraryScreen = ({ navigation }) => {
   const { showActionSheetWithOptions } = useActionSheet();
@@ -45,6 +47,15 @@ const LibraryScreen = ({ navigation }) => {
     showIdentifyModal,
     hideIdentifyModal,
   } = useStore();
+
+  const {
+    canUseTrackId,
+    canUseAdvancedFilters,
+    showPaywall,
+    FEATURES,
+    isInFreeTrial,
+    isPremium,
+  } = useSubscription();
 
   const [sortBy, setSortBy] = useState('title');
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
@@ -229,10 +240,17 @@ const LibraryScreen = ({ navigation }) => {
           </Text>
           <View style={styles.headerActions}>
             <TouchableOpacity
-              style={styles.identifyButton}
-              onPress={showIdentifyModal}
+              style={[styles.identifyButton, !canUseTrackId && styles.identifyButtonLocked]}
+              onPress={() => {
+                if (canUseTrackId) {
+                  showIdentifyModal();
+                } else {
+                  showPaywall(FEATURES.TRACK_IDENTIFICATION);
+                }
+              }}
             >
-              <Ionicons name="mic" size={20} color={COLORS.primary} />
+              <Ionicons name="mic" size={20} color={canUseTrackId ? COLORS.primary : COLORS.textSecondary} />
+              {!canUseTrackId && <LockBadge size="small" />}
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.editButton}
@@ -250,6 +268,22 @@ const LibraryScreen = ({ navigation }) => {
           </Text>
         )}
       </View>
+
+      {/* Trial Expiry Banner */}
+      {!isPremium && !isInFreeTrial && (
+        <TouchableOpacity
+          style={styles.trialExpiredBanner}
+          onPress={() => showPaywall()}
+        >
+          <View style={styles.bannerContent}>
+            <Ionicons name="star" size={18} color="#FFD700" />
+            <Text style={styles.bannerText}>
+              Your free trial has ended. Tap to subscribe.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -307,6 +341,7 @@ const LibraryScreen = ({ navigation }) => {
             color={isFilterActive ? COLORS.text : COLORS.textSecondary}
           />
           {isFilterActive && <View style={styles.filterIndicator} />}
+          {!canUseAdvancedFilters && <LockBadge size="small" />}
         </TouchableOpacity>
       </View>
 
@@ -452,6 +487,10 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.surface,
+    position: 'relative',
+  },
+  identifyButtonLocked: {
+    opacity: 0.7,
   },
   editButton: {
     paddingHorizontal: SPACING.sm,
@@ -634,6 +673,30 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: SPACING.md,
     fontStyle: 'italic',
+  },
+  trialExpiredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flex: 1,
+  },
+  bannerText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    flex: 1,
   },
 });
 

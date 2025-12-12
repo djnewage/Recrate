@@ -202,8 +202,8 @@ const ConnectionScreen = ({ navigation }) => {
       <View style={styles.helpSection}>
         <Text style={styles.helpTitle}>Having trouble?</Text>
         <Text style={styles.helpItem}>• Make sure the desktop app is running</Text>
-        <Text style={styles.helpItem}>• Both devices should be on the same WiFi</Text>
         <Text style={styles.helpItem}>• Try scanning the QR code from the desktop app</Text>
+        <Text style={styles.helpItem}>• Or enter the connection URL manually</Text>
       </View>
 
       {/* Manual Entry Modal */}

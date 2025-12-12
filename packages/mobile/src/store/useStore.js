@@ -359,26 +359,25 @@ const useStore = create((set, get) => ({
     set({ selectedTracks: tracks.map((t) => t.id) });
   },
 
-  // Search actions
-  search: async (query) => {
-    set({ searchQuery: query, isSearching: true });
+  // Search actions - filter locally from loaded tracks
+  search: (query) => {
+    set({ searchQuery: query });
+
     if (!query.trim()) {
-      set({ searchResults: [], isSearching: false });
+      set({ searchResults: [] });
       return;
     }
 
-    try {
-      const data = await apiService.searchTracks(query);
+    const { tracks } = get();
+    const lowerQuery = query.toLowerCase();
 
-      // Deduplicate search results to prevent duplicate key errors
-      const uniqueResults = Array.from(
-        new Map(data.results.map(t => [t.id, t])).values()
-      );
+    const results = tracks.filter(track =>
+      track.title?.toLowerCase().includes(lowerQuery) ||
+      track.artist?.toLowerCase().includes(lowerQuery) ||
+      track.album?.toLowerCase().includes(lowerQuery)
+    );
 
-      set({ searchResults: uniqueResults, isSearching: false });
-    } catch (error) {
-      set({ isSearching: false });
-    }
+    set({ searchResults: results });
   },
 
   clearSearch: () => {

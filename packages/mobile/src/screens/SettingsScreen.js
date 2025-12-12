@@ -10,9 +10,11 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Linking, Platform } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
+import useSubscription from '../hooks/useSubscription';
 import ACRCloudService from '../services/ACRCloudService';
 import { useConnectionStore, CONNECTION_TYPES } from '../store/connectionStore';
 import { resetDemoState } from '../services/demoApiService';
@@ -34,6 +36,21 @@ const SettingsScreen = ({ navigation }) => {
 
   const { resetLibrary, loadLibrary } = useStore();
   const { connectionType, enterDemoMode, disconnect } = useConnectionStore();
+
+  const {
+    isPremium,
+    isLoading: isSubscriptionLoading,
+    activeSubscription,
+    trialInfo,
+    expiryDate,
+    showPaywall,
+    restorePurchases,
+    isInFreeTrial,
+    trialDaysRemaining,
+    hasPremiumAccess,
+  } = useSubscription();
+
+  const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -268,11 +285,125 @@ const SettingsScreen = ({ navigation }) => {
     <ScrollView style={styles.container}>
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Library Settings</Text>
-          <Text style={styles.subtitle}>
-            Select your Serato library location
-          </Text>
+          <Text style={styles.title}>Settings</Text>
         </View>
+
+        {/* Subscription Section */}
+        <View style={styles.subscriptionSection}>
+          <View style={styles.subscriptionCard}>
+            <View style={styles.subscriptionHeader}>
+              <View style={[styles.subscriptionBadge, isInFreeTrial && styles.trialBadgeIcon]}>
+                <Ionicons
+                  name={hasPremiumAccess ? 'star' : 'star-outline'}
+                  size={20}
+                  color={hasPremiumAccess ? '#FFD700' : COLORS.textSecondary}
+                />
+              </View>
+              <View style={styles.subscriptionInfo}>
+                <Text style={styles.subscriptionTitle}>
+                  {isPremium ? 'Recrate Pro' : isInFreeTrial ? 'Free Trial' : 'Free Plan'}
+                </Text>
+                {isInFreeTrial && (
+                  <View style={styles.trialBadge}>
+                    <Text style={styles.trialBadgeText}>{trialDaysRemaining} DAY{trialDaysRemaining !== 1 ? 'S' : ''} LEFT</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Premium Subscriber */}
+            {isPremium && (
+              <View style={styles.subscriptionDetails}>
+                <Text style={styles.subscriptionDetailText}>
+                  {activeSubscription?.willRenew
+                    ? `Renews ${expiryDate}`
+                    : `Expires ${expiryDate}`}
+                </Text>
+                <TouchableOpacity
+                  style={styles.manageButton}
+                  onPress={() => {
+                    if (Platform.OS === 'ios') {
+                      Linking.openURL('https://apps.apple.com/account/subscriptions');
+                    } else {
+                      Linking.openURL('https://play.google.com/store/account/subscriptions');
+                    }
+                  }}
+                >
+                  <Text style={styles.manageButtonText}>Manage Subscription</Text>
+                  <Ionicons name="open-outline" size={14} color={COLORS.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* In Free Trial */}
+            {!isPremium && isInFreeTrial && (
+              <View style={styles.subscriptionDetails}>
+                <Text style={styles.subscriptionDetailText}>
+                  You have full access to all features during your trial
+                </Text>
+                <View style={styles.trialFeaturesList}>
+                  <Text style={styles.featureItemActive}>✓ Unlimited crates</Text>
+                  <Text style={styles.featureItemActive}>✓ Track identification</Text>
+                  <Text style={styles.featureItemActive}>✓ Advanced filters</Text>
+                  <Text style={styles.featureItemActive}>✓ Nested crates</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.upgradeButton}
+                  onPress={() => showPaywall()}
+                >
+                  <Ionicons name="star" size={16} color="#fff" />
+                  <Text style={styles.upgradeButtonText}>Subscribe Now</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Trial Expired / Free Plan */}
+            {!isPremium && !isInFreeTrial && (
+              <View style={styles.subscriptionDetails}>
+                <Text style={styles.subscriptionDetailText}>
+                  Your trial has ended. Subscribe to unlock all features.
+                </Text>
+                <View style={styles.freeFeaturesList}>
+                  <Text style={styles.featureItem}>• 1 crate limit</Text>
+                  <Text style={styles.featureItem}>• Basic sorting only</Text>
+                  <Text style={styles.featureItem}>• No track identification</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.upgradeButton}
+                  onPress={() => showPaywall()}
+                >
+                  <Ionicons name="star" size={16} color="#fff" />
+                  <Text style={styles.upgradeButtonText}>Upgrade to Recrate Pro</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.restoreButton}
+                  onPress={async () => {
+                    setIsRestoringPurchases(true);
+                    const result = await restorePurchases();
+                    setIsRestoringPurchases(false);
+                    if (result.success && result.restored) {
+                      Alert.alert('Success', 'Your subscription has been restored!');
+                    } else if (result.success && !result.restored) {
+                      Alert.alert('No Subscription Found', 'No previous subscription was found.');
+                    } else {
+                      Alert.alert('Error', result.error || 'Failed to restore purchases.');
+                    }
+                  }}
+                  disabled={isRestoringPurchases}
+                >
+                  {isRestoringPurchases ? (
+                    <ActivityIndicator size="small" color={COLORS.textSecondary} />
+                  ) : (
+                    <Text style={styles.restoreButtonText}>Restore Purchases</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Library Section Header */}
+        <Text style={styles.sectionHeaderText}>Library Settings</Text>
 
         {/* Available Libraries Section */}
         {installations.length > 0 ? (
@@ -754,6 +885,8 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: SPACING.sm,
   },
+
+  // Demo mode styles
   demoSection: {
     paddingVertical: SPACING.md,
   },
@@ -812,6 +945,124 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: '#EF4444',
+  },
+
+  // Subscription styles
+  subscriptionSection: {
+    marginBottom: SPACING.xl,
+  },
+  subscriptionCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.2)',
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  subscriptionBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  subscriptionInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  subscriptionTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  trialBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  trialBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  subscriptionDetails: {
+    marginTop: SPACING.xs,
+  },
+  subscriptionDetailText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.sm,
+  },
+  manageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+  },
+  manageButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
+  freeFeaturesList: {
+    marginBottom: SPACING.md,
+  },
+  trialFeaturesList: {
+    marginBottom: SPACING.md,
+    paddingLeft: SPACING.xs,
+  },
+  featureItem: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+  },
+  featureItemActive: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.success || '#10B981',
+    marginBottom: SPACING.xs,
+    fontWeight: '500',
+  },
+  trialBadgeIcon: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+  },
+  upgradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.md,
+    gap: SPACING.sm,
+  },
+  upgradeButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  restoreButton: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  restoreButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    textDecorationLine: 'underline',
+  },
+  sectionHeaderText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.md,
   },
 });
 

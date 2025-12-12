@@ -10,16 +10,20 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import AudioRecordingService from '../services/AudioRecordingService';
 import ACRCloudService from '../services/ACRCloudService';
 import TrackMatchingService from '../services/TrackMatchingService';
 import useStore from '../store/useStore';
+import useSubscription from '../hooks/useSubscription';
 import TrackRow from './TrackRow';
+import UpgradePrompt from './UpgradePrompt';
 
-const RECORDING_DURATION = 5;
+const RECORDING_DURATION = 10;
 
 const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
+  const insets = useSafeAreaInsets();
   const [state, setState] = useState('idle');
   const [error, setError] = useState(null);
   const [recognizedTrack, setRecognizedTrack] = useState(null);
@@ -35,6 +39,7 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
   const ringAnim3 = useRef(new Animated.Value(0)).current;
 
   const { tracks, crates, crateTree, loadCrates } = useStore();
+  const { canUseTrackId, showPaywall, FEATURES } = useSubscription();
 
   // Ripple animation
   useEffect(() => {
@@ -241,17 +246,48 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
     return <Animated.View style={[styles.ripple, { transform: [{ scale }], opacity }]} />;
   };
 
-  const renderIdleState = () => (
-    <View style={styles.centerContent}>
-      <TouchableOpacity style={styles.mainButton} onPress={startRecording} activeOpacity={0.8}>
-        <View style={styles.buttonInner}>
-          <Ionicons name="mic" size={56} color="#fff" />
+  const renderIdleState = () => {
+    // If user doesn't have premium, show upgrade prompt
+    if (!canUseTrackId) {
+      return (
+        <View style={styles.centerContent}>
+          <View style={styles.lockedIcon}>
+            <Ionicons name="mic" size={48} color={COLORS.textSecondary} />
+            <View style={styles.lockedBadge}>
+              <Ionicons name="lock-closed" size={16} color="#fff" />
+            </View>
+          </View>
+          <Text style={styles.mainText}>Track Identification</Text>
+          <Text style={styles.subText}>
+            Identify any playing track with Shazam-like technology
+          </Text>
+          <TouchableOpacity
+            style={styles.upgradeButton}
+            onPress={() => {
+              onClose();
+              setTimeout(() => showPaywall(FEATURES.TRACK_IDENTIFICATION), 300);
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="star" size={18} color="#fff" />
+            <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
-      <Text style={styles.mainText}>Tap to identify</Text>
-      <Text style={styles.subText}>Make sure the music is playing clearly</Text>
-    </View>
-  );
+      );
+    }
+
+    return (
+      <View style={styles.centerContent}>
+        <TouchableOpacity style={styles.mainButton} onPress={startRecording} activeOpacity={0.8}>
+          <View style={styles.buttonInner}>
+            <Ionicons name="mic" size={56} color="#fff" />
+          </View>
+        </TouchableOpacity>
+        <Text style={styles.mainText}>Tap to identify</Text>
+        <Text style={styles.subText}>Make sure the music is playing clearly</Text>
+      </View>
+    );
+  };
 
   const renderRecordingState = () => (
     <View style={styles.centerContent}>
@@ -381,16 +417,25 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
               <Text style={styles.sectionTitle}>IN CRATES</Text>
               <View style={styles.sectionCard}>
                 {matchedCrates.map((crate, idx) => (
-                  <View
+                  <TouchableOpacity
                     key={crate.id}
                     style={[
                       styles.listItem,
                       idx < matchedCrates.length - 1 && styles.listItemBorder
                     ]}
+                    onPress={() => {
+                      onClose();
+                      navigation.navigate('Crates', {
+                        screen: 'CrateDetail',
+                        params: { crateId: crate.id, crateName: crate.name }
+                      });
+                    }}
+                    activeOpacity={0.7}
                   >
                     <Ionicons name="folder" size={18} color={COLORS.primary} />
                     <Text style={styles.listItemText} numberOfLines={1}>{crate.fullPath}</Text>
-                  </View>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -428,7 +473,7 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.container}>
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+        <TouchableOpacity style={[styles.closeButton, { top: insets.top + 10 }]} onPress={onClose}>
           <Ionicons name="close" size={28} color={COLORS.textSecondary} />
         </TouchableOpacity>
 
@@ -449,15 +494,53 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  closeButton: { position: 'absolute', top: SPACING.xl + 10, right: SPACING.lg, zIndex: 10, padding: SPACING.sm },
+  closeButton: { position: 'absolute', right: SPACING.lg, zIndex: 10, padding: SPACING.sm },
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: SPACING.xl },
   rippleContainer: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center' },
   ripple: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: COLORS.primary },
   mainButton: { width: 140, height: 140, borderRadius: 70, overflow: 'hidden', shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 12 },
   buttonInner: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.primary, borderRadius: 70 },
-  mainText: { fontSize: 28, fontWeight: '700', color: COLORS.text, marginTop: SPACING.xl },
-  subText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginTop: SPACING.sm },
+  mainText: { fontSize: 28, fontWeight: '700', color: COLORS.text, marginTop: SPACING.xl, textAlign: 'center' },
+  subText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginTop: SPACING.sm, textAlign: 'center', paddingHorizontal: SPACING.lg },
   loadingContainer: { width: 140, height: 140, borderRadius: 70, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center' },
+
+  // Locked state
+  lockedIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  lockedBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  upgradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    marginTop: SPACING.xl,
+    gap: SPACING.sm,
+  },
+  upgradeButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: '#fff',
+  },
 
   // Results
   resultScroll: { flex: 1 },

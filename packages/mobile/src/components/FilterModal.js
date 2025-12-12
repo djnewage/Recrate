@@ -14,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
+import useSubscription from '../hooks/useSubscription';
+import UpgradePrompt from './UpgradePrompt';
 
 import BPMRangeSlider from './BPMRangeSlider';
 import KeySelectionChips from './KeySelectionChips';
@@ -25,6 +27,12 @@ const MODAL_WIDTH = Math.min(SCREEN_WIDTH * 0.9, 400);
 const FilterModal = () => {
   const insets = useSafeAreaInsets();
   const [localFilters, setLocalFilters] = useState(null);
+
+  const {
+    canUseAdvancedFilters,
+    showPaywall,
+    FEATURES,
+  } = useSubscription();
 
   // Animation values
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -225,26 +233,44 @@ const FilterModal = () => {
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {/* BPM Range */}
-            <BPMRangeSlider
-              min={60}
-              max={180}
-              value={localFilters.bpmRange}
-              onChange={(bpmRange) => setLocalFilters({ ...localFilters, bpmRange })}
-            />
+            {canUseAdvancedFilters ? (
+              <>
+                {/* BPM Range */}
+                <BPMRangeSlider
+                  min={60}
+                  max={180}
+                  value={localFilters.bpmRange}
+                  onChange={(bpmRange) => setLocalFilters({ ...localFilters, bpmRange })}
+                />
 
-            {/* Key Selection */}
-            <KeySelectionChips
-              selectedKeys={localFilters.selectedKeys}
-              onChange={(selectedKeys) => setLocalFilters({ ...localFilters, selectedKeys })}
-            />
+                {/* Key Selection */}
+                <KeySelectionChips
+                  selectedKeys={localFilters.selectedKeys}
+                  onChange={(selectedKeys) => setLocalFilters({ ...localFilters, selectedKeys })}
+                />
 
-            {/* Genre Selection */}
-            <GenreChips
-              selectedGenres={localFilters.selectedGenres}
-              availableGenres={availableGenres}
-              onChange={(selectedGenres) => setLocalFilters({ ...localFilters, selectedGenres })}
-            />
+                {/* Genre Selection */}
+                <GenreChips
+                  selectedGenres={localFilters.selectedGenres}
+                  availableGenres={availableGenres}
+                  onChange={(selectedGenres) => setLocalFilters({ ...localFilters, selectedGenres })}
+                />
+              </>
+            ) : (
+              <View style={styles.upgradeContainer}>
+                <UpgradePrompt
+                  feature={FEATURES.ADVANCED_FILTERS}
+                  variant="inline"
+                  onUpgrade={() => {
+                    handleClose();
+                    setTimeout(() => showPaywall(FEATURES.ADVANCED_FILTERS), 300);
+                  }}
+                />
+                <Text style={styles.upgradeNote}>
+                  Upgrade to Premium to filter your library by BPM range, musical key, and genre.
+                </Text>
+              </View>
+            )}
           </ScrollView>
 
           {/* Footer */}
@@ -386,6 +412,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  upgradeContainer: {
+    flex: 1,
+    paddingVertical: SPACING.lg,
+  },
+  upgradeNote: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: SPACING.lg,
+    lineHeight: 20,
   },
 });
 
