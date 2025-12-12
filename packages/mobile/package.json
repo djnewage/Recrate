@@ -9,6 +9,7 @@
     "web": "npx expo start --web",
     "build:preview": "eas build --profile preview --platform ios",
     "build:dev": "eas build --profile development-device --platform ios",
+    "build:submit": "eas build --platform ios --auto-submit",
     "kill-server": "lsof -ti :3000 | xargs kill -9 || echo 'No server running on port 3000'"
   },
   "dependencies": {
