@@ -11,10 +11,12 @@ import { ActionSheetProvider } from '@expo/react-native-action-sheet';
 import { COLORS } from './src/constants/theme';
 import { useConnectionStore } from './src/store/connectionStore';
 import useStore from './src/store/useStore';
+import useSubscriptionStore from './src/store/subscriptionStore';
 import * as TrackPlayerService from './src/services/TrackPlayerService';
 
 // Screens
 import ConnectionScreen from './src/screens/ConnectionScreen';
+import PaywallScreen from './src/screens/PaywallScreen';
 import LibraryScreen from './src/screens/LibraryScreen';
 import CratesScreen from './src/screens/CratesScreen';
 import CrateDetailScreen from './src/screens/CrateDetailScreen';
@@ -138,6 +140,13 @@ function RootNavigator() {
           presentation: 'modal',
         }}
       />
+      <RootStack.Screen
+        name="Paywall"
+        component={PaywallScreen}
+        options={{
+          presentation: 'modal',
+        }}
+      />
     </RootStack.Navigator>
   );
 }
@@ -170,14 +179,15 @@ export default function App() {
     },
   };
 
-  // Initialize TrackPlayer on app mount
+  // Initialize TrackPlayer and Subscriptions on app mount
   useEffect(() => {
     let mounted = true;
 
-    async function initializeTrackPlayer() {
+    async function initializeApp() {
       try {
         if (!mounted) return;
 
+        // Initialize TrackPlayer
         const success = await TrackPlayerService.setupPlayer();
 
         if (success && mounted) {
@@ -187,12 +197,16 @@ export default function App() {
         } else if (!success) {
           console.error('Failed to initialize TrackPlayer');
         }
+
+        // Initialize RevenueCat subscriptions
+        await useSubscriptionStore.getState().initialize();
+        console.log('Subscriptions initialized');
       } catch (error) {
-        console.error('Error initializing TrackPlayer:', error);
+        console.error('Error initializing app:', error);
       }
     }
 
-    initializeTrackPlayer();
+    initializeApp();
 
     return () => {
       mounted = false;
