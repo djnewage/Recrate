@@ -133,8 +133,10 @@ const useStore = create(
       const loadedCount = uniqueTracks.length;
 
       // Determine if there are more tracks to load
-      // hasMore is true if we haven't loaded all tracks yet
-      const hasMore = total > 0 ? loadedCount < total : (data.pagination?.hasMore || false);
+      // Use API's hasMore as primary indicator, fall back to count comparison
+      // If API says hasMore: false, trust it (server knows best)
+      const apiHasMore = data.pagination?.hasMore;
+      const hasMore = apiHasMore !== undefined ? apiHasMore : (total > 0 && loadedCount < total);
 
       const newPagination = {
         total,
