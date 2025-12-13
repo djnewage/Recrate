@@ -104,16 +104,48 @@ class APIServer {
     logger.info('Stopping API server...');
 
     return new Promise((resolve) => {
+      // Set a timeout to force resolution if close takes too long
+      const timeout = setTimeout(() => {
+        logger.warn('Server stop timed out after 5 seconds, forcing close');
+        resolve();
+      }, 5000);
+
+      // Close Socket.IO first
       if (this.io) {
         this.io.close();
+        logger.info('Socket.IO server closed');
+      }
+
+      // Close audio WebSocket server
+      if (this.audioWsServer) {
+        try {
+          this.audioWsServer.close?.();
+        } catch (e) {
+          // Ignore errors
+        }
+        this.audioWsServer = null;
+        logger.info('Audio WebSocket server closed');
       }
 
       if (this.httpServer) {
-        this.httpServer.close(() => {
+        // Force close all active connections (Node 18.2+)
+        // This prevents keep-alive connections from blocking server close
+        if (typeof this.httpServer.closeAllConnections === 'function') {
+          this.httpServer.closeAllConnections();
+          logger.info('Forced close of all active connections');
+        }
+
+        this.httpServer.close((err) => {
+          clearTimeout(timeout);
+          if (err) {
+            logger.warn('Error closing HTTP server:', err.message);
+          }
           logger.success('API server stopped');
+          this.httpServer = null;
           resolve();
         });
       } else {
+        clearTimeout(timeout);
         resolve();
       }
     });
@@ -148,10 +180,11 @@ class APIServer {
    * Set up rate limiting for different endpoint types
    */
   setupRateLimiting() {
-    // General API rate limiter - 100 requests per 15 minutes per IP
+    // General API rate limiter - 1000 requests per 15 minutes per IP
+    // Increased from 100 to support large libraries with pagination
     const generalLimiter = rateLimit({
       windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100,
+      max: 1000,
       message: 'Too many requests from this IP, please try again later',
       standardHeaders: true, // Return rate limit info in headers
       legacyHeaders: false,

@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startServer: () => ipcRenderer.invoke('start-server'),
   stopServer: () => ipcRenderer.invoke('stop-server'),
   getServerStatus: () => ipcRenderer.invoke('get-server-status'),
+  reindexLibrary: () => ipcRenderer.invoke('reindex-library'),
 
   // Listeners
   onServerStatus: (callback) => {
@@ -40,5 +41,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getProxyStatus: () => ipcRenderer.invoke('get-proxy-status'),
   onProxyStatus: (callback) => {
     ipcRenderer.on('proxy-status', (event, status) => callback(status));
+  },
+
+  // Indexing status
+  getIndexingStatus: () => ipcRenderer.invoke('get-indexing-status'),
+  onIndexingProgress: (callback) => {
+    ipcRenderer.on('indexing-progress', (event, progress) => callback(progress));
   }
 });

@@ -302,17 +302,20 @@ function App() {
               {
                 icon: Music,
                 title: 'Stream Your Library',
-                description: 'Access your entire Serato music collection wirelessly. Browse, search, and preview tracks in real-time.',
+                description: 'Access your entire Serato music collection wirelessly from your mobile device. Browse thousands of tracks, search by title, artist, or BPM, and preview any song in real-time without interrupting your set.',
+                screenshot: '/screenshots/library.png',
               },
               {
                 icon: Smartphone,
                 title: 'Mobile Crate Management',
-                description: 'Create, edit, and organize crates from your phone. Changes sync instantly back to Serato.',
+                description: 'Create, edit, and organize crates directly from your phone or tablet. Select multiple tracks, add them to existing crates, and see your changes sync instantly back to Serato DJ Pro on your laptop.',
+                screenshot: '/screenshots/crates.png',
               },
               {
                 icon: Zap,
                 title: 'Lightning Fast',
-                description: 'Local network streaming means zero latency. Preview tracks instantly without waiting for downloads.',
+                description: 'Built on local network streaming for zero-latency audio preview. No cloud uploads, no waiting for downloads - just instant access to your music with full playback controls and track metadata.',
+                screenshot: '/screenshots/player.png',
               },
             ].map((feature, index) => (
               <motion.div
@@ -321,13 +324,21 @@ function App() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: index * 0.2 }}
-                className="p-8 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10 hover:border-purple-500/50 transition-colors group"
+                className="p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10 hover:border-purple-500/50 transition-colors group"
               >
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                  <feature.icon size={28} className="text-white" />
+                {/* Screenshot */}
+                <div className="mb-6 rounded-xl overflow-hidden border border-white/10 bg-black/30 aspect-[9/16] max-h-64 mx-auto">
+                  <img
+                    src={feature.screenshot}
+                    alt={`${feature.title} screenshot`}
+                    className="w-full h-full object-cover object-top"
+                  />
                 </div>
-                <h3 className="text-2xl font-bold mb-3">{feature.title}</h3>
-                <p className="text-gray-400 leading-relaxed">{feature.description}</p>
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <feature.icon size={24} className="text-white" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
+                <p className="text-gray-400 leading-relaxed text-sm">{feature.description}</p>
               </motion.div>
             ))}
           </div>
@@ -481,56 +492,32 @@ function App() {
               )
             })()}
 
-            {/* Windows Download */}
-            <motion.button
-              onClick={() => handleDownload(downloads.windows, 'windows')}
-              disabled={loading || !downloads.windows}
+            {/* Windows Download - Coming Soon */}
+            <motion.div
               initial={{ opacity: 0, x: 30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: 0.4 }}
-              className={`flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border transition-all group text-left ${
-                loading || !downloads.windows
-                  ? 'border-white/5 opacity-60 cursor-not-allowed'
-                  : 'border-white/10 hover:border-purple-500/50 hover:scale-105 cursor-pointer'
-              }`}
+              className="relative flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/5 opacity-60 cursor-not-allowed text-left"
             >
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0">
+              {/* Coming Soon badge */}
+              <div className="absolute -top-3 -right-3 z-10 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-semibold text-white shadow-lg">
+                Coming Soon
+              </div>
+              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center flex-shrink-0">
                 <Monitor size={32} className="text-white" />
               </div>
               <div className="text-left flex-grow">
                 <div className="text-sm text-gray-400 mb-1">Download for</div>
                 <div className="text-2xl font-bold">Windows</div>
                 <div className="text-sm text-gray-500">
-                  {loading ? 'Checking...' : downloads.windows ? `Windows 10/11${downloads.windowsSize ? ` • ${downloads.windowsSize}` : ''}` : 'Coming Soon'}
+                  Windows 10/11
                 </div>
               </div>
               <div className="ml-auto flex-shrink-0">
-                <AnimatePresence mode="wait">
-                  {loading ? (
-                    <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <Loader2 size={20} className="text-gray-400 animate-spin" />
-                    </motion.div>
-                  ) : winDownloadState === 'downloading' ? (
-                    <motion.div key="downloading" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
-                      <Loader2 size={20} className="text-purple-400 animate-spin" />
-                    </motion.div>
-                  ) : winDownloadState === 'complete' ? (
-                    <motion.div key="complete" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
-                      <Check size={20} className="text-green-400" />
-                    </motion.div>
-                  ) : !downloads.windows ? (
-                    <motion.div key="unavailable" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <AlertCircle size={20} className="text-gray-500" />
-                    </motion.div>
-                  ) : (
-                    <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                      <Download size={20} className="text-gray-400 group-hover:text-purple-400 transition-colors" />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                <AlertCircle size={20} className="text-gray-500" />
               </div>
-            </motion.button>
+            </motion.div>
           </div>
 
           {/* Download started toast */}

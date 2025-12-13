@@ -116,6 +116,25 @@ const CratesScreen = ({ navigation, route }) => {
   const [sortBy, setSortBy] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
   const [routeSelectedTracks, setRouteSelectedTracks] = useState([]);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Initial load on mount - handles case where server is still indexing
+  useEffect(() => {
+    const initialLoad = async () => {
+      await loadCrates();
+
+      // If crates are empty after load, the server might still be indexing
+      // Retry a few times with delay
+      const { crates: loadedCrates } = useStore.getState();
+      if (loadedCrates.length === 0 && retryCount < 3) {
+        const retryTimer = setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+        }, 3000); // Retry after 3 seconds
+        return () => clearTimeout(retryTimer);
+      }
+    };
+    initialLoad();
+  }, [retryCount]);
 
   // Reload crates whenever the screen gains focus
   useFocusEffect(
