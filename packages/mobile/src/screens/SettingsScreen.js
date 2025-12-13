@@ -409,17 +409,17 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   header: {
-    marginTop: SPACING.xl,
+    marginTop: SPACING.md,
     marginBottom: SPACING.xl,
   },
   title: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     color: COLORS.text,
     marginBottom: SPACING.xs,
   },
   subtitle: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
   },
   section: {

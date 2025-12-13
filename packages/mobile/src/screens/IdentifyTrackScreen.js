@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  Modal,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
@@ -16,17 +15,19 @@ import AudioRecordingService from '../services/AudioRecordingService';
 import ACRCloudService from '../services/ACRCloudService';
 import TrackMatchingService from '../services/TrackMatchingService';
 import useStore from '../store/useStore';
-import TrackRow from './TrackRow';
+import apiService from '../services/api';
+import TrackRow from '../components/TrackRow';
 
 const RECORDING_DURATION = 10;
 
-const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
+const IdentifyTrackScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [state, setState] = useState('idle');
   const [error, setError] = useState(null);
   const [recognizedTrack, setRecognizedTrack] = useState(null);
   const [matches, setMatches] = useState([]);
   const [matchedCrates, setMatchedCrates] = useState([]);
+  const [isLoadingCrates, setIsLoadingCrates] = useState(false);
   const [variations, setVariations] = useState([]);
 
   const timerRef = useRef(null);
@@ -37,6 +38,15 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
   const ringAnim3 = useRef(new Animated.Value(0)).current;
 
   const { tracks, crates, crateTree, loadCrates } = useStore();
+
+  // Cleanup on mount
+  useEffect(() => {
+    AudioRecordingService.cleanupPreviousRecording();
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      AudioRecordingService.cancelRecording();
+    };
+  }, []);
 
   // Ripple animation
   useEffect(() => {
@@ -71,31 +81,6 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
       pulseAnim.setValue(1);
     }
   }, [state]);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      AudioRecordingService.cancelRecording();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (visible) {
-      // Force cleanup when modal becomes visible to ensure clean audio session
-      AudioRecordingService.cleanupPreviousRecording();
-      setState('idle');
-      setError(null);
-      setRecognizedTrack(null);
-      setMatches([]);
-      setMatchedCrates([]);
-      setVariations([]);
-      isRecordingRef.current = false;
-    } else {
-      isRecordingRef.current = false;
-      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-      AudioRecordingService.cancelRecording();
-    }
-  }, [visible]);
 
   const startRecording = async () => {
     try {
@@ -157,13 +142,16 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
       );
       setVariations(trackVariations);
 
-      // Find crates
-      if (bestMatch) {
-        const cratesWithTrack = await findTrackCrates(bestMatch.track.id);
-        setMatchedCrates(cratesWithTrack);
-      }
-
+      // Show results immediately - don't wait for crate loading
       setState('result');
+
+      // Load crates in background (non-blocking)
+      if (bestMatch) {
+        setIsLoadingCrates(true);
+        findTrackCrates(bestMatch.track.id)
+          .then(setMatchedCrates)
+          .finally(() => setIsLoadingCrates(false));
+      }
     } catch (err) {
       console.error('Identification failed:', err);
       setError(err.message || 'Failed to identify track');
@@ -183,46 +171,45 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
       cratesToSearch = freshState.crateTree?.length > 0 ? freshState.crateTree : freshState.crates;
     }
 
-    // Recursive function to search crates and subcrates
-    const searchCrate = async (crate, parentPath = '') => {
-      const currentPath = parentPath ? `${parentPath} › ${crate.name}` : crate.name;
+    // Flatten the crate tree with paths for parallel processing
+    const flattenCrates = (crateList, parentPath = '') => {
+      const result = [];
+      for (const crate of crateList) {
+        const currentPath = parentPath ? `${parentPath} › ${crate.name}` : crate.name;
+        result.push({ crate, fullPath: currentPath });
+        if (crate.children?.length > 0) {
+          result.push(...flattenCrates(crate.children, currentPath));
+        }
+      }
+      return result;
+    };
 
+    const flatCrates = flattenCrates(cratesToSearch);
+
+    // Search all crates in PARALLEL (much faster than sequential)
+    const searchPromises = flatCrates.map(async ({ crate, fullPath }) => {
       try {
-        await useStore.getState().loadCrate(crate.id);
-        const selectedCrate = useStore.getState().selectedCrate;
+        const crateData = await apiService.getCrate(crate.id);
 
-        if (selectedCrate?.tracks?.length > 0) {
-          const found = selectedCrate.tracks.some(t => String(t.id) === trackIdStr);
+        if (crateData?.tracks?.length > 0) {
+          const found = crateData.tracks.some(t => String(t.id) === trackIdStr);
           if (found) {
-            cratesWithTrack.push({
-              id: crate.id,
-              name: crate.name,
-              fullPath: currentPath
-            });
+            return { id: crate.id, name: crate.name, fullPath };
           }
         }
       } catch (e) {
-        // Silently handle crate loading errors
+        // Silently handle errors
       }
+      return null;
+    });
 
-      // Recursively search children (subcrates)
-      if (crate.children?.length > 0) {
-        for (const child of crate.children) {
-          await searchCrate(child, currentPath);
-        }
-      }
-    };
+    const results = await Promise.all(searchPromises);
 
-    // Search all top-level crates
-    for (const crate of cratesToSearch) {
-      await searchCrate(crate);
-    }
-
-    return cratesWithTrack;
+    // Filter out nulls and return found crates
+    return results.filter(Boolean);
   };
 
   const handlePlayTrack = (track) => {
-    onClose();
     navigation.navigate('Player', { track });
   };
 
@@ -234,7 +221,12 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
     setRecognizedTrack(null);
     setMatches([]);
     setMatchedCrates([]);
+    setIsLoadingCrates(false);
     setVariations([]);
+  };
+
+  const handleClose = () => {
+    navigation.goBack();
   };
 
   const renderRipple = (anim) => {
@@ -378,31 +370,37 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
           </View>
 
           {/* Crates Section */}
-          {matchedCrates.length > 0 && (
+          {(isLoadingCrates || matchedCrates.length > 0) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>IN CRATES</Text>
               <View style={styles.sectionCard}>
-                {matchedCrates.map((crate, idx) => (
-                  <TouchableOpacity
-                    key={crate.id}
-                    style={[
-                      styles.listItem,
-                      idx < matchedCrates.length - 1 && styles.listItemBorder
-                    ]}
-                    onPress={() => {
-                      onClose();
-                      navigation.navigate('Crates', {
-                        screen: 'CrateDetail',
-                        params: { crateId: crate.id, crateName: crate.name }
-                      });
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="folder" size={18} color={COLORS.primary} />
-                    <Text style={styles.listItemText} numberOfLines={1}>{crate.fullPath}</Text>
-                    <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                ))}
+                {isLoadingCrates && matchedCrates.length === 0 ? (
+                  <View style={styles.listItem}>
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                    <Text style={styles.listItemText}>Searching crates...</Text>
+                  </View>
+                ) : (
+                  matchedCrates.map((crate, idx) => (
+                    <TouchableOpacity
+                      key={crate.id}
+                      style={[
+                        styles.listItem,
+                        idx < matchedCrates.length - 1 && styles.listItemBorder
+                      ]}
+                      onPress={() => {
+                        navigation.push('CrateDetailFromIdentify', {
+                          crateId: crate.id,
+                          crateName: crate.name
+                        });
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="folder" size={18} color={COLORS.primary} />
+                      <Text style={styles.listItemText} numberOfLines={1}>{crate.fullPath}</Text>
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
             </View>
           )}
@@ -427,7 +425,7 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
               <Ionicons name="refresh" size={20} color={COLORS.text} />
               <Text style={styles.actionButtonText}>Try Again</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionButton, styles.actionButtonPrimary]} onPress={onClose}>
+            <TouchableOpacity style={[styles.actionButton, styles.actionButtonPrimary]} onPress={handleClose}>
               <Text style={styles.actionButtonTextPrimary}>Done</Text>
             </TouchableOpacity>
           </View>
@@ -437,30 +435,53 @@ const IdentifyTrackModal = ({ visible, onClose, navigation }) => {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.container}>
-        <TouchableOpacity style={[styles.closeButton, { top: insets.top + 10 }]} onPress={onClose}>
-          <Ionicons name="close" size={28} color={COLORS.textSecondary} />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={handleClose}>
+          <Ionicons name="chevron-back" size={28} color={COLORS.text} />
         </TouchableOpacity>
-
-        {state === 'idle' && renderIdleState()}
-        {state === 'recording' && renderRecordingState()}
-        {state === 'identifying' && renderIdentifyingState()}
-        {state === 'result' && renderResultState()}
-
-        {state === 'idle' && error && (
-          <View style={styles.errorToast}>
-            <Text style={styles.errorToastText}>{error}</Text>
-          </View>
-        )}
+        <Text style={styles.headerTitle}>Identify Track</Text>
+        <View style={styles.headerSpacer} />
       </View>
-    </Modal>
+
+      {state === 'idle' && renderIdleState()}
+      {state === 'recording' && renderRecordingState()}
+      {state === 'identifying' && renderIdentifyingState()}
+      {state === 'result' && renderResultState()}
+
+      {state === 'idle' && error && (
+        <View style={styles.errorToast}>
+          <Text style={styles.errorToastText}>{error}</Text>
+        </View>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  closeButton: { position: 'absolute', right: SPACING.lg, zIndex: 10, padding: SPACING.sm },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  backButton: {
+    padding: SPACING.xs,
+  },
+  headerTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  headerSpacer: {
+    width: 44, // Same as back button for centering
+  },
+
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: SPACING.xl },
   rippleContainer: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center' },
   ripple: { position: 'absolute', width: 140, height: 140, borderRadius: 70, backgroundColor: COLORS.primary },
@@ -472,7 +493,7 @@ const styles = StyleSheet.create({
 
   // Results
   resultScroll: { flex: 1 },
-  resultContent: { padding: SPACING.lg, paddingTop: SPACING.xl * 2 },
+  resultContent: { padding: SPACING.lg, paddingTop: SPACING.md },
 
   // Main Card
   resultCard: {
@@ -652,4 +673,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default IdentifyTrackModal;
+export default IdentifyTrackScreen;

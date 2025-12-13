@@ -75,9 +75,9 @@ const CrateTreeItem = ({
       {/* Render children if expanded or auto-expanded during search */}
       {hasChildren && shouldExpand && (
         <View>
-          {crate.children.map(child => (
+          {crate.children.map((child, childIndex) => (
             <CrateTreeItem
-              key={child.id}
+              key={`${child.id}-${depth}-${childIndex}`}
               crate={child}
               depth={depth + 1}
               isExpanded={expandedCrates[child.id]}
@@ -396,9 +396,9 @@ const CratesScreen = ({ navigation, route }) => {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.list}>
-          {displayTree.map(crate => (
+          {displayTree.map((crate, index) => (
             <CrateTreeItem
-              key={crate.id}
+              key={`${crate.id}-${index}`}
               crate={crate}
               depth={0}
               isExpanded={expandedCrates[crate.id]}
@@ -458,9 +458,9 @@ const CratesScreen = ({ navigation, route }) => {
                   Root level (no parent)
                 </Text>
               </TouchableOpacity>
-              {crates.map(crate => (
+              {crates.map((crate, index) => (
                 <TouchableOpacity
-                  key={crate.id}
+                  key={`${crate.id}-${index}`}
                   style={[
                     styles.parentPickerItem,
                     { paddingLeft: 16 + (crate.depth || 0) * 16 },
@@ -519,8 +519,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl,
+    padding: SPACING.md,
+    paddingTop: SPACING.md,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -528,12 +528,12 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   title: {
-    fontSize: FONT_SIZES.xxl,
+    fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     color: COLORS.text,
   },
   subtitle: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
   },
   createButton: {

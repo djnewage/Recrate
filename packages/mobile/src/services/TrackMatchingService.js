@@ -313,14 +313,11 @@ export const TrackMatchingService = {
       else if (titleSimilarity > 0.6 && artistSimilarity > 0.4) {
         confidence = 'medium';
       }
-      // Low confidence: Partial matches
+      // Low confidence: Partial matches - require reasonable title match
       else if (titleSimilarity > 0.5 && artistSimilarity > 0.3) {
         confidence = 'low';
       }
-      // Very lenient: Title contains key words
-      else if (combinedScore > 0.45) {
-        confidence = 'low';
-      }
+      // Removed: overly lenient combined score check that allowed artist-only matches
 
       if (confidence) {
         results.push({
@@ -380,9 +377,12 @@ export const TrackMatchingService = {
   getBestMatch(matches) {
     if (!matches?.length) return null;
 
-    // Return first high confidence match, or best score
+    // Only return high or medium confidence matches
     const highConfidence = matches.find(m => m.confidence === 'high');
-    return highConfidence || matches[0];
+    if (highConfidence) return highConfidence;
+
+    const mediumConfidence = matches.find(m => m.confidence === 'medium');
+    return mediumConfidence || null;  // Don't return low confidence as "best" match
   },
 
   /**
@@ -464,10 +464,10 @@ export const TrackMatchingService = {
       // Check if significant words from base title appear in library track
       const matchingWordCount = baseTitleWords.filter(word => normalizedTrackTitle.includes(word)).length;
       const hasMatchingWords = baseTitleWords.length > 0 &&
-        matchingWordCount >= Math.ceil(baseTitleWords.length * 0.5);
+        matchingWordCount >= Math.ceil(baseTitleWords.length * 0.7);
 
       // Title matches if fuzzy similarity is decent OR has matching words
-      const titleMatches = titleSimilarity > 0.4 || hasMatchingWords;
+      const titleMatches = titleSimilarity > 0.55 || hasMatchingWords;
 
       // === ARTIST MATCHING (keep threshold higher for quality) ===
       const artistSimilarity = calculateArtistSimilarity(trackArtist, recognizedTrack.artist);
@@ -482,13 +482,13 @@ export const TrackMatchingService = {
 
       // === INCLUSION LOGIC ===
       // Include if:
-      // 1. Title is a fuzzy match AND artist matches (high confidence)
-      // 2. Title is very similar (>0.6) AND has variation keyword (remix/edit of same song)
-      // 3. Title has matching words AND artist somewhat matches (different version)
+      // 1. Good title similarity AND artist matches (high confidence)
+      // 2. Very similar title AND has variation keyword (remix/edit of same song)
+      // 3. Most words match AND decent title similarity AND strong artist match
       const shouldInclude =
-        (titleMatches && artistMatches) ||
-        (titleSimilarity > 0.6 && hasVariationKeyword) ||
-        (hasMatchingWords && artistSimilarity > 0.4);
+        (titleSimilarity > 0.55 && artistMatches) ||
+        (titleSimilarity > 0.7 && hasVariationKeyword) ||
+        (hasMatchingWords && titleSimilarity > 0.45 && artistSimilarity > 0.6);
 
       if (shouldInclude) {
         variations.push({
@@ -499,8 +499,16 @@ export const TrackMatchingService = {
       }
     }
 
+    // Deduplicate by track ID before sorting
+    const seen = new Set();
+    const deduped = variations.filter(v => {
+      if (seen.has(v.track.id)) return false;
+      seen.add(v.track.id);
+      return true;
+    });
+
     // Sort by similarity and return top 5
-    return variations
+    return deduped
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, 5);
   },

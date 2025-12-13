@@ -16,7 +16,6 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
 import FilterModal from '../components/FilterModal';
-import IdentifyTrackModal from '../components/IdentifyTrackModal';
 
 const LibraryScreen = ({ navigation }) => {
   const { showActionSheetWithOptions } = useActionSheet();
@@ -42,9 +41,6 @@ const LibraryScreen = ({ navigation }) => {
     isFilterActive,
     getFilteredTracks,
     toggleFilterDrawer,
-    isIdentifyModalVisible,
-    showIdentifyModal,
-    hideIdentifyModal,
   } = useStore();
 
   const [sortBy, setSortBy] = useState('title');
@@ -332,7 +328,7 @@ const LibraryScreen = ({ navigation }) => {
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.identifyButton}
-              onPress={showIdentifyModal}
+              onPress={() => navigation.navigate('IdentifyTrack')}
             >
               <Ionicons name="mic" size={20} color={COLORS.primary} />
             </TouchableOpacity>
@@ -443,7 +439,7 @@ const LibraryScreen = ({ navigation }) => {
           <FlatList
             ref={flatListRef}
             data={sortedTracks}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item, index) => `${item.id}-${index}`}
             renderItem={({ item }) => (
               <TrackRow
                 track={item}
@@ -550,13 +546,6 @@ const LibraryScreen = ({ navigation }) => {
 
       {/* Filter Modal */}
       <FilterModal />
-
-      {/* Identify Track Modal */}
-      <IdentifyTrackModal
-        visible={isIdentifyModalVisible}
-        onClose={hideIdentifyModal}
-        navigation={navigation}
-      />
     </View>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { StatusBar, SafeAreaView, StyleSheet, View } from 'react-native';
+import { StatusBar, SafeAreaView, StyleSheet, View, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -20,6 +20,7 @@ import CratesScreen from './src/screens/CratesScreen';
 import CrateDetailScreen from './src/screens/CrateDetailScreen';
 import PlayerScreen from './src/screens/PlayerScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import IdentifyTrackScreen from './src/screens/IdentifyTrackScreen';
 
 // Components
 import MiniPlayer from './src/components/MiniPlayer';
@@ -137,6 +138,37 @@ function RootNavigator() {
         options={{
           presentation: 'modal',
         }}
+      />
+      <RootStack.Screen
+        name="IdentifyTrack"
+        component={IdentifyTrackScreen}
+        options={{
+          presentation: 'card',
+        }}
+      />
+      <RootStack.Screen
+        name="CrateDetailFromIdentify"
+        component={CrateDetailScreen}
+        options={({ navigation }) => ({
+          headerShown: true,
+          title: '',
+          headerBackTitle: '',
+          headerBackTitleVisible: false,
+          headerTintColor: COLORS.text,
+          gestureEnabled: true,
+          headerStyle: {
+            backgroundColor: COLORS.background,
+          },
+          headerShadowVisible: false,
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+            >
+              <Ionicons name="chevron-back" size={28} color={COLORS.text} />
+            </TouchableOpacity>
+          ),
+        })}
       />
     </RootStack.Navigator>
   );
