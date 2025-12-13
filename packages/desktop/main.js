@@ -517,6 +517,29 @@ async function startServer() {
     await recrateService.start();
     log.info('Server started');
 
+    // Set up indexing progress forwarding to desktop UI
+    if (recrateService.apiServer && recrateService.apiServer.io) {
+      recrateService.apiServer.io.on('connection', (socket) => {
+        // This handles new socket connections, but we also need to catch existing events
+      });
+
+      // Poll indexing status and forward to renderer
+      const indexingPollInterval = setInterval(() => {
+        if (mainWindow && !mainWindow.isDestroyed() && recrateService && recrateService.parser) {
+          const status = recrateService.parser.indexingStatus;
+          mainWindow.webContents.send('indexing-progress', status);
+
+          // Stop polling once indexing is complete
+          if (status.isComplete && !status.isIndexing) {
+            // Keep polling but less frequently after completion
+          }
+        }
+      }, 1000); // Poll every second
+
+      // Store interval for cleanup
+      recrateService._indexingPollInterval = indexingPollInterval;
+    }
+
     serverStatus = 'running';
     updateTrayMenu();
 
@@ -577,6 +600,13 @@ async function startServer() {
 async function stopServer() {
   if (recrateService) {
     log.info('Stopping server...');
+
+    // Clear indexing poll interval
+    if (recrateService._indexingPollInterval) {
+      clearInterval(recrateService._indexingPollInterval);
+      recrateService._indexingPollInterval = null;
+    }
+
     try {
       await recrateService.stop();
       log.info('Server stopped successfully');
@@ -584,6 +614,13 @@ async function stopServer() {
       log.error('Error stopping server:', error);
     }
     recrateService = null;
+
+    // Force kill any lingering process on the port to ensure clean restart
+    if (serverPort) {
+      log.info(`Cleaning up port ${serverPort}...`);
+      killProcessOnPort(serverPort);
+    }
+
     serverStatus = 'stopped';
     updateTrayMenu();
 
@@ -707,6 +744,32 @@ ipcMain.handle('get-server-status', () => {
   };
 });
 
+// Re-index library handler - allows manual re-indexing without restarting server
+ipcMain.handle('reindex-library', async () => {
+  if (!recrateService || !recrateService.parser) {
+    return { success: false, message: 'Server not running' };
+  }
+
+  try {
+    log.info('Manual library re-index requested');
+
+    // Invalidate all caches
+    recrateService.parser.invalidateCache();
+
+    // Reset indexing status
+    recrateService.parser.indexingStatus.isComplete = false;
+    recrateService.parser.indexingStatus.isIndexing = false;
+
+    // Start fresh indexing
+    recrateService.parser.startBackgroundIndexing();
+
+    return { success: true, message: 'Re-indexing started' };
+  } catch (error) {
+    log.error('Error starting re-index:', error);
+    return { success: false, message: error.message };
+  }
+});
+
 ipcMain.handle('open-external', (event, url) => {
   require('electron').shell.openExternal(url);
 });
@@ -734,6 +797,14 @@ ipcMain.handle('get-proxy-status', () => {
     deviceId: proxyClient ? proxyClient.getDeviceId() : null,
     url: proxyClient && proxyClient.isConnected() ? getProxyURL() : null
   };
+});
+
+// Get indexing status from server
+ipcMain.handle('get-indexing-status', () => {
+  if (!recrateService || !recrateService.parser) {
+    return { isIndexing: false, isComplete: false };
+  }
+  return recrateService.parser.indexingStatus;
 });
 
 // App lifecycle

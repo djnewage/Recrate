@@ -1,9 +1,13 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import TrackPlayer, { RepeatMode } from 'react-native-track-player';
 import apiService from '../services/api';
 import * as TrackPlayerService from '../services/TrackPlayerService';
 
-const useStore = create((set, get) => ({
+const useStore = create(
+  persist(
+    (set, get) => ({
   // Library state
   tracks: [],
   selectedTracks: [],
@@ -19,7 +23,7 @@ const useStore = create((set, get) => ({
   // Pagination state
   libraryPagination: {
     total: 0,
-    limit: 1000,
+    limit: 2000,
     offset: 0,
     hasMore: false,
   },
@@ -72,7 +76,15 @@ const useStore = create((set, get) => ({
         ...params,
       };
 
+      console.log('[loadLibrary] Request params:', requestParams, 'append:', append);
+
       const data = await apiService.getLibrary(requestParams);
+
+      console.log('[loadLibrary] Response:', {
+        tracksReceived: data.tracks?.length,
+        pagination: data.pagination,
+        indexing: data.indexing,
+      });
 
       // Check if backend is indexing
       if (data.indexing) {
@@ -84,7 +96,7 @@ const useStore = create((set, get) => ({
           isLoadingLibrary: false,
           libraryPagination: {
             total: 0,
-            limit: 1000,
+            limit: 2000,
             offset: 0,
             hasMore: false,
           },
@@ -111,25 +123,45 @@ const useStore = create((set, get) => ({
         new Map(finalTracks.map(t => [t.id, t])).values()
       );
 
+      // Calculate total from API or track count
+      const total = data.pagination?.total || 0;
+      // Use our configured limit, not what API returns (it might default to 1000)
+      const limit = libraryPagination.limit;
+
+      // Use the actual loaded track count as the offset for next pagination
+      // This is more reliable than relying on API-returned offset
+      const loadedCount = uniqueTracks.length;
+
+      // Determine if there are more tracks to load
+      // hasMore is true if we haven't loaded all tracks yet
+      const hasMore = total > 0 ? loadedCount < total : (data.pagination?.hasMore || false);
+
+      const newPagination = {
+        total,
+        limit,
+        // Track how many tracks we've loaded - this is used to calculate next offset
+        offset: loadedCount,
+        hasMore,
+      };
+
+      console.log('[loadLibrary] Setting state:', {
+        trackCount: uniqueTracks.length,
+        pagination: newPagination,
+      });
+
       set({
         tracks: uniqueTracks,
         isLoadingLibrary: false,
         isIndexing: false,
         indexingStatus: null,
         indexingMessage: null,
-        libraryPagination: {
-          total: data.pagination?.total || data.tracks.length,
-          limit: data.pagination?.limit || 1000,
-          // Use offset from API response, or fall back to the offset we requested
-          // This ensures pagination continues correctly even if API doesn't return offset
-          offset: data.pagination?.offset ?? requestParams.offset,
-          hasMore: data.pagination?.hasMore || false,
-        },
+        libraryPagination: newPagination,
       });
 
       // Stop polling if it was running
       get().stopIndexingPoll();
     } catch (error) {
+      console.error('[loadLibrary] Error:', error.message);
       set({ libraryError: error.message, isLoadingLibrary: false });
     }
   },
@@ -185,19 +217,38 @@ const useStore = create((set, get) => ({
   },
 
   loadMoreTracks: async () => {
-    const { libraryPagination, isLoadingLibrary } = get();
+    const { libraryPagination, isLoadingLibrary, tracks } = get();
+
+    console.log('[loadMoreTracks] Called. State:', {
+      isLoadingLibrary,
+      hasMore: libraryPagination.hasMore,
+      offset: libraryPagination.offset,
+      total: libraryPagination.total,
+      currentTrackCount: tracks.length,
+    });
 
     // Don't load if already loading or no more tracks
-    if (isLoadingLibrary || !libraryPagination.hasMore) {
+    if (isLoadingLibrary) {
+      console.log('[loadMoreTracks] Skipping - already loading');
       return;
     }
 
-    // Calculate next offset
-    const nextOffset = libraryPagination.offset + libraryPagination.limit;
+    if (!libraryPagination.hasMore) {
+      console.log('[loadMoreTracks] Skipping - no more tracks');
+      return;
+    }
+
+    // offset now represents total tracks loaded, which IS the next offset to request
+    // e.g., if we've loaded 2000 tracks, request offset=2000 to get tracks 2001+
+    const nextOffset = libraryPagination.offset;
+
+    console.log('[loadMoreTracks] Loading more with offset:', nextOffset);
 
     // Pass the nextOffset as a parameter to loadLibrary
     // This will override the offset from state and ensure proper pagination
     await get().loadLibrary({ offset: nextOffset }, true);
+
+    console.log('[loadMoreTracks] Done. New track count:', get().tracks.length);
   },
 
   resetLibrary: () => {
@@ -205,7 +256,7 @@ const useStore = create((set, get) => ({
       tracks: [],
       libraryPagination: {
         total: 0,
-        limit: 1000,
+        limit: 2000,
         offset: 0,
         hasMore: false,
       },
@@ -222,16 +273,42 @@ const useStore = create((set, get) => ({
 
     const tree = [];
 
-    // Build tree structure
+    // First pass: Create virtual parent nodes for orphaned subcrates
+    // This handles the case where a subcrate exists but the parent folder has no .crate file
+    flatCrates.forEach(crate => {
+      if (crate.parentId && !crateMap.has(crate.parentId)) {
+        // Extract parent name from parentPath (e.g., "ParentCrate%%SubParent" -> "SubParent")
+        const parentParts = crate.parentPath?.split('%%') || [];
+        const parentName = parentParts[parentParts.length - 1] || 'Unknown';
+
+        // Create virtual parent node
+        const virtualParent = {
+          id: crate.parentId,
+          name: parentName,
+          fullPath: crate.parentPath,
+          parentId: null, // Virtual parents are at root for simplicity
+          parentPath: null,
+          depth: 0,
+          trackCount: 0,
+          children: [],
+          isVirtual: true, // Mark as virtual so we can style differently if needed
+        };
+        crateMap.set(crate.parentId, virtualParent);
+        tree.push(virtualParent);
+      }
+    });
+
+    // Second pass: Build tree structure
     flatCrates.forEach(crate => {
       const crateWithChildren = crateMap.get(crate.id);
       if (crate.parentId && crateMap.has(crate.parentId)) {
         // Add to parent's children
         crateMap.get(crate.parentId).children.push(crateWithChildren);
-      } else {
-        // Root level crate
+      } else if (!crate.parentId) {
+        // Root level crate (no parent)
         tree.push(crateWithChildren);
       }
+      // Note: crates with parentId that now have virtual parents are handled above
     });
 
     // Sort children at each level
@@ -733,6 +810,36 @@ const useStore = create((set, get) => ({
 
     return cratesWithTrack;
   },
-}));
+    }),
+    {
+      name: 'recrate-library-cache',
+      storage: createJSONStorage(() => AsyncStorage),
+      // Only persist specific keys to avoid persisting loading states, player state, etc.
+      partialize: (state) => ({
+        // Library data - persist for offline/quick reload
+        tracks: state.tracks,
+        libraryPagination: state.libraryPagination,
+        // Crate data - persist for offline/quick reload
+        crates: state.crates,
+        crateTree: state.crateTree,
+        expandedCrates: state.expandedCrates,
+        // Filter preferences - persist user preferences
+        filters: state.filters,
+      }),
+      // Version for cache invalidation - bump this to clear old caches
+      // v2: Fixed pagination offset calculation
+      version: 2,
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.log('Store rehydration error:', error);
+        } else if (state) {
+          console.log('Store rehydrated with', state.tracks?.length || 0, 'cached tracks');
+        } else {
+          console.log('Store rehydrated with no cached data (fresh start)');
+        }
+      },
+    }
+  )
+);
 
 export default useStore;

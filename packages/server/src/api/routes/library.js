@@ -32,8 +32,8 @@ function createLibraryRoutes(parser) {
       // Check if indexing is in progress
       const status = parser.getIndexingStatus();
       if (status.isIndexing && !status.isComplete) {
-        // Parse limit from query params (default to 1000 if not provided)
-        const requestedLimit = parseInt(req.query.limit, 10) || 1000;
+        // Parse limit from query params (default to 2000 if not provided)
+        const requestedLimit = parseInt(req.query.limit, 10) || 2000;
 
         // Return indexing status instead of empty library
         return res.json({
@@ -50,7 +50,7 @@ function createLibraryRoutes(parser) {
         });
       }
 
-      const { search, sortBy = 'title', limit = 1000, offset = 0 } = req.query;
+      const { search, sortBy = 'title', limit = 2000, offset = 0 } = req.query;
 
       let tracks = await parser.parseLibrary();
 

@@ -5,7 +5,7 @@ export const API_CONFIG = {
   // For Android Emulator: use 10.0.2.2
   // For physical device: use your computer's local IP (e.g., 192.168.1.100)
   BASE_URL: __DEV__ ? 'http://localhost:3000' : 'http://localhost:3000',
-  TIMEOUT: 10000,
+  TIMEOUT: 30000, // 30 seconds - increased for large library requests
 };
 
 export const ENDPOINTS = {

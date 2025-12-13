@@ -108,7 +108,10 @@ router.get('/:deviceId/health', async (req, res) => {
 // Proxy all requests to desktop (catch-all route must be last)
 router.all('/:deviceId/*', async (req, res) => {
   const { deviceId} = req.params;
-  const path = '/' + req.params[0]; // Get the path after deviceId
+  // Include query string in the path so pagination params are forwarded
+  const basePath = '/' + req.params[0];
+  const queryString = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  const path = basePath + queryString;
   const rangeHeader = req.headers.range;
 
   try {

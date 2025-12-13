@@ -247,6 +247,41 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* Indexing Progress */
+    .indexing-progress {
+      margin-bottom: 12px;
+    }
+
+    .progress-bar-container {
+      height: 6px;
+      background: var(--bg-tertiary);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple, #8B5CF6));
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .indexing-status-text {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+
+    .spinning {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
     /* Empty State */
     .empty-state {
       display: flex;
@@ -687,6 +722,33 @@
           </div>
         </section>
 
+        <!-- Indexing Status Card (hidden when not indexing) -->
+        <section id="indexing-section" class="card hidden">
+          <div class="card-header">
+            <span class="card-title">Indexing Library</span>
+            <span id="indexing-badge" class="connection-badge" style="background: var(--accent-orange); color: white;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="spinning">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+              In Progress
+            </span>
+          </div>
+          <div class="indexing-progress">
+            <div class="progress-bar-container">
+              <div id="indexing-progress-bar" class="progress-bar-fill" style="width: 0%"></div>
+            </div>
+            <div id="indexing-status-text" class="indexing-status-text">Starting...</div>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">Tracks Found</span>
+            <span id="indexing-tracks" class="stats-value">0</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">Phase</span>
+            <span id="indexing-phase" class="stats-value">Initializing</span>
+          </div>
+        </section>
+
         <!-- Empty State (shown when stopped) -->
         <div id="empty-state" class="empty-state">
           <p class="empty-state-title">Server Stopped</p>
@@ -738,6 +800,16 @@
         <div class="form-group">
           <label class="form-label">Port</label>
           <input type="number" id="port" class="form-input" value="3000">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Library Indexing</label>
+          <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">
+            Re-index your Serato library if you've added new tracks or if tracks are missing.
+          </p>
+          <button id="reindex-btn" class="btn btn-secondary" onclick="reindexLibrary()" style="width: 100%;">
+            Re-index Library
+          </button>
         </div>
       </div>
 
@@ -920,6 +992,110 @@
         console.error('Server error:', error);
         showError(error);
       });
+
+      // Listen for indexing progress updates
+      api.onIndexingProgress((status) => {
+        updateIndexingUI(status);
+      });
+    }
+
+    // Update indexing status UI
+    function updateIndexingUI(status) {
+      const indexingSection = document.getElementById('indexing-section');
+      const indexingBadge = document.getElementById('indexing-badge');
+      const progressBar = document.getElementById('indexing-progress-bar');
+      const statusText = document.getElementById('indexing-status-text');
+      const tracksCount = document.getElementById('indexing-tracks');
+      const phaseText = document.getElementById('indexing-phase');
+      const statTracks = document.getElementById('stat-tracks');
+
+      if (!status) {
+        indexingSection.classList.add('hidden');
+        return;
+      }
+
+      const { isIndexing, isComplete, progress } = status;
+
+      if (isIndexing) {
+        indexingSection.classList.remove('hidden');
+
+        // Update badge
+        indexingBadge.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="spinning">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+          In Progress
+        `;
+        indexingBadge.style.background = 'var(--accent-orange)';
+
+        // Update progress
+        if (progress) {
+          const tracksFound = progress.tracksFound || 0;
+
+          // Estimate progress based on phase
+          let progressPercent = 0;
+          switch (progress.phase) {
+            case 'building_index': progressPercent = 10; break;
+            case 'parsing_database': progressPercent = 30; break;
+            case 'resolving': progressPercent = 50; break;
+            case 'scanning': progressPercent = 70; break;
+            case 'calculating_plays': progressPercent = 90; break;
+            case 'complete': progressPercent = 100; break;
+            default: progressPercent = 5;
+          }
+
+          progressBar.style.width = `${progressPercent}%`;
+          statusText.textContent = progress.message || 'Indexing...';
+          tracksCount.textContent = tracksFound.toLocaleString();
+          phaseText.textContent = formatPhase(progress.phase);
+
+          // Also update the main Library stats card with live track count
+          if (statTracks && tracksFound > 0) {
+            statTracks.textContent = tracksFound.toLocaleString();
+          }
+        }
+      } else if (isComplete) {
+        // Show completion state briefly, then hide
+        indexingBadge.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Complete
+        `;
+        indexingBadge.style.background = 'var(--accent-green, #22C55E)';
+        progressBar.style.width = '100%';
+        statusText.textContent = 'Indexing complete!';
+
+        // Update final track count in Library stats
+        if (progress && progress.tracksFound > 0 && statTracks) {
+          statTracks.textContent = progress.tracksFound.toLocaleString();
+        }
+
+        // Refresh library stats from API to get accurate final count
+        fetchLibraryStats();
+
+        // Hide after a delay
+        setTimeout(() => {
+          indexingSection.classList.add('hidden');
+        }, 3000);
+      } else {
+        indexingSection.classList.add('hidden');
+      }
+    }
+
+    // Format phase name for display
+    function formatPhase(phase) {
+      const phases = {
+        'idle': 'Ready',
+        'building_index': 'Building file index',
+        'parsing_database': 'Parsing Serato database',
+        'resolving': 'Resolving track paths',
+        'scanning': 'Scanning directories',
+        'calculating_plays': 'Calculating play counts',
+        'complete': 'Complete',
+        'error': 'Error',
+      };
+      return phases[phase] || phase || 'Unknown';
     }
 
     // === Setup Wizard Functions ===
@@ -1050,6 +1226,11 @@
 
       api.onServerLog(() => {});
       api.onServerError(() => {});
+
+      // Listen for indexing progress (also for setup flow)
+      api.onIndexingProgress((status) => {
+        updateIndexingUI(status);
+      });
     }
 
     // Load config
@@ -1183,11 +1364,19 @@
         const status = await api.getServerStatus();
         if (status.status !== 'running' || !status.url) return;
 
-        const response = await fetch(`${status.url}/api/library`);
-        if (response.ok) {
-          const data = await response.json();
-          const trackCount = data.tracks ? data.tracks.length : 0;
-          document.getElementById('stat-tracks').textContent = trackCount.toLocaleString();
+        // First check indexing status for live count
+        const indexingStatus = await api.getIndexingStatus();
+        if (indexingStatus && indexingStatus.progress && indexingStatus.progress.tracksFound > 0) {
+          document.getElementById('stat-tracks').textContent = indexingStatus.progress.tracksFound.toLocaleString();
+        } else {
+          // Fall back to API response
+          const response = await fetch(`${status.url}/api/library?limit=1`);
+          if (response.ok) {
+            const data = await response.json();
+            // Use pagination total if available, otherwise count array
+            const trackCount = data.pagination?.total || (data.tracks ? data.tracks.length : 0);
+            document.getElementById('stat-tracks').textContent = trackCount.toLocaleString();
+          }
         }
 
         // Fetch crates
@@ -1346,6 +1535,41 @@
       await api.saveConfig(config);
       alert('Settings saved! Restart the server for changes to take effect.');
       showStatus();
+    }
+
+    // Re-index library
+    async function reindexLibrary() {
+      const btn = document.getElementById('reindex-btn');
+      const originalText = btn.textContent;
+
+      if (serverStatus !== 'running') {
+        alert('Please start the server first before re-indexing.');
+        return;
+      }
+
+      try {
+        btn.textContent = 'Re-indexing...';
+        btn.disabled = true;
+
+        const result = await api.reindexLibrary();
+
+        if (result.success) {
+          btn.textContent = 'Started!';
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.disabled = false;
+          }, 2000);
+          alert('Library re-indexing started. This may take a few minutes for large libraries. Check the mobile app for progress.');
+        } else {
+          btn.textContent = originalText;
+          btn.disabled = false;
+          alert('Failed to start re-indexing: ' + result.message);
+        }
+      } catch (error) {
+        btn.textContent = originalText;
+        btn.disabled = false;
+        alert('Error: ' + error.message);
+      }
     }
 
     // Initialize on load
