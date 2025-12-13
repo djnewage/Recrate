@@ -22,6 +22,7 @@ class BinaryProxyClient {
 
     // Connection state
     this.isConnecting = false;
+    this.isShuttingDown = false;
     this.reconnectDelay = 1000;
     this.maxReconnectDelay = 30000;
   }
@@ -55,8 +56,12 @@ class BinaryProxyClient {
       });
 
       this.localWs.on('close', () => {
-        this.logger.warn('Local server connection closed, reconnecting...');
-        setTimeout(() => this.connectToLocalServer(), 2000);
+        this.logger.warn('Local server connection closed');
+        this.localWs = null;  // Clear reference to allow GC
+        if (!this.isShuttingDown) {
+          this.logger.info('Reconnecting to local server...');
+          setTimeout(() => this.connectToLocalServer(), 2000);
+        }
       });
 
       this.localWs.on('error', (error) => {
@@ -154,11 +159,15 @@ class BinaryProxyClient {
       });
 
       this.proxyWs.on('close', () => {
-        this.logger.warn('Railway Proxy connection closed, reconnecting...');
+        this.logger.warn('Railway Proxy connection closed');
+        this.proxyWs = null;  // Clear reference to allow GC
         this.isConnecting = false;
         this.rejectAllPending('Connection to Railway closed');
-        this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
-        setTimeout(() => this.connectToProxy(), this.reconnectDelay);
+        if (!this.isShuttingDown) {
+          this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+          this.logger.info(`Reconnecting to Railway in ${this.reconnectDelay}ms...`);
+          setTimeout(() => this.connectToProxy(), this.reconnectDelay);
+        }
       });
 
       this.proxyWs.on('error', (error) => {
@@ -280,10 +289,17 @@ class BinaryProxyClient {
 
   shutdown() {
     this.logger.info('Shutting down Binary Proxy Client...');
+    this.isShuttingDown = true;  // Prevent reconnection attempts
     this.rejectAllPending('Client shutting down');
 
-    if (this.localWs) this.localWs.close();
-    if (this.proxyWs) this.proxyWs.close();
+    if (this.localWs) {
+      this.localWs.close();
+      this.localWs = null;
+    }
+    if (this.proxyWs) {
+      this.proxyWs.close();
+      this.proxyWs = null;
+    }
   }
 
   // ========================================================================

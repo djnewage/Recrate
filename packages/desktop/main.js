@@ -525,14 +525,22 @@ async function startServer() {
 
       // Poll indexing status and forward to renderer
       const indexingPollInterval = setInterval(() => {
-        if (mainWindow && !mainWindow.isDestroyed() && recrateService && recrateService.parser) {
+        // Safety check - stop polling if window or service is gone
+        if (!mainWindow || mainWindow.isDestroyed()) {
+          clearInterval(indexingPollInterval);
+          return;
+        }
+        if (!recrateService || !recrateService.parser) {
+          clearInterval(indexingPollInterval);
+          return;
+        }
+
+        try {
           const status = recrateService.parser.indexingStatus;
           mainWindow.webContents.send('indexing-progress', status);
-
-          // Stop polling once indexing is complete
-          if (status.isComplete && !status.isIndexing) {
-            // Keep polling but less frequently after completion
-          }
+        } catch (err) {
+          log.error('Error polling indexing status:', err);
+          clearInterval(indexingPollInterval);
         }
       }, 1000); // Poll every second
 
@@ -840,7 +848,13 @@ process.on('uncaughtException', (error) => {
     // Ignore EIO errors during shutdown - these are expected
     return;
   }
-  console.error('Uncaught exception:', error);
+  log.error('Uncaught exception:', error);
+});
+
+// Handle unhandled promise rejections (prevent silent crashes)
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't crash - just log for debugging
 });
 
 app.on('window-all-closed', () => {
