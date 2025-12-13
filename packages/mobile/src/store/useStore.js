@@ -4,6 +4,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import TrackPlayer, { RepeatMode } from 'react-native-track-player';
 import apiService from '../services/api';
 import * as TrackPlayerService from '../services/TrackPlayerService';
+import { normalizeTitle, normalizeArtist } from '../services/TrackMatchingService';
+
+/**
+ * Pre-normalize tracks for faster search matching
+ * Adds _normalizedTitle and _normalizedArtist fields
+ */
+const preNormalizeTracks = (tracks) => {
+  return tracks.map(track => ({
+    ...track,
+    _normalizedTitle: normalizeTitle(track.title),
+    _normalizedArtist: normalizeArtist(track.artist),
+  }));
+};
 
 const useStore = create(
   persist(
@@ -119,8 +132,18 @@ const useStore = create(
 
       // Additional safety deduplication to ensure no duplicate keys
       // This catches any edge cases where backend returns duplicates
-      const uniqueTracks = Array.from(
+      const deduplicatedTracks = Array.from(
         new Map(finalTracks.map(t => [t.id, t])).values()
+      );
+
+      // Pre-normalize tracks for faster search matching
+      // Only normalize new tracks (ones without _normalizedTitle)
+      const uniqueTracks = deduplicatedTracks.map(track =>
+        track._normalizedTitle ? track : {
+          ...track,
+          _normalizedTitle: normalizeTitle(track.title),
+          _normalizedArtist: normalizeArtist(track.artist),
+        }
       );
 
       // Calculate total from API or track count
