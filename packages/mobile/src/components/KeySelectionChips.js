@@ -31,6 +31,31 @@ const MUSICAL_KEYS = [
   { value: 'Am', label: 'Am', type: 'minor' },
   { value: 'Bbm', label: 'Bbm', type: 'minor' },
   { value: 'Bm', label: 'Bm', type: 'minor' },
+  // Camelot keys (A = minor, B = major)
+  { value: '1A', label: '1A', type: 'camelot' },
+  { value: '1B', label: '1B', type: 'camelot' },
+  { value: '2A', label: '2A', type: 'camelot' },
+  { value: '2B', label: '2B', type: 'camelot' },
+  { value: '3A', label: '3A', type: 'camelot' },
+  { value: '3B', label: '3B', type: 'camelot' },
+  { value: '4A', label: '4A', type: 'camelot' },
+  { value: '4B', label: '4B', type: 'camelot' },
+  { value: '5A', label: '5A', type: 'camelot' },
+  { value: '5B', label: '5B', type: 'camelot' },
+  { value: '6A', label: '6A', type: 'camelot' },
+  { value: '6B', label: '6B', type: 'camelot' },
+  { value: '7A', label: '7A', type: 'camelot' },
+  { value: '7B', label: '7B', type: 'camelot' },
+  { value: '8A', label: '8A', type: 'camelot' },
+  { value: '8B', label: '8B', type: 'camelot' },
+  { value: '9A', label: '9A', type: 'camelot' },
+  { value: '9B', label: '9B', type: 'camelot' },
+  { value: '10A', label: '10A', type: 'camelot' },
+  { value: '10B', label: '10B', type: 'camelot' },
+  { value: '11A', label: '11A', type: 'camelot' },
+  { value: '11B', label: '11B', type: 'camelot' },
+  { value: '12A', label: '12A', type: 'camelot' },
+  { value: '12B', label: '12B', type: 'camelot' },
 ];
 
 const KeySelectionChips = ({ selectedKeys = [], onChange }) => {
@@ -63,6 +88,7 @@ const KeySelectionChips = ({ selectedKeys = [], onChange }) => {
 
   const majorKeys = MUSICAL_KEYS.filter((k) => k.type === 'major');
   const minorKeys = MUSICAL_KEYS.filter((k) => k.type === 'minor');
+  const camelotKeys = MUSICAL_KEYS.filter((k) => k.type === 'camelot');
 
   return (
     <View style={styles.container}>
@@ -78,6 +104,12 @@ const KeySelectionChips = ({ selectedKeys = [], onChange }) => {
       <Text style={styles.typeLabel}>Minor</Text>
       <View style={styles.grid}>
         {minorKeys.map(renderKeyChip)}
+      </View>
+
+      {/* Camelot Keys */}
+      <Text style={styles.typeLabel}>Camelot</Text>
+      <View style={styles.grid}>
+        {camelotKeys.map(renderKeyChip)}
       </View>
     </View>
   );
