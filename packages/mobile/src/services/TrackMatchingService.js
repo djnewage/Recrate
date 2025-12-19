@@ -204,9 +204,68 @@ const checkArtistInTitle = (libraryTitle, recognizedTitle, recognizedArtist) => 
   return null;
 };
 
+// Export normalization functions for pre-processing
+export { normalizeString, normalizeTitle, normalizeArtist };
+
+/**
+ * Quick filter for stage 1 of two-stage matching
+ * Uses cheap substring checks to reduce candidates before expensive Levenshtein
+ * @param {array} libraryTracks - Array of tracks (with _normalizedTitle, _normalizedArtist)
+ * @param {string} searchTitle - Normalized title to search for
+ * @param {string} searchArtist - Normalized artist to search for
+ * @returns {array} Filtered candidate tracks
+ */
+const quickFilterCandidates = (libraryTracks, searchTitle, searchArtist) => {
+  const candidates = [];
+  const titleWords = searchTitle.split(' ').filter(w => w.length > 2);
+  const artistFirstWord = searchArtist.split(' ')[0];
+
+  for (const track of libraryTracks) {
+    // Use pre-normalized fields if available, otherwise normalize on the fly
+    const normTitle = track._normalizedTitle || normalizeTitle(track.title);
+    const normArtist = track._normalizedArtist || normalizeArtist(track.artist);
+
+    // Quick checks (cheap string operations)
+    // 1. Exact match
+    if (normTitle === searchTitle) {
+      candidates.push({ track, priority: 1 });
+      continue;
+    }
+
+    // 2. Title contains search or vice versa
+    if (normTitle.includes(searchTitle) || searchTitle.includes(normTitle)) {
+      candidates.push({ track, priority: 2 });
+      continue;
+    }
+
+    // 3. Most title words match
+    const matchingWords = titleWords.filter(word => normTitle.includes(word));
+    if (titleWords.length > 0 && matchingWords.length >= Math.ceil(titleWords.length * 0.5)) {
+      candidates.push({ track, priority: 3 });
+      continue;
+    }
+
+    // 4. Artist match + any title word match
+    if (artistFirstWord.length > 2 && normArtist.includes(artistFirstWord)) {
+      if (matchingWords.length > 0) {
+        candidates.push({ track, priority: 4 });
+        continue;
+      }
+    }
+  }
+
+  // Sort by priority and limit to top 100 candidates
+  return candidates
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, 100)
+    .map(c => c.track);
+};
+
 export const TrackMatchingService = {
   /**
-   * Find matching tracks in library
+   * Find matching tracks in library using two-stage matching for performance
+   * Stage 1: Quick substring filter (cheap) → reduces to ~100 candidates
+   * Stage 2: Expensive Levenshtein only on candidates
    * @param {object} recognizedTrack - Track info from ACRCloud {title, artist}
    * @param {array} libraryTracks - Array of tracks from library
    * @returns {array} Array of matches sorted by confidence
@@ -218,7 +277,18 @@ export const TrackMatchingService = {
       return results;
     }
 
-    for (const track of libraryTracks) {
+    // Pre-normalize search terms once
+    const searchTitle = normalizeTitle(recognizedTrack.title);
+    const searchArtist = normalizeArtist(recognizedTrack.artist);
+
+    // Stage 1: Quick filter to get candidates (cheap)
+    const candidates = quickFilterCandidates(libraryTracks, searchTitle, searchArtist);
+
+    // If no candidates from quick filter, fall back to full search (rare)
+    const tracksToSearch = candidates.length > 0 ? candidates : libraryTracks;
+
+    // Stage 2: Expensive matching only on candidates
+    for (const track of tracksToSearch) {
       let titleSimilarity = calculateTitleSimilarity(track.title, recognizedTrack.title);
       let artistSimilarity = calculateArtistSimilarity(track.artist, recognizedTrack.artist);
 
@@ -243,14 +313,11 @@ export const TrackMatchingService = {
       else if (titleSimilarity > 0.6 && artistSimilarity > 0.4) {
         confidence = 'medium';
       }
-      // Low confidence: Partial matches
+      // Low confidence: Partial matches - require reasonable title match
       else if (titleSimilarity > 0.5 && artistSimilarity > 0.3) {
         confidence = 'low';
       }
-      // Very lenient: Title contains key words
-      else if (combinedScore > 0.45) {
-        confidence = 'low';
-      }
+      // Removed: overly lenient combined score check that allowed artist-only matches
 
       if (confidence) {
         results.push({
@@ -260,6 +327,11 @@ export const TrackMatchingService = {
           titleScore: titleSimilarity,
           artistScore: artistSimilarity,
         });
+
+        // Early exit: If we found a very high confidence match, stop searching
+        if (confidence === 'high' && combinedScore > 0.9) {
+          break;
+        }
       }
     }
 
@@ -305,9 +377,12 @@ export const TrackMatchingService = {
   getBestMatch(matches) {
     if (!matches?.length) return null;
 
-    // Return first high confidence match, or best score
+    // Only return high or medium confidence matches
     const highConfidence = matches.find(m => m.confidence === 'high');
-    return highConfidence || matches[0];
+    if (highConfidence) return highConfidence;
+
+    const mediumConfidence = matches.find(m => m.confidence === 'medium');
+    return mediumConfidence || null;  // Don't return low confidence as "best" match
   },
 
   /**
@@ -321,6 +396,7 @@ export const TrackMatchingService = {
 
   /**
    * Find variations of a track (remixes, edits, VIPs, etc.)
+   * Uses two-stage matching for performance with large libraries
    * @param {object} recognizedTrack - Track info from ACRCloud {title, artist}
    * @param {array} libraryTracks - Array of tracks from library
    * @param {string} excludeId - Track ID to exclude (the main match)
@@ -349,13 +425,30 @@ export const TrackMatchingService = {
       'sped', 'slowed', 'pitched'
     ];
 
+    // Stage 1: Quick filter - only check tracks with matching title words
+    // This avoids expensive Levenshtein on the entire library
+    const candidates = [];
     for (const track of libraryTracks) {
-      // Skip the exact match (type-safe comparison)
       if (excludeId && String(track.id) === String(excludeId)) continue;
 
+      // Use pre-normalized fields if available
+      const normTitle = track._normalizedTitle || normalizeTitle(track.title);
+
+      // Quick word match check
+      const hasMatchingWord = baseTitleWords.some(word => normTitle.includes(word));
+      if (hasMatchingWord) {
+        candidates.push(track);
+      }
+    }
+
+    // Limit candidates to avoid processing too many
+    const tracksToSearch = candidates.slice(0, 200);
+
+    // Stage 2: Expensive matching on candidates only
+    for (const track of tracksToSearch) {
       const trackTitle = track.title || '';
       const trackArtist = track.artist || '';
-      const normalizedTrackTitle = normalizeString(trackTitle);
+      const normalizedTrackTitle = track._normalizedTitle || normalizeString(trackTitle);
       const normalizedLibTitle = normalizeTitle(trackTitle);
 
       // === FUZZY TITLE MATCHING ===
@@ -371,10 +464,10 @@ export const TrackMatchingService = {
       // Check if significant words from base title appear in library track
       const matchingWordCount = baseTitleWords.filter(word => normalizedTrackTitle.includes(word)).length;
       const hasMatchingWords = baseTitleWords.length > 0 &&
-        matchingWordCount >= Math.ceil(baseTitleWords.length * 0.5);
+        matchingWordCount >= Math.ceil(baseTitleWords.length * 0.7);
 
       // Title matches if fuzzy similarity is decent OR has matching words
-      const titleMatches = titleSimilarity > 0.4 || hasMatchingWords;
+      const titleMatches = titleSimilarity > 0.55 || hasMatchingWords;
 
       // === ARTIST MATCHING (keep threshold higher for quality) ===
       const artistSimilarity = calculateArtistSimilarity(trackArtist, recognizedTrack.artist);
@@ -389,13 +482,13 @@ export const TrackMatchingService = {
 
       // === INCLUSION LOGIC ===
       // Include if:
-      // 1. Title is a fuzzy match AND artist matches (high confidence)
-      // 2. Title is very similar (>0.6) AND has variation keyword (remix/edit of same song)
-      // 3. Title has matching words AND artist somewhat matches (different version)
+      // 1. Good title similarity AND artist matches (high confidence)
+      // 2. Very similar title AND has variation keyword (remix/edit of same song)
+      // 3. Most words match AND decent title similarity AND strong artist match
       const shouldInclude =
-        (titleMatches && artistMatches) ||
-        (titleSimilarity > 0.6 && hasVariationKeyword) ||
-        (hasMatchingWords && artistSimilarity > 0.4);
+        (titleSimilarity > 0.55 && artistMatches) ||
+        (titleSimilarity > 0.7 && hasVariationKeyword) ||
+        (hasMatchingWords && titleSimilarity > 0.45 && artistSimilarity > 0.6);
 
       if (shouldInclude) {
         variations.push({
@@ -406,8 +499,16 @@ export const TrackMatchingService = {
       }
     }
 
+    // Deduplicate by track ID before sorting
+    const seen = new Set();
+    const deduped = variations.filter(v => {
+      if (seen.has(v.track.id)) return false;
+      seen.add(v.track.id);
+      return true;
+    });
+
     // Sort by similarity and return top 5
-    return variations
+    return deduped
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, 5);
   },

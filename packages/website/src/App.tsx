@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, Apple, Monitor, Mail, Github, Music, Smartphone, Zap, Loader2, Check, AlertCircle, Play } from 'lucide-react'
+import { Download, Apple, Monitor, Mail, Github, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform } from 'lucide-react'
 
 const GITHUB_REPO = 'djnewage/Recrate'
 
@@ -297,50 +297,80 @@ function App() {
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-3 gap-6">
             {[
               {
                 icon: Music,
                 title: 'Stream Your Library',
-                description: 'Access your entire Serato music collection wirelessly from your mobile device. Browse thousands of tracks, search by title, artist, or BPM, and preview any song in real-time without interrupting your set.',
+                description: 'Access your entire Serato collection wirelessly. Browse, search, and sort thousands of tracks by title, artist, BPM, or key.',
                 screenshot: '/screenshots/library.png',
               },
               {
-                icon: Smartphone,
-                title: 'Mobile Crate Management',
-                description: 'Create, edit, and organize crates directly from your phone or tablet. Select multiple tracks, add them to existing crates, and see your changes sync instantly back to Serato DJ Pro on your laptop.',
+                icon: SlidersHorizontal,
+                title: 'Smart Filters',
+                description: 'Find the perfect track fast. Filter by BPM range, musical key (major/minor), and genre to match your mix.',
+                screenshot: '/screenshots/filters.png',
+              },
+              {
+                icon: Play,
+                title: 'Full Playback',
+                description: 'Preview any track with complete playback controls. Scrub, shuffle, repeat, and see BPM and key at a glance.',
+                screenshot: '/screenshots/player.png',
+              },
+              {
+                icon: FolderOpen,
+                title: 'Crate Management',
+                description: 'Create, browse, and organize crates from your phone. Changes sync instantly back to Serato DJ Pro.',
                 screenshot: '/screenshots/crates.png',
               },
               {
-                icon: Zap,
-                title: 'Lightning Fast',
-                description: 'Built on local network streaming for zero-latency audio preview. No cloud uploads, no waiting for downloads - just instant access to your music with full playback controls and track metadata.',
-                screenshot: '/screenshots/player.png',
+                icon: ListChecks,
+                title: 'Bulk Selection',
+                description: 'Select multiple tracks at once and add them to any crate. Perfect for building sets on the go.',
+                screenshot: '/screenshots/bulk-select.png',
               },
-            ].map((feature, index) => (
+              {
+                icon: Wifi,
+                title: 'Instant Connection',
+                description: 'Auto-discover your library over WiFi. No cloud uploads, no setup — just connect and browse.',
+                screenshot: '/screenshots/connect.png',
+              },
+              {
+                icon: AudioWaveform,
+                title: 'Track Identify',
+                description: 'Identify any playing track and find it in your library. See matching variations and add to crates instantly.',
+                screenshot: '/screenshots/track-identify.png',
+              },
+            ].map((feature, index, arr) => {
+              // Center the last item if it's alone in its row (7th item in 3-col grid)
+              const isLastAndAlone = index === arr.length - 1 && arr.length % 3 === 1
+              return (
               <motion.div
                 key={feature.title}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: index * 0.2 }}
-                className="p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10 hover:border-purple-500/50 transition-colors group"
+                transition={{ duration: 0.6, delay: (index % 3) * 0.15 }}
+                className={`p-5 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10 hover:border-purple-500/50 transition-all hover:scale-[1.02] group ${isLastAndAlone ? 'md:col-start-2' : ''}`}
               >
                 {/* Screenshot */}
-                <div className="mb-6 rounded-xl overflow-hidden border border-white/10 bg-black/30 aspect-[9/16] max-h-64 mx-auto">
+                <div className="mb-5 rounded-2xl overflow-hidden border border-white/10 bg-black/50 mx-auto max-w-[200px]">
                   <img
                     src={feature.screenshot}
                     alt={`${feature.title} screenshot`}
-                    className="w-full h-full object-cover object-top"
+                    className="w-full h-auto"
                   />
                 </div>
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <feature.icon size={24} className="text-white" />
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <feature.icon size={20} className="text-white" />
+                  </div>
+                  <h3 className="text-lg font-bold">{feature.title}</h3>
                 </div>
-                <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
                 <p className="text-gray-400 leading-relaxed text-sm">{feature.description}</p>
               </motion.div>
-            ))}
+            )})}
+
           </div>
         </div>
       </section>
@@ -368,36 +398,24 @@ function App() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="relative"
+            className="relative flex justify-center"
           >
-            {/* Video Container */}
-            <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black/50">
-              {/* Placeholder - Replace YOUTUBE_VIDEO_ID with actual video ID */}
-              {/* Example: dQw4w9WgXcQ */}
-              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-900/20 to-pink-900/20">
-                <div className="text-center">
-                  <div className="w-20 h-20 rounded-full bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                    <Play size={32} className="text-white ml-1" />
-                  </div>
-                  <p className="text-gray-400">Demo video coming soon</p>
-                  <p className="text-gray-500 text-sm mt-2">Record your demo and replace this placeholder</p>
-                </div>
-              </div>
-
-              {/* Uncomment and add your YouTube video ID when ready */}
-              {/*
-              <iframe
-                className="absolute inset-0 w-full h-full"
-                src="https://www.youtube-nocookie.com/embed/YOUTUBE_VIDEO_ID?rel=0&modestbranding=1"
-                title="Recrate Demo"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-              */}
+            {/* Video Container - Portrait phone video */}
+            <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-black/50 max-w-[320px] shadow-2xl">
+              <video
+                className="w-full h-auto"
+                controls
+                playsInline
+                preload="metadata"
+                poster="/screenshots/library.png"
+              >
+                <source src="/demo-video.mp4" type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
             </div>
 
             {/* Decorative glow */}
-            <div className="absolute -inset-4 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-3xl blur-2xl -z-10" />
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-3xl blur-3xl -z-10 max-w-[400px] mx-auto" />
           </motion.div>
         </div>
       </section>

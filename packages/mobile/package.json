@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "npx expo start",
+    "start:clear": "npx expo start --clear",
     "android": "npx expo start --android",
     "ios": "npx expo start --ios",
     "web": "npx expo start --web",

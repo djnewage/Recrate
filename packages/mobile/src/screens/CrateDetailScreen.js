@@ -318,7 +318,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
       ) : (
         <FlatList
           data={sortedTracks}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item, index) => `${item.id}-${index}`}
           renderItem={({ item }) => (
             <TrackRow
               track={item}

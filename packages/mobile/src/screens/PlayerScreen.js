@@ -22,7 +22,7 @@ import { apiService } from '../services/api';
 const { width } = Dimensions.get('window');
 
 const PlayerScreen = ({ route, navigation }) => {
-  const { track: initialTrack } = route.params;
+  const { track: initialTrack } = route.params || {};
   const [showCratesModal, setShowCratesModal] = useState(false);
   const [selectedCrates, setSelectedCrates] = useState([]);
   const [isAddingToCrates, setIsAddingToCrates] = useState(false);
@@ -69,6 +69,16 @@ const PlayerScreen = ({ route, navigation }) => {
       loadCrates();
     }
   }, [showCratesModal]);
+
+  // Auto-play when navigating to player with a track
+  useEffect(() => {
+    // Only auto-play if:
+    // 1. We have an initial track from params
+    // 2. It's not already the current playing track
+    if (initialTrack && currentTrack?.id !== initialTrack.id) {
+      playTrack(initialTrack);
+    }
+  }, [initialTrack?.id]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);

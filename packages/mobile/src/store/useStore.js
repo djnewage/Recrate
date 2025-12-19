@@ -4,6 +4,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import TrackPlayer, { RepeatMode } from 'react-native-track-player';
 import apiService from '../services/api';
 import * as TrackPlayerService from '../services/TrackPlayerService';
+import { normalizeTitle, normalizeArtist } from '../services/TrackMatchingService';
+
+/**
+ * Pre-normalize tracks for faster search matching
+ * Adds _normalizedTitle and _normalizedArtist fields
+ */
+const preNormalizeTracks = (tracks) => {
+  return tracks.map(track => ({
+    ...track,
+    _normalizedTitle: normalizeTitle(track.title),
+    _normalizedArtist: normalizeArtist(track.artist),
+  }));
+};
 
 const useStore = create(
   persist(
@@ -119,8 +132,18 @@ const useStore = create(
 
       // Additional safety deduplication to ensure no duplicate keys
       // This catches any edge cases where backend returns duplicates
-      const uniqueTracks = Array.from(
+      const deduplicatedTracks = Array.from(
         new Map(finalTracks.map(t => [t.id, t])).values()
+      );
+
+      // Pre-normalize tracks for faster search matching
+      // Only normalize new tracks (ones without _normalizedTitle)
+      const uniqueTracks = deduplicatedTracks.map(track =>
+        track._normalizedTitle ? track : {
+          ...track,
+          _normalizedTitle: normalizeTitle(track.title),
+          _normalizedArtist: normalizeArtist(track.artist),
+        }
       );
 
       // Calculate total from API or track count
@@ -133,8 +156,10 @@ const useStore = create(
       const loadedCount = uniqueTracks.length;
 
       // Determine if there are more tracks to load
-      // hasMore is true if we haven't loaded all tracks yet
-      const hasMore = total > 0 ? loadedCount < total : (data.pagination?.hasMore || false);
+      // Use API's hasMore as primary indicator, fall back to count comparison
+      // If API says hasMore: false, trust it (server knows best)
+      const apiHasMore = data.pagination?.hasMore;
+      const hasMore = apiHasMore !== undefined ? apiHasMore : (total > 0 && loadedCount < total);
 
       const newPagination = {
         total,
