@@ -1,7 +1,6 @@
 const config = require("./utils/config");
 const logger = require("./utils/logger");
-const { SeratoParser } = require("./serato/parser");
-const { SeratoWriter } = require("./serato/writer");
+const { createParser, createWriter } = require("./parsers");
 const AudioStreamer = require("./audio/streamer");
 const APIServer = require("./api/server");
 const chokidar = require("chokidar");
@@ -26,25 +25,42 @@ class RecrateService {
   async initialize() {
     logger.info("Starting Recrate Service...");
     logger.info(`Environment: ${config.env}`);
-    logger.info(`Serato path: ${config.serato.path}`);
+    logger.info(`Library type: ${config.library.type}`);
+    logger.info(`Library path: ${config.library.path}`);
 
     try {
-      // Initialize parser
-      logger.info("Initializing Serato parser...");
-      if (config.serato.musicPaths && config.serato.musicPaths.length > 0) {
-        logger.info(`Music paths (${config.serato.musicPaths.length}):`);
-        config.serato.musicPaths.forEach((p, i) => {
+      // Initialize parser using factory
+      logger.info(`Initializing ${config.library.type} parser...`);
+      if (config.library.musicPaths && config.library.musicPaths.length > 0) {
+        logger.info(`Music paths (${config.library.musicPaths.length}):`);
+        config.library.musicPaths.forEach((p, i) => {
           logger.info(`  [${i + 1}] ${p}`);
         });
       }
-      this.parser = new SeratoParser(config.serato.path, config.serato.musicPaths, config.cache);
-      await this.parser.verifySeratoPath();
-      logger.success("Serato parser initialized");
+      this.parser = createParser(
+        config.library.type,
+        config.library.path,
+        config.library.musicPaths,
+        config.cache
+      );
+      // For Serato, verify path exists (other parsers may have different verification)
+      if (this.parser.verifySeratoPath) {
+        await this.parser.verifySeratoPath();
+      } else if (this.parser.verifyLibraryPath) {
+        await this.parser.verifyLibraryPath();
+      }
+      logger.success(`${config.library.type} parser initialized`);
 
-      // Initialize writer
-      logger.info("Initializing Serato writer...");
-      this.writer = new SeratoWriter(config.serato.path, this.parser);
-      logger.success("Serato writer initialized");
+      // Initialize writer using factory
+      logger.info(`Initializing ${config.library.type} writer...`);
+      this.writer = createWriter(config.library.type, config.library.path);
+      if (this.writer) {
+        // Writer needs parser reference for track lookups
+        this.writer.setParser(this.parser);
+        logger.success(`${config.library.type} writer initialized`);
+      } else {
+        logger.warn(`No writer available for ${config.library.type} - read-only mode`);
+      }
 
       // Initialize audio streamer
       logger.info("Initializing audio streamer...");
@@ -102,14 +118,18 @@ class RecrateService {
   }
 
   /**
-   * Start watching the Subcrates folder for changes
-   * This detects when Serato modifies crate files externally
+   * Start watching the crates folder for changes
+   * This detects when DJ software modifies crate files externally
    */
   _startCrateWatcher() {
-    const subcratesPath = path.join(config.serato.path, "Subcrates");
-    logger.info(`Starting crate file watcher on: ${subcratesPath}`);
+    // For Serato, watch the Subcrates folder. Other DJ software may use different paths.
+    const watchPath = config.library.type === 'serato'
+      ? path.join(config.library.path, "Subcrates")
+      : config.library.path; // Default to library path for other DJ software
 
-    this.watcher = chokidar.watch(subcratesPath, {
+    logger.info(`Starting crate file watcher on: ${watchPath}`);
+
+    this.watcher = chokidar.watch(watchPath, {
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: {
@@ -255,7 +275,10 @@ class RecrateService {
     logger.info(`  GET    /api/artwork/:id          - Get artwork`);
     logger.info(`  GET    /api/search?q=query       - Search tracks`);
     logger.info("");
-    logger.info("Mode: Read-write (⚠️  Crate modifications will affect Serato library)");
+    const modeMessage = this.writer
+      ? `Mode: Read-write (⚠️  Crate modifications will affect ${config.library.type} library)`
+      : `Mode: Read-only (${config.library.type} writer not available)`;
+    logger.info(modeMessage);
     logger.info("=".repeat(60));
     logger.info("");
   }

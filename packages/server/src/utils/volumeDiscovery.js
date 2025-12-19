@@ -181,6 +181,24 @@ class VolumeDiscovery {
   }
 
   /**
+   * Find all DJ software installations across all volumes
+   * Currently supports: Serato. Future: Traktor, rekordbox, VirtualDJ
+   * @returns {Promise<Array>} Array of DJ installation objects
+   */
+  async findDJInstallations() {
+    // For now, delegate to Serato-specific search
+    // Future: add searches for Traktor, rekordbox, VirtualDJ
+    const seratoInstallations = await this.findSeratoInstallations();
+
+    // Add type field and new libraryPath alias to each installation
+    return seratoInstallations.map(inst => ({
+      ...inst,
+      type: 'serato',
+      libraryPath: inst.seratoPath,
+    }));
+  }
+
+  /**
    * Find all Serato installations across all volumes
    * @returns {Promise<Array>} Array of Serato installation objects
    */
@@ -254,6 +272,18 @@ class VolumeDiscovery {
     logger.info(`Found ${installations.length} Serato installation(s)`);
 
     return installations;
+  }
+
+  /**
+   * Validate a library path (generic DJ software)
+   * Currently supports Serato format. Future: auto-detect DJ software type.
+   * @param {string} libraryPath - Path to potential DJ library directory
+   * @returns {Promise<Object>} Validation result with metadata
+   */
+  async validateLibraryPath(libraryPath) {
+    // For now, delegate to Serato validation
+    // Future: auto-detect DJ software type and validate accordingly
+    return this.validateSeratoPath(libraryPath);
   }
 
   /**

@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
   selectDirectory: (title) => ipcRenderer.invoke('select-directory', title),
+  getDetectedLibraries: () => ipcRenderer.invoke('get-detected-libraries'),
 
   // Server control
   startServer: () => ipcRenderer.invoke('start-server'),

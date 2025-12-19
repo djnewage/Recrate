@@ -3,10 +3,10 @@ const path = require('path');
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const pLimit = require('p-limit');
-const LRUCache = require('../utils/cache');
-const logger = require('../utils/logger');
-const MetadataExtractor = require('../audio/metadata');
-const pathResolver = require('../utils/pathResolver');
+const LRUCache = require('../../utils/cache');
+const logger = require('../../utils/logger');
+const MetadataExtractor = require('../../audio/metadata');
+const pathResolver = require('../../utils/pathResolver');
 
 /**
  * Custom error classes
