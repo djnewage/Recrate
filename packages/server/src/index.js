@@ -1,4 +1,5 @@
 const config = require("./utils/config");
+const { setRuntimeConfig } = require("./utils/config");
 const logger = require("./utils/logger");
 const { createParser, createWriter } = require("./parsers");
 const AudioStreamer = require("./audio/streamer");
@@ -73,7 +74,8 @@ class RecrateService {
         config,
         this.parser,
         this.writer,
-        this.streamer
+        this.streamer,
+        this.switchLibrary.bind(this) // Pass switchLibrary function for hot-switching
       );
       this.apiServer.initialize();
 
@@ -244,6 +246,118 @@ class RecrateService {
         event,
       });
     }
+  }
+
+  /**
+   * Switch to a different DJ library
+   * @param {string} libraryType - The type of DJ software ('serato', 'traktor', 'rekordbox', 'virtualdj')
+   * @param {string} libraryPath - Path to the DJ library
+   * @param {string[]} musicPaths - Optional array of music paths
+   * @returns {Promise<{success: boolean, message: string}>}
+   */
+  async switchLibrary(libraryType, libraryPath, musicPaths = []) {
+    logger.info(`Switching library to ${libraryType} at ${libraryPath}...`);
+
+    try {
+      // Create new parser
+      const newParser = createParser(
+        libraryType,
+        libraryPath,
+        musicPaths.length > 0 ? musicPaths : config.library.musicPaths,
+        config.cache
+      );
+
+      // Verify the new library path
+      if (newParser.verifySeratoPath) {
+        await newParser.verifySeratoPath();
+      } else if (newParser.verifyLibraryPath) {
+        await newParser.verifyLibraryPath();
+      }
+
+      // Create new writer (may be null for non-Serato)
+      const newWriter = createWriter(libraryType, libraryPath);
+      if (newWriter && newWriter.setParser) {
+        newWriter.setParser(newParser);
+      }
+
+      // Stop old file watcher
+      if (this.watcher) {
+        await this.watcher.close();
+        logger.info("Old crate watcher stopped");
+      }
+
+      // Update references
+      this.parser = newParser;
+      this.writer = newWriter;
+
+      // Update streamer with new parser
+      if (this.streamer) {
+        this.streamer.parser = newParser;
+      }
+
+      // Update API server with new parser/writer
+      if (this.apiServer) {
+        this.apiServer.updateParserWriter(newParser, newWriter);
+      }
+
+      // Set WebSocket for progress updates
+      if (this.apiServer && this.apiServer.io) {
+        this.parser.setWebSocket(this.apiServer.io);
+      }
+
+      // Update runtime config so config getters return new values
+      setRuntimeConfig({
+        libraryType,
+        libraryPath,
+        musicPaths: musicPaths.length > 0 ? musicPaths : config.library.musicPaths
+      });
+
+      // Start new file watcher
+      this._startCrateWatcher();
+
+      // Start background indexing
+      logger.info("Starting background library indexing for new library...");
+      this.parser.startBackgroundIndexing();
+
+      const writerStatus = newWriter
+        ? `Read-write mode`
+        : `Read-only mode (${libraryType} writer not available)`;
+
+      logger.success(`Switched to ${libraryType} library at ${libraryPath}`);
+      logger.info(writerStatus);
+
+      // Broadcast library change to connected clients
+      if (this.apiServer && this.apiServer.io) {
+        this.apiServer.io.emit("library:switched", {
+          type: libraryType,
+          path: libraryPath,
+          hasWriter: !!newWriter
+        });
+      }
+
+      return {
+        success: true,
+        message: `Switched to ${libraryType} library`,
+        libraryType,
+        libraryPath,
+        hasWriter: !!newWriter
+      };
+    } catch (error) {
+      logger.error(`Failed to switch library: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get current library info
+   */
+  getLibraryInfo() {
+    return {
+      type: config.library.type,
+      path: config.library.path,
+      musicPaths: config.library.musicPaths,
+      hasWriter: !!this.writer
+    };
   }
 
   /**

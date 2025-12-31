@@ -4,6 +4,9 @@
 
 const { SeratoParser, SeratoNotFoundError, ParseError, CrateNotFoundError } = require('./serato/parser');
 const { SeratoWriter } = require('./serato/writer');
+const { TraktorParser } = require('./traktor/parser');
+const { RekordboxParser } = require('./rekordbox/parser');
+const { VirtualDJParser } = require('./virtualdj/parser');
 const { BaseParser, LibraryNotFoundError } = require('./BaseParser');
 
 // Registry of available parsers
@@ -15,22 +18,22 @@ const PARSERS = {
     available: true
   },
   traktor: {
-    Parser: null, // TODO: Implement TraktorParser
-    Writer: null,
+    Parser: TraktorParser,
+    Writer: null, // Write support not yet implemented
     name: 'Traktor Pro',
-    available: false
+    available: true
   },
   rekordbox: {
-    Parser: null, // TODO: Implement RekordboxParser
-    Writer: null,
+    Parser: RekordboxParser,
+    Writer: null, // Write support not yet implemented
     name: 'rekordbox',
-    available: false
+    available: true
   },
   virtualdj: {
-    Parser: null, // TODO: Implement VirtualDJParser
-    Writer: null,
+    Parser: VirtualDJParser,
+    Writer: null, // Write support not yet implemented
     name: 'Virtual DJ',
-    available: false
+    available: true
   }
 };
 

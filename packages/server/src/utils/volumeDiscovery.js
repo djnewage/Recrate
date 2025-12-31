@@ -182,20 +182,265 @@ class VolumeDiscovery {
 
   /**
    * Find all DJ software installations across all volumes
-   * Currently supports: Serato. Future: Traktor, rekordbox, VirtualDJ
+   * Supports: Serato, Traktor, rekordbox, VirtualDJ
    * @returns {Promise<Array>} Array of DJ installation objects
    */
   async findDJInstallations() {
-    // For now, delegate to Serato-specific search
-    // Future: add searches for Traktor, rekordbox, VirtualDJ
-    const seratoInstallations = await this.findSeratoInstallations();
+    const installations = [];
 
-    // Add type field and new libraryPath alias to each installation
-    return seratoInstallations.map(inst => ({
-      ...inst,
-      type: 'serato',
-      libraryPath: inst.seratoPath,
-    }));
+    // Find all DJ software in parallel
+    const [seratoInstallations, traktorInstallations, rekordboxInstallations, virtualdjInstallations] = await Promise.all([
+      this.findSeratoInstallations(),
+      this.findTraktorInstallations(),
+      this.findRekordboxInstallations(),
+      this.findVirtualDJInstallations()
+    ]);
+
+    // Add Serato installations
+    for (const inst of seratoInstallations) {
+      installations.push({
+        ...inst,
+        type: 'serato',
+        libraryPath: inst.seratoPath,
+      });
+    }
+
+    // Add Traktor installations
+    installations.push(...traktorInstallations);
+
+    // Add rekordbox installations
+    installations.push(...rekordboxInstallations);
+
+    // Add VirtualDJ installations
+    installations.push(...virtualdjInstallations);
+
+    return installations;
+  }
+
+  /**
+   * Find all Traktor installations
+   * @returns {Promise<Array>} Array of Traktor installation objects
+   */
+  async findTraktorInstallations() {
+    const installations = [];
+
+    // Traktor stores collection.nml in ~/Documents/Native Instruments/Traktor [version]/
+    const documentsDir = path.join(os.homedir(), 'Documents', 'Native Instruments');
+
+    try {
+      const entries = await fs.readdir(documentsDir);
+
+      for (const entry of entries) {
+        if (entry.startsWith('Traktor')) {
+          const traktorPath = path.join(documentsDir, entry);
+          const collectionPath = path.join(traktorPath, 'collection.nml');
+
+          try {
+            const stats = await fs.stat(collectionPath);
+            if (stats.isFile()) {
+              // Count tracks (rough estimate from file size)
+              const trackCount = Math.floor(stats.size / 500);
+
+              installations.push({
+                id: this.generateId(traktorPath),
+                name: entry,
+                libraryPath: traktorPath,
+                volume: 'Home',
+                volumePath: os.homedir(),
+                volumeType: 'internal',
+                trackCount,
+                crateCount: 0, // Would need to parse to get actual count
+                available: true,
+                lastModified: stats.mtime,
+                type: 'traktor'
+              });
+
+              logger.info(`Found Traktor installation at ${traktorPath}`);
+            }
+          } catch {
+            // collection.nml doesn't exist
+          }
+        }
+      }
+    } catch {
+      // Documents/Native Instruments doesn't exist
+    }
+
+    return installations;
+  }
+
+  /**
+   * Find all rekordbox installations
+   * @returns {Promise<Array>} Array of rekordbox installation objects
+   */
+  async findRekordboxInstallations() {
+    const installations = [];
+
+    // rekordbox locations vary by platform
+    const searchPaths = [];
+
+    if (this.platform === 'darwin') {
+      // macOS locations (case-insensitive, so only check one variant)
+      searchPaths.push(
+        path.join(os.homedir(), 'Library', 'Pioneer', 'rekordbox'),
+        path.join(os.homedir(), 'Music', 'rekordbox')
+      );
+    } else if (this.platform === 'win32') {
+      // Windows locations
+      searchPaths.push(
+        path.join(os.homedir(), 'AppData', 'Roaming', 'Pioneer', 'rekordbox'),
+        path.join(os.homedir(), 'Documents', 'rekordbox')
+      );
+    }
+
+    for (const searchPath of searchPaths) {
+      try {
+        await fs.access(searchPath);
+
+        // Check for XML export file - first try common names
+        const xmlNames = ['rekordbox.xml', 'Rekordbox Library.xml', 'library.xml'];
+        let foundXml = null;
+        let xmlStats = null;
+
+        for (const xmlName of xmlNames) {
+          const xmlPath = path.join(searchPath, xmlName);
+          try {
+            xmlStats = await fs.stat(xmlPath);
+            if (xmlStats.isFile()) {
+              foundXml = xmlPath;
+              break;
+            }
+          } catch {
+            // XML file doesn't exist
+          }
+        }
+
+        // If no common name found, scan for any rekordbox XML file
+        if (!foundXml) {
+          try {
+            const files = await fs.readdir(searchPath);
+            for (const file of files) {
+              if (file.endsWith('.xml')) {
+                const xmlPath = path.join(searchPath, file);
+                if (await this.isRekordboxXml(xmlPath)) {
+                  xmlStats = await fs.stat(xmlPath);
+                  foundXml = xmlPath;
+                  break;
+                }
+              }
+            }
+          } catch {
+            // Can't read directory
+          }
+        }
+
+        // Also check for master.db (indicates rekordbox is installed even without XML)
+        const masterDbPath = path.join(searchPath, 'master.db');
+        let hasMasterDb = false;
+        try {
+          const dbStats = await fs.stat(masterDbPath);
+          hasMasterDb = dbStats.isFile();
+          if (!xmlStats) {
+            xmlStats = dbStats; // Use db stats for lastModified if no XML
+          }
+        } catch {
+          // master.db doesn't exist
+        }
+
+        if (foundXml || hasMasterDb) {
+          const trackCount = foundXml ? Math.floor(xmlStats.size / 300) : 0;
+
+          installations.push({
+            id: this.generateId(searchPath),
+            name: foundXml ? 'rekordbox Library' : 'rekordbox (XML export needed)',
+            libraryPath: searchPath,
+            xmlPath: foundXml,
+            volume: 'Home',
+            volumePath: os.homedir(),
+            volumeType: 'internal',
+            trackCount,
+            crateCount: 0,
+            available: !!foundXml, // Only available if XML export exists
+            needsXmlExport: !foundXml && hasMasterDb,
+            lastModified: xmlStats?.mtime,
+            type: 'rekordbox'
+          });
+
+          logger.info(`Found rekordbox installation at ${searchPath}${foundXml ? '' : ' (needs XML export)'}`);
+        }
+      } catch {
+        // Path doesn't exist
+      }
+    }
+
+    return installations;
+  }
+
+  /**
+   * Find all VirtualDJ installations
+   * @returns {Promise<Array>} Array of VirtualDJ installation objects
+   */
+  async findVirtualDJInstallations() {
+    const installations = [];
+
+    // VirtualDJ stores database in ~/Documents/VirtualDJ/
+    const virtualdjPath = path.join(os.homedir(), 'Documents', 'VirtualDJ');
+
+    try {
+      await fs.access(virtualdjPath);
+
+      // Check for database.xml
+      const dbNames = ['database.xml', 'local database.xml'];
+      let foundDb = null;
+      let dbStats = null;
+
+      for (const dbName of dbNames) {
+        const dbPath = path.join(virtualdjPath, dbName);
+        try {
+          dbStats = await fs.stat(dbPath);
+          if (dbStats.isFile()) {
+            foundDb = dbPath;
+            break;
+          }
+        } catch {
+          // Database file doesn't exist
+        }
+      }
+
+      if (foundDb) {
+        const trackCount = Math.floor(dbStats.size / 400);
+
+        // Count playlists
+        let playlistCount = 0;
+        const playlistsPath = path.join(virtualdjPath, 'Playlists');
+        try {
+          const playlists = await fs.readdir(playlistsPath);
+          playlistCount = playlists.filter(f => f.endsWith('.m3u') || f.endsWith('.m3u8')).length;
+        } catch {
+          // Playlists folder doesn't exist
+        }
+
+        installations.push({
+          id: this.generateId(virtualdjPath),
+          name: 'VirtualDJ Library',
+          libraryPath: virtualdjPath,
+          volume: 'Home',
+          volumePath: os.homedir(),
+          volumeType: 'internal',
+          trackCount,
+          crateCount: playlistCount,
+          available: true,
+          lastModified: dbStats.mtime,
+          type: 'virtualdj'
+        });
+
+        logger.info(`Found VirtualDJ installation at ${virtualdjPath}`);
+      }
+    } catch {
+      // VirtualDJ folder doesn't exist
+    }
+
+    return installations;
   }
 
   /**
@@ -409,6 +654,25 @@ class VolumeDiscovery {
     }
 
     return volumeName;
+  }
+
+  /**
+   * Check if an XML file is a rekordbox export by looking for DJ_PLAYLISTS tag
+   * @param {string} xmlPath - Path to XML file
+   * @returns {Promise<boolean>} True if it's a rekordbox XML
+   * @private
+   */
+  async isRekordboxXml(xmlPath) {
+    try {
+      const fd = await fs.open(xmlPath, 'r');
+      const buffer = Buffer.alloc(500);
+      await fd.read(buffer, 0, 500, 0);
+      await fd.close();
+      const content = buffer.toString('utf-8');
+      return content.includes('DJ_PLAYLISTS') || content.includes('rekordbox');
+    } catch {
+      return false;
+    }
   }
 }
 

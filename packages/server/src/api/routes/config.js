@@ -7,8 +7,10 @@ const path = require('path');
 
 /**
  * Create config routes
+ * @param {Object} parser - The parser instance
+ * @param {Function} switchLibraryFn - Optional function to switch libraries dynamically
  */
-function createConfigRoutes(parser) {
+function createConfigRoutes(parser, switchLibraryFn = null) {
   const router = express.Router();
 
   /**
@@ -39,59 +41,97 @@ function createConfigRoutes(parser) {
   /**
    * POST /api/config
    * Update configuration and reload library
-   * Note: Requires server restart to fully apply changes
+   * Supports hot-switching libraries without server restart
    */
   router.post('/', async (req, res) => {
     try {
       const { musicPath, musicPaths, libraryPath, libraryType, seratoPath } = req.body;
 
-      // Validate and update music paths
-      if (musicPaths) {
-        // Validate all paths exist
-        for (const mp of musicPaths) {
+      logger.info(`[CONFIG] Received update request:`);
+      logger.info(`[CONFIG]   libraryType: ${libraryType}`);
+      logger.info(`[CONFIG]   libraryPath: ${libraryPath}`);
+      logger.info(`[CONFIG]   seratoPath: ${seratoPath}`);
+      logger.info(`[CONFIG]   Current type: ${config.library.type}`);
+      logger.info(`[CONFIG]   Current path: ${config.library.path}`);
+      logger.info(`[CONFIG]   switchLibraryFn available: ${!!switchLibraryFn}`);
+
+      // Validate music paths
+      const newMusicPaths = musicPaths || (musicPath ? [musicPath] : null);
+      if (newMusicPaths) {
+        for (const mp of newMusicPaths) {
           if (!fs.existsSync(mp)) {
             return res.status(400).json({ error: `Music path does not exist: ${mp}` });
           }
         }
-        logger.info(`Music paths updated to: ${musicPaths.join(', ')}`);
-      } else if (musicPath) {
-        // Backwards compatibility: single musicPath
-        if (!fs.existsSync(musicPath)) {
-          return res.status(400).json({ error: 'Music path does not exist' });
-        }
-        logger.info(`Music path updated to: ${musicPath}`);
       }
 
       // Handle library path (new format or legacy seratoPath)
       const newLibraryPath = libraryPath || seratoPath;
-      if (newLibraryPath) {
-        if (!fs.existsSync(newLibraryPath)) {
-          return res.status(400).json({ error: 'Library path does not exist' });
+      if (newLibraryPath && !fs.existsSync(newLibraryPath)) {
+        return res.status(400).json({ error: 'Library path does not exist' });
+      }
+
+      // Determine the new library type
+      const newLibraryType = libraryType || config.library.type;
+      const finalLibraryPath = newLibraryPath || config.library.path;
+      const finalMusicPaths = newMusicPaths || config.library.musicPaths;
+
+      // Check if we need to switch libraries
+      const needsSwitch = switchLibraryFn && (
+        newLibraryType !== config.library.type ||
+        finalLibraryPath !== config.library.path
+      );
+
+      if (needsSwitch) {
+        // Hot-switch to new library
+        logger.info(`Hot-switching library: ${config.library.type} -> ${newLibraryType}`);
+        try {
+          const result = await switchLibraryFn(newLibraryType, finalLibraryPath, finalMusicPaths);
+
+          res.json({
+            success: true,
+            message: `Switched to ${newLibraryType} library successfully`,
+            requiresRestart: false,
+            config: {
+              libraryType: newLibraryType,
+              libraryPath: finalLibraryPath,
+              musicPaths: finalMusicPaths,
+              hasWriter: result.hasWriter,
+              // Legacy
+              seratoPath: finalLibraryPath,
+            },
+          });
+        } catch (switchError) {
+          logger.error('Failed to switch library:', switchError);
+          return res.status(500).json({
+            error: `Failed to switch library: ${switchError.message}`,
+            details: switchError.message
+          });
         }
-        logger.info(`Library path updated to: ${newLibraryPath}`);
+      } else {
+        // Just update music paths or clear cache
+        if (newMusicPaths) {
+          config.library.musicPaths = newMusicPaths;
+          logger.info(`Music paths updated to: ${newMusicPaths.join(', ')}`);
+        }
+
+        // Clear cache to force reload
+        parser.cache.clear();
+        logger.success('Library cache cleared');
+
+        res.json({
+          success: true,
+          message: 'Configuration updated successfully',
+          requiresRestart: false,
+          config: {
+            libraryType: config.library.type,
+            libraryPath: config.library.path,
+            musicPaths: config.library.musicPaths,
+            // Legacy
+            seratoPath: config.library.path,
+          },
+        });
       }
-
-      if (libraryType) {
-        logger.info(`Library type updated to: ${libraryType}`);
-      }
-
-      // Clear cache to force reload
-      parser.cache.clear();
-      logger.success('Library cache cleared - will reload on next request');
-      logger.warn('Note: Server restart required for library changes to fully apply');
-
-      res.json({
-        success: true,
-        message: 'Configuration updated successfully. Restart server to apply changes.',
-        requiresRestart: true,
-        config: {
-          libraryType: libraryType || config.library.type,
-          libraryPath: newLibraryPath || config.library.path,
-          musicPaths: musicPaths || (musicPath ? [musicPath] : config.library.musicPaths),
-          // Legacy
-          seratoPath: newLibraryPath || config.library.path,
-        },
-      });
     } catch (error) {
       logger.error('Error updating config:', error);
       res.status(500).json({ error: 'Failed to update configuration' });

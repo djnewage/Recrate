@@ -174,11 +174,29 @@ class BaseParser extends EventEmitter {
 
   /**
    * Start background indexing of the library
-   * @abstract
+   * Default implementation just parses the library synchronously.
+   * Subclasses can override for async/background indexing.
    * @returns {Promise<void>}
    */
   async startBackgroundIndexing() {
-    throw new Error('startBackgroundIndexing() must be implemented by subclass');
+    // Default: just parse the library (non-background)
+    try {
+      await this.parseLibrary();
+      this.indexingStatus = {
+        isIndexing: false,
+        progress: 100,
+        currentPhase: 'complete',
+        tracksIndexed: 0,
+        totalTracks: 0
+      };
+    } catch (error) {
+      this.indexingStatus = {
+        isIndexing: false,
+        progress: 0,
+        currentPhase: 'error',
+        error: error.message
+      };
+    }
   }
 
   /**

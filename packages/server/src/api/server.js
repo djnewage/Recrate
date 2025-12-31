@@ -18,11 +18,12 @@ const AudioWebSocketServer = require('./websocket-server');
  * API Server - Express server with WebSocket support
  */
 class APIServer {
-  constructor(config, parser, writer, streamer) {
+  constructor(config, parser, writer, streamer, switchLibraryFn = null) {
     this.config = config;
     this.parser = parser;
     this.writer = writer;
     this.streamer = streamer;
+    this.switchLibraryFn = switchLibraryFn;
 
     this.app = express();
     this.httpServer = null;
@@ -53,7 +54,7 @@ class APIServer {
     this.app.use('/api/stream', createStreamingRoutes(this.streamer));
     this.app.use('/api/artwork', createArtworkRoutes(this.streamer));
     this.app.use('/api/search', createSearchRoutes(this.parser));
-    this.app.use('/api/config', createConfigRoutes(this.parser));
+    this.app.use('/api/config', createConfigRoutes(this.parser, this.switchLibraryFn));
     this.app.use('/api/identify', createIdentifyRoutes());
 
     // 404 handler
@@ -257,6 +258,80 @@ class APIServer {
       this.io.emit(event, data);
       logger.debug(`Broadcast event: ${event}`);
     }
+  }
+
+  /**
+   * Update parser and writer references (for library switching)
+   * This remounts the affected routes with the new instances
+   */
+  updateParserWriter(newParser, newWriter) {
+    logger.info('Updating API server parser/writer references...');
+
+    this.parser = newParser;
+    this.writer = newWriter;
+
+    // Update streamer's parser reference
+    if (this.streamer) {
+      this.streamer.parser = newParser;
+    }
+
+    // Update audio WebSocket server's parser reference
+    if (this.audioWsServer) {
+      this.audioWsServer.parser = newParser;
+    }
+
+    // Remount routes that use parser/writer
+    // Note: Express allows overriding routes by mounting new ones at the same path
+    // The last mounted route takes precedence
+    this._remountRoutes();
+
+    logger.success('API server parser/writer updated');
+  }
+
+  /**
+   * Remount routes with current parser/writer
+   * @private
+   */
+  _remountRoutes() {
+    // Create new route handlers with updated parser/writer
+    const newLibraryRoutes = createLibraryRoutes(this.parser);
+    const newCrateRoutes = createCrateRoutes(this.parser, this.writer);
+    const newStreamingRoutes = createStreamingRoutes(this.streamer);
+    const newArtworkRoutes = createArtworkRoutes(this.streamer);
+    const newSearchRoutes = createSearchRoutes(this.parser);
+    const newConfigRoutes = createConfigRoutes(this.parser, this.switchLibraryFn);
+
+    // Remove old routes and add new ones
+    // Express doesn't have a clean way to remove routes, so we use a workaround:
+    // We'll store route references and update them
+
+    // For now, we'll use the Express router stack manipulation
+    // This removes existing routes and adds new ones
+    const routesToUpdate = [
+      { path: '/api/library', router: newLibraryRoutes },
+      { path: '/api/crates', router: newCrateRoutes },
+      { path: '/api/stream', router: newStreamingRoutes },
+      { path: '/api/artwork', router: newArtworkRoutes },
+      { path: '/api/search', router: newSearchRoutes },
+      { path: '/api/config', router: newConfigRoutes },
+    ];
+
+    // Remove old route handlers from stack
+    this.app._router.stack = this.app._router.stack.filter(layer => {
+      if (layer.name === 'router') {
+        const matchPath = layer.regexp.toString();
+        // Keep if it's not one of our API routes
+        return !routesToUpdate.some(r => matchPath.includes(r.path.replace(/\//g, '\\/')));
+      }
+      return true;
+    });
+
+    // Add new routes
+    for (const { path, router } of routesToUpdate) {
+      this.app.use(path, router);
+    }
+
+    logger.info('Routes remounted with new parser/writer');
   }
 }
 
