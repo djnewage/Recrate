@@ -17,7 +17,8 @@ import ACRCloudService from '../services/ACRCloudService';
 
 const SettingsScreen = ({ navigation }) => {
   const [installations, setInstallations] = useState([]);
-  const [currentSeratoPath, setCurrentSeratoPath] = useState('');
+  const [currentLibraryPath, setCurrentLibraryPath] = useState('');
+  const [currentLibraryType, setCurrentLibraryType] = useState('serato');
   const [isLoading, setIsLoading] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -25,7 +26,7 @@ const SettingsScreen = ({ navigation }) => {
 
   // Manual input fields
   const [manualMusicPath, setManualMusicPath] = useState('');
-  const [manualSeratoPath, setManualSeratoPath] = useState('');
+  const [manualLibraryPath, setManualLibraryPath] = useState('');
 
   // ACRCloud settings (now server-side)
   const [hasACRCredentials, setHasACRCredentials] = useState(false);
@@ -60,8 +61,11 @@ const SettingsScreen = ({ navigation }) => {
   const loadConfig = async () => {
     try {
       const config = await apiService.getConfig();
-      setCurrentSeratoPath(config.seratoPath || '');
-      setManualSeratoPath(config.seratoPath || '');
+      // Support both new and legacy config keys
+      const libraryPath = config.libraryPath || config.seratoPath || '';
+      setCurrentLibraryPath(libraryPath);
+      setCurrentLibraryType(config.libraryType || 'serato');
+      setManualLibraryPath(libraryPath);
       setManualMusicPath(
         config.musicPaths && config.musicPaths.length > 0
           ? config.musicPaths[0]
@@ -75,12 +79,14 @@ const SettingsScreen = ({ navigation }) => {
   const scanForLibraries = async () => {
     try {
       setIsScanning(true);
-      const data = await apiService.getSeratoInstallations();
+      const data = await apiService.getDJInstallations();
       setInstallations(data.installations || []);
-      setCurrentSeratoPath(data.currentSeratoPath || '');
+      // Support both new and legacy response keys
+      setCurrentLibraryPath(data.currentLibraryPath || data.currentSeratoPath || '');
+      setCurrentLibraryType(data.currentLibraryType || 'serato');
     } catch (error) {
       console.error('Error scanning for libraries:', error);
-      Alert.alert('Scan Error', 'Could not scan for Serato libraries. Check server connection.');
+      Alert.alert('Scan Error', 'Could not scan for DJ libraries. Check server connection.');
     } finally {
       setIsScanning(false);
     }
@@ -107,7 +113,10 @@ const SettingsScreen = ({ navigation }) => {
       setIsSaving(true);
 
       const configData = {
-        seratoPath: installation.seratoPath,
+        libraryType: installation.type || 'serato',
+        libraryPath: installation.libraryPath || installation.seratoPath,
+        // Legacy support
+        seratoPath: installation.libraryPath || installation.seratoPath,
         musicPaths: installation.musicPaths,
       };
 
@@ -147,7 +156,11 @@ const SettingsScreen = ({ navigation }) => {
 
       const configData = {};
       if (manualMusicPath) configData.musicPath = manualMusicPath;
-      if (manualSeratoPath) configData.seratoPath = manualSeratoPath;
+      if (manualLibraryPath) {
+        configData.libraryPath = manualLibraryPath;
+        // Legacy support
+        configData.seratoPath = manualLibraryPath;
+      }
 
       const result = await apiService.updateConfig(configData);
 
@@ -181,10 +194,20 @@ const SettingsScreen = ({ navigation }) => {
   };
 
   const renderLibraryCard = (installation) => {
-    const isActive = installation.isActive || installation.seratoPath === currentSeratoPath;
+    const libraryPath = installation.libraryPath || installation.seratoPath;
+    const isActive = installation.isActive || libraryPath === currentLibraryPath;
 
-    // Icon based on volume type
-    const icon = installation.volumeType === 'internal' ? '💿' : '💾';
+    // Icon based on DJ software type or volume type
+    const getIcon = () => {
+      switch (installation.type) {
+        case 'serato': return '💿';
+        case 'traktor': return '🎛️';
+        case 'rekordbox': return '🔴';
+        case 'virtualdj': return '🎚️';
+        default: return installation.volumeType === 'internal' ? '💿' : '💾';
+      }
+    };
+    const icon = getIcon();
 
     return (
       <TouchableOpacity
@@ -216,7 +239,7 @@ const SettingsScreen = ({ navigation }) => {
         </View>
 
         <Text style={styles.libraryCardPath} numberOfLines={1}>
-          {installation.seratoPath}
+          {installation.libraryPath || installation.seratoPath}
         </Text>
 
         {!installation.available && (
@@ -243,7 +266,7 @@ const SettingsScreen = ({ navigation }) => {
         <View style={styles.header}>
           <Text style={styles.title}>Library Settings</Text>
           <Text style={styles.subtitle}>
-            Select your Serato library location
+            Select your DJ library location
           </Text>
         </View>
 
@@ -266,7 +289,7 @@ const SettingsScreen = ({ navigation }) => {
             <Text style={styles.emptyStateIcon}>🔍</Text>
             <Text style={styles.emptyStateTitle}>No Libraries Found</Text>
             <Text style={styles.emptyStateText}>
-              No Serato installations detected. {'\n'}
+              No DJ software installations detected. {'\n'}
               Use manual configuration below.
             </Text>
             <TouchableOpacity
@@ -312,12 +335,12 @@ const SettingsScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Serato Library Path</Text>
+                <Text style={styles.label}>DJ Library Path</Text>
                 <TextInput
                   style={styles.input}
-                  value={manualSeratoPath}
-                  onChangeText={setManualSeratoPath}
-                  placeholder="/path/to/_Serato_"
+                  value={manualLibraryPath}
+                  onChangeText={setManualLibraryPath}
+                  placeholder="/path/to/dj-library"
                   placeholderTextColor={COLORS.textSecondary}
                   autoCapitalize="none"
                   autoCorrect={false}

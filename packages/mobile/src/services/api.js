@@ -124,15 +124,27 @@ export const apiService = {
     return response.data;
   },
 
-  // Get available Serato installations
-  getSeratoInstallations: async () => {
-    const response = await api.get('/api/config/serato-installations');
+  // Get available DJ library installations
+  getDJInstallations: async () => {
+    const response = await api.get('/api/config/dj-installations');
     return response.data;
   },
 
-  // Validate a Serato path
+  // Legacy: Get Serato installations (alias for getDJInstallations)
+  getSeratoInstallations: async () => {
+    const response = await api.get('/api/config/dj-installations');
+    return response.data;
+  },
+
+  // Validate a library path
+  validateLibraryPath: async (libraryPath) => {
+    const response = await api.post('/api/config/validate-path', { libraryPath });
+    return response.data;
+  },
+
+  // Legacy: Validate Serato path (alias)
   validateSeratoPath: async (seratoPath) => {
-    const response = await api.post('/api/config/validate-path', { seratoPath });
+    const response = await api.post('/api/config/validate-path', { libraryPath: seratoPath });
     return response.data;
   },
 

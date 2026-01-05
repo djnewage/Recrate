@@ -624,6 +624,31 @@
       font-size: 13px;
     }
 
+    .step-examples {
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: var(--bg-secondary);
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: left;
+      line-height: 1.6;
+    }
+
+    .step-examples strong {
+      color: var(--text-primary);
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .step-examples code {
+      background: var(--bg-tertiary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Monaco', monospace;
+      font-size: 11px;
+    }
+
     .setup-path-group {
       display: flex;
       gap: 8px;
@@ -782,7 +807,7 @@
 
       <div class="main-content">
         <div class="form-group">
-          <label class="form-label">Serato Library Path</label>
+          <label class="form-label">DJ Library Path</label>
           <div class="path-input">
             <input type="text" id="serato-path" class="form-input" readonly>
             <button class="btn btn-secondary" onclick="selectSeratoPath()">Browse</button>
@@ -805,7 +830,7 @@
         <div class="form-group">
           <label class="form-label">Library Indexing</label>
           <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">
-            Re-index your Serato library if you've added new tracks or if tracks are missing.
+            Re-index your DJ library if you've added new tracks or if tracks are missing.
           </p>
           <button id="reindex-btn" class="btn btn-secondary" onclick="reindexLibrary()" style="width: 100%;">
             Re-index Library
@@ -843,16 +868,22 @@
         <!-- Error message -->
         <div id="setup-error" class="setup-error hidden"></div>
 
-        <!-- Step 1: Serato Path -->
+        <!-- Step 1: DJ Library Path -->
         <div id="setup-step-1" class="setup-step active">
           <div class="step-icon">📁</div>
-          <h2>Serato Library Path</h2>
+          <h2>DJ Library Path</h2>
           <p class="step-description">
-            Where is your <code>_Serato_</code> folder located?<br>
+            Where is your DJ library folder located?<br>
             This contains your crates, playlists, and track analysis data.
           </p>
+          <p class="step-examples">
+            <strong>Common locations:</strong><br>
+            Serato: <code>~/Music/_Serato_</code><br>
+            rekordbox: <code>~/Library/Pioneer/rekordbox</code><br>
+            Traktor: <code>~/Documents/Native Instruments/Traktor</code>
+          </p>
           <div class="setup-path-group">
-            <input type="text" id="setup-serato-path" readonly placeholder="Select your Serato folder...">
+            <input type="text" id="setup-serato-path" readonly placeholder="Select your DJ library folder...">
             <button class="btn btn-secondary" onclick="browseSetupSerato()">Browse</button>
           </div>
           <div class="step-actions">
@@ -1088,7 +1119,7 @@
       const phases = {
         'idle': 'Ready',
         'building_index': 'Building file index',
-        'parsing_database': 'Parsing Serato database',
+        'parsing_database': 'Parsing DJ database',
         'resolving': 'Resolving track paths',
         'scanning': 'Scanning directories',
         'calculating_plays': 'Calculating play counts',
@@ -1139,18 +1170,18 @@
       hideSetupError();
     }
 
-    // Validate Serato path before going to step 2
+    // Validate library path before going to step 2
     async function validateAndGoToStep2() {
       const seratoPath = document.getElementById('setup-serato-path').value;
 
       if (!seratoPath) {
-        showSetupError('Please select your Serato library folder.');
+        showSetupError('Please select your DJ library folder.');
         return;
       }
 
       const exists = await api.validatePath(seratoPath);
       if (!exists) {
-        showSetupError('Serato folder not found at this location. Please select a valid _Serato_ folder.');
+        showSetupError('DJ library folder not found at this location. Please select a valid folder.');
         return;
       }
 
@@ -1159,7 +1190,7 @@
     }
 
     async function browseSetupSerato() {
-      const path = await api.selectDirectory('Select Serato Library Folder');
+      const path = await api.selectDirectory('Select DJ Library Folder');
       if (path) {
         document.getElementById('setup-serato-path').value = path;
         hideSetupError(); // Clear error when user selects a new path
@@ -1480,9 +1511,9 @@
       document.getElementById('status-screen').style.display = 'flex';
     }
 
-    // Select Serato path
+    // Select DJ library path
     async function selectSeratoPath() {
-      const path = await api.selectDirectory('Select Serato Library Folder');
+      const path = await api.selectDirectory('Select DJ Library Folder');
       if (path) {
         document.getElementById('serato-path').value = path;
       }

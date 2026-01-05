@@ -2,7 +2,7 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const logger = require('../utils/logger');
+const logger = require('../../utils/logger');
 
 /**
  * Custom error classes
@@ -43,7 +43,7 @@ const SUBCRATE_DELIMITER = '%%';
  * Implements full binary format for Serato ScratchLive/DJ Pro compatibility
  */
 class SeratoWriter {
-  constructor(seratoPath, parser) {
+  constructor(seratoPath, parser = null) {
     this.seratoPath = seratoPath;
     this.cratesDir = path.join(seratoPath, 'Subcrates');
     this.parser = parser;
@@ -51,6 +51,14 @@ class SeratoWriter {
 
     // Serato crate version string
     this.version = '1.0/Serato ScratchLive Crate';
+  }
+
+  /**
+   * Set parser reference (for factory pattern)
+   * @param {Object} parser - SeratoParser instance
+   */
+  setParser(parser) {
+    this.parser = parser;
   }
 
   /**

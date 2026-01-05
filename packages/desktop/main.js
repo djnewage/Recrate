@@ -6,6 +6,7 @@ const log = require('electron-log');
 const os = require('os');
 const fs = require('fs');
 const BinaryProxyClient = require('./src/binaryProxyClient');
+const { DJ_SOFTWARE_INFO } = require('../shared/types');
 
 // Configure logging - write to file for debugging packaged apps
 log.transports.file.level = 'debug';
@@ -174,24 +175,127 @@ function stopTailscaleServe() {
   }
 }
 
-// Auto-detect Serato path
-function detectSeratoPath() {
-  const homeDir = os.homedir();
-  const possiblePaths = [
-    path.join(homeDir, 'Music', '_Serato_'),
-    path.join(homeDir, 'Documents', 'Music', '_Serato_'),
-    '/Volumes/Music/_Serato_',
-    'D:\\Music\\_Serato_'
-  ];
+/**
+ * Expand ~ to home directory
+ */
+function expandPath(p) {
+  if (p.startsWith('~/')) {
+    return path.join(os.homedir(), p.slice(2));
+  }
+  return p;
+}
 
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      const hasDatabase = fs.existsSync(path.join(p, 'database V2'));
-      if (hasDatabase) return p;
+/**
+ * Validate a DJ library path
+ * @param {string} libraryPath - Path to check
+ * @param {Object} validation - Validation rules from DJ_SOFTWARE_INFO
+ * @returns {boolean}
+ */
+function validateLibraryPath(libraryPath, validation) {
+  if (!fs.existsSync(libraryPath)) {
+    return false;
+  }
+
+  // Check required files
+  for (const file of validation.requiredFiles || []) {
+    if (!fs.existsSync(path.join(libraryPath, file))) {
+      return false;
     }
   }
 
-  return path.join(homeDir, 'Music', '_Serato_');
+  // Check required directories
+  for (const dir of validation.requiredDirs || []) {
+    if (!fs.existsSync(path.join(libraryPath, dir))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Detect all installed DJ software libraries
+ * @returns {Array<{type: string, path: string, name: string}>}
+ */
+function detectDJLibraries() {
+  const detected = [];
+  const platform = process.platform;
+
+  for (const [type, info] of Object.entries(DJ_SOFTWARE_INFO)) {
+    const paths = info.defaultPaths[platform] || [];
+
+    for (const p of paths) {
+      const expandedPath = expandPath(p);
+
+      if (validateLibraryPath(expandedPath, info.validation)) {
+        detected.push({
+          type,
+          path: expandedPath,
+          name: info.name,
+          color: info.color
+        });
+        log.info(`Detected ${info.name} at: ${expandedPath}`);
+        // Only add first valid path per DJ software type
+        break;
+      }
+    }
+  }
+
+  return detected;
+}
+
+/**
+ * Legacy: Auto-detect Serato path (for backward compatibility)
+ * @deprecated Use detectDJLibraries() instead
+ */
+function detectSeratoPath() {
+  const libraries = detectDJLibraries();
+  const serato = libraries.find(lib => lib.type === 'serato');
+
+  if (serato) {
+    return serato.path;
+  }
+
+  // Fallback to default path
+  return path.join(os.homedir(), 'Music', '_Serato_');
+}
+
+/**
+ * Get the current library configuration
+ * Handles migration from legacy seratoPath to new libraryPath/libraryType
+ */
+function getLibraryConfig() {
+  // Check for new config format first
+  let libraryType = store.get('libraryType');
+  let libraryPath = store.get('libraryPath');
+
+  // Migrate from legacy seratoPath if new config doesn't exist
+  if (!libraryPath && store.get('seratoPath')) {
+    libraryPath = store.get('seratoPath');
+    libraryType = 'serato';
+    // Save migrated config
+    store.set('libraryPath', libraryPath);
+    store.set('libraryType', libraryType);
+    log.info('Migrated legacy seratoPath to libraryPath/libraryType');
+  }
+
+  // If still no config, try auto-detection
+  if (!libraryPath) {
+    const detected = detectDJLibraries();
+    if (detected.length > 0) {
+      libraryPath = detected[0].path;
+      libraryType = detected[0].type;
+    } else {
+      // Fallback to Serato defaults
+      libraryPath = path.join(os.homedir(), 'Music', '_Serato_');
+      libraryType = 'serato';
+    }
+  }
+
+  return {
+    libraryType: libraryType || 'serato',
+    libraryPath: libraryPath
+  };
 }
 
 // Create main window
@@ -458,8 +562,14 @@ async function startServer() {
     return;
   }
 
+  // Get library config (handles legacy migration)
+  const libConfig = getLibraryConfig();
+
   const userConfig = {
-    seratoPath: store.get('seratoPath', detectSeratoPath()),
+    libraryType: libConfig.libraryType,
+    libraryPath: libConfig.libraryPath,
+    // Legacy support: also set seratoPath for backward compatibility
+    seratoPath: libConfig.libraryPath,
     musicPaths: [store.get('musicPath', path.join(os.homedir(), 'Music'))],
     port: store.get('port', 3000)
   };
@@ -651,14 +761,19 @@ ipcMain.handle('get-setup-complete', () => {
   const setupComplete = store.get('setupComplete', false);
   if (!setupComplete) return false;
 
-  // Also verify Serato path still exists - force wizard if path is invalid
-  const seratoPath = store.get('seratoPath', detectSeratoPath());
-  if (!seratoPath || !fs.existsSync(seratoPath)) {
-    log.info('Serato path not found, showing setup wizard:', seratoPath);
+  // Verify library path still exists - force wizard if path is invalid
+  const libConfig = getLibraryConfig();
+  if (!libConfig.libraryPath || !fs.existsSync(libConfig.libraryPath)) {
+    log.info('Library path not found, showing setup wizard:', libConfig.libraryPath);
     return false;
   }
 
   return true;
+});
+
+// Get detected DJ libraries
+ipcMain.handle('get-detected-libraries', () => {
+  return detectDJLibraries();
 });
 
 // Path validation handler
@@ -675,8 +790,12 @@ ipcMain.handle('set-setup-complete', () => {
 });
 
 ipcMain.handle('get-config', () => {
+  const libConfig = getLibraryConfig();
   return {
-    seratoPath: store.get('seratoPath', detectSeratoPath()),
+    libraryType: libConfig.libraryType,
+    libraryPath: libConfig.libraryPath,
+    // Legacy: still include seratoPath for backward compatibility
+    seratoPath: libConfig.libraryPath,
     musicPath: store.get('musicPath', path.join(os.homedir(), 'Music')),
     port: store.get('port', 3000),
     autoStart: store.get('autoStart', true)
@@ -684,7 +803,18 @@ ipcMain.handle('get-config', () => {
 });
 
 ipcMain.handle('save-config', (event, config) => {
-  store.set('seratoPath', config.seratoPath);
+  // Save new format
+  if (config.libraryType) {
+    store.set('libraryType', config.libraryType);
+  }
+  if (config.libraryPath) {
+    store.set('libraryPath', config.libraryPath);
+  }
+  // Legacy support: save seratoPath if provided
+  if (config.seratoPath && !config.libraryPath) {
+    store.set('libraryPath', config.seratoPath);
+    store.set('libraryType', 'serato');
+  }
   store.set('musicPath', config.musicPath);
   store.set('port', config.port);
   store.set('autoStart', config.autoStart);
@@ -722,6 +852,9 @@ ipcMain.handle('get-diagnostics', () => {
     ? path.join(process.resourcesPath, 'server', 'node_modules')
     : path.join(__dirname, '../server/node_modules');
 
+  const libConfig = getLibraryConfig();
+  const detectedLibraries = detectDJLibraries();
+
   return {
     platform: process.platform,
     isPackaged: app.isPackaged,
@@ -731,10 +864,15 @@ ipcMain.handle('get-diagnostics', () => {
     serverExists: fs.existsSync(serverPath),
     nodeModulesExists: fs.existsSync(nodeModulesPath),
     logPath: log.transports.file.getFile().path,
-    seratoPath: store.get('seratoPath', detectSeratoPath()),
+    libraryType: libConfig.libraryType,
+    libraryPath: libConfig.libraryPath,
+    // Legacy
+    seratoPath: libConfig.libraryPath,
     musicPath: store.get('musicPath', path.join(os.homedir(), 'Music')),
-    seratoPathExists: fs.existsSync(store.get('seratoPath', detectSeratoPath())),
-    musicPathExists: fs.existsSync(store.get('musicPath', path.join(os.homedir(), 'Music')))
+    libraryPathExists: fs.existsSync(libConfig.libraryPath),
+    seratoPathExists: fs.existsSync(libConfig.libraryPath),
+    musicPathExists: fs.existsSync(store.get('musicPath', path.join(os.homedir(), 'Music'))),
+    detectedLibraries
   };
 });
 

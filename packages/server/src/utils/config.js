@@ -1,15 +1,21 @@
 const path = require("path");
 const os = require("os");
 
+// Valid DJ software types
+const VALID_LIBRARY_TYPES = ['serato', 'traktor', 'rekordbox', 'virtualdj'];
+const DEFAULT_LIBRARY_TYPE = 'serato';
+
 // Runtime config can be set programmatically (e.g., from Electron main process)
 let runtimeConfig = null;
 
 /**
  * Set runtime configuration (call before accessing config properties)
  * @param {Object} cfg - Configuration object
- * @param {string} cfg.seratoPath - Path to Serato library
- * @param {string[]} cfg.musicPaths - Array of music directories
- * @param {number} cfg.port - Server port
+ * @param {string} [cfg.libraryType] - DJ software type ('serato', 'traktor', 'rekordbox', 'virtualdj')
+ * @param {string} [cfg.libraryPath] - Path to DJ library
+ * @param {string} [cfg.seratoPath] - Legacy: Path to Serato library (alias for libraryPath)
+ * @param {string[]} [cfg.musicPaths] - Array of music directories
+ * @param {number} [cfg.port] - Server port
  */
 function setRuntimeConfig(cfg) {
   runtimeConfig = cfg;
@@ -109,10 +115,40 @@ function getMusicPaths() {
  * Priority: Runtime config > Command-line args > Environment variables > Defaults
  */
 const config = {
-  // Serato configuration
+  // Library configuration (new generic interface)
+  library: {
+    /**
+     * Get the DJ software type
+     * @returns {'serato'|'traktor'|'rekordbox'|'virtualdj'}
+     */
+    get type() {
+      const type = runtimeConfig?.libraryType || cmdArgs['library-type'] || process.env.LIBRARY_TYPE || DEFAULT_LIBRARY_TYPE;
+      return VALID_LIBRARY_TYPES.includes(type) ? type : DEFAULT_LIBRARY_TYPE;
+    },
+    /**
+     * Get the library path (supports both new libraryPath and legacy seratoPath)
+     */
+    get path() {
+      return runtimeConfig?.libraryPath || runtimeConfig?.seratoPath ||
+             cmdArgs['library-path'] || cmdArgs['serato-path'] ||
+             process.env.LIBRARY_PATH || process.env.SERATO_PATH ||
+             detectSeratoPath();
+    },
+    /**
+     * Get music paths
+     */
+    get musicPaths() {
+      return runtimeConfig?.musicPaths || getMusicPaths();
+    },
+  },
+
+  // Serato configuration (legacy - kept for backward compatibility)
   serato: {
     get path() {
-      return runtimeConfig?.seratoPath || cmdArgs['serato-path'] || process.env.SERATO_PATH || detectSeratoPath();
+      return runtimeConfig?.libraryPath || runtimeConfig?.seratoPath ||
+             cmdArgs['library-path'] || cmdArgs['serato-path'] ||
+             process.env.LIBRARY_PATH || process.env.SERATO_PATH ||
+             detectSeratoPath();
     },
     get musicPaths() {
       return runtimeConfig?.musicPaths || getMusicPaths();
@@ -150,3 +186,4 @@ const config = {
 
 module.exports = config;
 module.exports.setRuntimeConfig = setRuntimeConfig;
+module.exports.VALID_LIBRARY_TYPES = VALID_LIBRARY_TYPES;
