@@ -83,6 +83,8 @@ export const apiService = {
   addTracksToCrate: async (crateId, trackIds) => {
     const response = await api.post(`${ENDPOINTS.CRATES}/${crateId}/tracks`, {
       trackIds,
+    }, {
+      timeout: 60000, // 1 minute for crate write operation
     });
     return response.data;
   },
@@ -161,6 +163,45 @@ export const apiService = {
     } catch {
       return `${API_CONFIG.BASE_URL}${ENDPOINTS.ARTWORK}/${trackId}`;
     }
+  },
+
+  // AI Crate Builder endpoints
+  getAIStatus: async () => {
+    const response = await api.get(`${ENDPOINTS.AI}/status`);
+    return response.data;
+  },
+
+  getAIFilterOptions: async () => {
+    const response = await api.get(`${ENDPOINTS.AI}/filter-options`);
+    return response.data;
+  },
+
+  previewAIFilter: async (filters) => {
+    const response = await api.post(`${ENDPOINTS.AI}/preview-filter`, { filters });
+    return response.data;
+  },
+
+  curateWithAI: async (prompt, filters = {}, limit = 25, options = {}) => {
+    const response = await api.post(`${ENDPOINTS.AI}/curate`, {
+      prompt,
+      filters,
+      limit,
+      options,
+    }, {
+      timeout: 120000, // 2 minutes for AI curation
+    });
+    return response.data;
+  },
+
+  saveAICrate: async (name, trackIds, parentId = null) => {
+    const response = await api.post(`${ENDPOINTS.AI}/save-crate`, {
+      name,
+      trackIds,
+      parentId,
+    }, {
+      timeout: 60000, // 1 minute for save operation
+    });
+    return response.data;
   },
 };
 

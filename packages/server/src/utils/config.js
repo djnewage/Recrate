@@ -146,6 +146,21 @@ const config = {
   env: process.env.NODE_ENV || "development",
   isDevelopment: process.env.NODE_ENV !== "production",
   isProduction: process.env.NODE_ENV === "production",
+
+  // AI Configuration
+  ai: {
+    provider: process.env.AI_PROVIDER || "anthropic",
+    anthropic: {
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+    },
+    openai: {
+      apiKey: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_MODEL || "gpt-4-turbo-preview",
+    },
+    maxTracksPerRequest: parseInt(process.env.AI_MAX_TRACKS, 10) || 500,
+    maxCurationSize: parseInt(process.env.AI_MAX_CURATION, 10) || 50,
+  },
 };
 
 module.exports = config;

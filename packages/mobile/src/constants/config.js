@@ -15,4 +15,5 @@ export const ENDPOINTS = {
   SEARCH: '/api/search',
   STREAM: '/api/stream',
   ARTWORK: '/api/artwork',
+  AI: '/api/ai',
 };

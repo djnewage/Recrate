@@ -21,6 +21,7 @@ import CrateDetailScreen from './src/screens/CrateDetailScreen';
 import PlayerScreen from './src/screens/PlayerScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import IdentifyTrackScreen from './src/screens/IdentifyTrackScreen';
+import AICrateBuilderScreen from './src/screens/AICrateBuilderScreen';
 
 // Components
 import MiniPlayer from './src/components/MiniPlayer';
@@ -142,6 +143,13 @@ function RootNavigator() {
       <RootStack.Screen
         name="IdentifyTrack"
         component={IdentifyTrackScreen}
+        options={{
+          presentation: 'card',
+        }}
+      />
+      <RootStack.Screen
+        name="AICrateBuilder"
+        component={AICrateBuilderScreen}
         options={{
           presentation: 'card',
         }}
