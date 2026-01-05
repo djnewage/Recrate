@@ -12,6 +12,7 @@ const { createStreamingRoutes, createArtworkRoutes } = require('./routes/streami
 const createSearchRoutes = require('./routes/search');
 const createConfigRoutes = require('./routes/config');
 const createIdentifyRoutes = require('./routes/identify');
+const createAIRoutes = require('./routes/ai');
 const AudioWebSocketServer = require('./websocket-server');
 
 /**
@@ -55,6 +56,7 @@ class APIServer {
     this.app.use('/api/search', createSearchRoutes(this.parser));
     this.app.use('/api/config', createConfigRoutes(this.parser));
     this.app.use('/api/identify', createIdentifyRoutes());
+    this.app.use('/api/ai', createAIRoutes(this.parser, this.writer));
 
     // 404 handler
     this.app.use((req, res) => {

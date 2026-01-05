@@ -182,7 +182,7 @@ class BinaryWebSocketManager {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(requestId);
         reject(new Error('HTTP request timeout'));
-      }, 30000);
+      }, 120000); // 2 minutes for AI requests
 
       this.pendingRequests.set(requestId, {
         resolve,

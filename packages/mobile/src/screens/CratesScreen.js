@@ -307,12 +307,21 @@ const CratesScreen = ({ navigation, route }) => {
           <Text style={styles.title}>Crates</Text>
           <Text style={styles.subtitle}>{crates.length} crates</Text>
         </View>
-        <TouchableOpacity
-          style={styles.createButton}
-          onPress={() => setShowCreateModal(true)}
-        >
-          <Text style={styles.createButtonText}>Create</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.aiButton}
+            onPress={() => navigation.navigate('AICrateBuilder')}
+          >
+            <Ionicons name="sparkles" size={18} color={COLORS.primary} />
+            <Text style={styles.aiButtonText}>AI</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => setShowCreateModal(true)}
+          >
+            <Text style={styles.createButtonText}>Create</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Selection Banner - shown when adding tracks to crate */}
@@ -526,6 +535,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  aiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    gap: SPACING.xs,
+  },
+  aiButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   title: {
     fontSize: FONT_SIZES.xl,

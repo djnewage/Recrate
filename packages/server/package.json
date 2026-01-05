@@ -19,6 +19,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@recrate/shared": "*",
     "axios": "^1.13.2",
     "bonjour": "^3.5.0",
