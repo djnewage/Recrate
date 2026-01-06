@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { StatusBar, SafeAreaView, StyleSheet, View, TouchableOpacity } from 'react-native';
+import { StatusBar, StyleSheet, View, TouchableOpacity } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -25,6 +26,7 @@ import AICrateBuilderScreen from './src/screens/AICrateBuilderScreen';
 
 // Components
 import MiniPlayer from './src/components/MiniPlayer';
+import DisclaimerModal from './src/components/DisclaimerModal';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -266,18 +268,21 @@ export default function App() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <ActionSheetProvider>
-        <>
-          <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-          <SafeAreaView style={styles.container}>
-            <NavigationContainer ref={navigationRef} linking={linking}>
-              <AppContent />
-            </NavigationContainer>
-          </SafeAreaView>
-        </>
-      </ActionSheetProvider>
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ActionSheetProvider>
+          <>
+            <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+            <DisclaimerModal />
+            <SafeAreaView style={styles.container}>
+              <NavigationContainer ref={navigationRef} linking={linking}>
+                <AppContent />
+              </NavigationContainer>
+            </SafeAreaView>
+          </>
+        </ActionSheetProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 

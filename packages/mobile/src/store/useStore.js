@@ -21,6 +21,9 @@ const preNormalizeTracks = (tracks) => {
 const useStore = create(
   persist(
     (set, get) => ({
+  // Disclaimer state (shown on first launch)
+  hasAcceptedDisclaimer: false,
+
   // Library state
   tracks: [],
   selectedTracks: [],
@@ -77,6 +80,9 @@ const useStore = create(
 
   // Track identification state
   isIdentifyModalVisible: false,
+
+  // Disclaimer actions
+  acceptDisclaimer: () => set({ hasAcceptedDisclaimer: true }),
 
   // Library actions
   loadLibrary: async (params = {}, append = false) => {
@@ -841,6 +847,8 @@ const useStore = create(
       storage: createJSONStorage(() => AsyncStorage),
       // Only persist specific keys to avoid persisting loading states, player state, etc.
       partialize: (state) => ({
+        // Disclaimer acceptance - persist so user only sees once
+        hasAcceptedDisclaimer: state.hasAcceptedDisclaimer,
         // Library data - persist for offline/quick reload
         tracks: state.tracks,
         libraryPagination: state.libraryPagination,
