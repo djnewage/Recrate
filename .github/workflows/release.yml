@@ -77,7 +77,7 @@ jobs:
         run: |
           if [ -n "$MACOS_CERTIFICATE" ]; then
             echo "Importing signing certificate..."
-            echo $MACOS_CERTIFICATE | base64 --decode > certificate.p12
+            echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
             security create-keychain -p actions build.keychain
             security default-keychain -s build.keychain
             security unlock-keychain -p actions build.keychain
