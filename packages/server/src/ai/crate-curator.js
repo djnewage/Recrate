@@ -91,12 +91,12 @@ class CrateCurator {
       // Create a temporary LLM service with user's API key
       logger.info("[CrateCurator] Using user-provided API key");
       const customConfig = {
+        ...config.ai,
         provider: "anthropic",
         anthropic: {
+          ...config.ai.anthropic,
           apiKey: userApiKey,
-          model: config.ai.anthropic?.model || "claude-sonnet-4-20250514",
         },
-        ...config.ai,
       };
       const userLLMService = new LLMService(customConfig);
       if (userLLMService.initialize()) {

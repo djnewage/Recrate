@@ -7,6 +7,7 @@ const LRUCache = require('../utils/cache');
 const logger = require('../utils/logger');
 const MetadataExtractor = require('../audio/metadata');
 const pathResolver = require('../utils/pathResolver');
+const { toCamelot } = require('../utils/keyConverter');
 
 /**
  * Custom error classes
@@ -1066,10 +1067,10 @@ class SeratoParser extends EventEmitter {
           }
         }
 
-        // Extract key
+        // Extract key and convert to Camelot notation
         const key = this._extractField(buffer, tkeyMarker, otrkDataStart, otrkDataEnd);
         if (key) {
-          track.key = key;
+          track.key = toCamelot(key) || key; // Use Camelot if available, fallback to raw
         }
 
         // Extract duration (tlen stores duration as "MM:SS.ms" format, e.g., "03:45.50")

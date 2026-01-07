@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, Apple, Monitor, Mail, Github, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform } from 'lucide-react'
+import { Download, Apple, Monitor, Mail, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform } from 'lucide-react'
 
 const GITHUB_REPO = 'djnewage/Recrate'
 
@@ -611,15 +611,6 @@ function App() {
             >
               <Mail size={20} />
               Email Us
-            </a>
-            <a
-              href={`https://github.com/${GITHUB_REPO}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white/10 border border-white/20 rounded-full font-semibold text-lg hover:bg-white/20 transition-all"
-            >
-              <Github size={20} />
-              GitHub
             </a>
           </motion.div>
         </div>

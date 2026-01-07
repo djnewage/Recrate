@@ -12,6 +12,7 @@ async function getParseFile() {
 const fs = require('fs').promises;
 const path = require('path');
 const logger = require('../utils/logger');
+const { toCamelot } = require('../utils/keyConverter');
 
 /**
  * Audio metadata extractor using music-metadata library
@@ -29,6 +30,10 @@ class MetadataExtractor {
       const parse = await getParseFile();
       const metadata = await parse(filePath, { skipCovers: false });
 
+      // Convert key to Camelot notation if present
+      const rawKey = metadata.common.key || null;
+      const camelotKey = rawKey ? toCamelot(rawKey) : null;
+
       return {
         title: metadata.common.title || path.basename(filePath, path.extname(filePath)),
         artist: metadata.common.artist || 'Unknown Artist',
@@ -39,7 +44,7 @@ class MetadataExtractor {
         bitrate: metadata.format.bitrate || null,
         sampleRate: metadata.format.sampleRate || null,
         bpm: metadata.common.bpm || null,
-        key: metadata.common.key || null,
+        key: camelotKey || rawKey, // Use Camelot if available, fallback to raw
         format: metadata.format.container || path.extname(filePath).substring(1).toUpperCase(),
         hasArtwork: !!(metadata.common.picture && metadata.common.picture.length > 0),
       };
