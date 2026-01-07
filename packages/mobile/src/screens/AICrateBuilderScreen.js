@@ -19,10 +19,11 @@ import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
 import AIKeyService from '../services/AIKeyService';
 
-// Available musical keys
+// Available musical keys (Camelot notation - standard for DJs)
 const MUSICAL_KEYS = [
-  'C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B',
-  'Cm', 'Dbm', 'Dm', 'Ebm', 'Em', 'Fm', 'Gbm', 'Gm', 'Abm', 'Am', 'Bbm', 'Bm',
+  '1A', '1B', '2A', '2B', '3A', '3B', '4A', '4B',
+  '5A', '5B', '6A', '6B', '7A', '7B', '8A', '8B',
+  '9A', '9B', '10A', '10B', '11A', '11B', '12A', '12B',
 ];
 
 const AICrateBuilderScreen = ({ navigation }) => {
