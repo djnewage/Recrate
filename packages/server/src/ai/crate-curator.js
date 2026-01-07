@@ -5,7 +5,7 @@
 
 const config = require("../utils/config");
 const logger = require("../utils/logger");
-const { getLLMService } = require("./llm-service");
+const { getLLMService, LLMService } = require("./llm-service");
 const { CURATION_SYSTEM_PROMPT, buildUserPrompt, parseResponse } = require("./prompts");
 
 class CrateCurator {
@@ -81,18 +81,58 @@ class CrateCurator {
   }
 
   /**
+   * Get or create an LLM service for the request
+   * If userApiKey is provided, creates a temporary service with that key
+   * @param {string} userApiKey - Optional user-provided API key (BYOK)
+   * @returns {LLMService|null}
+   */
+  getLLMServiceForRequest(userApiKey) {
+    if (userApiKey) {
+      // Create a temporary LLM service with user's API key
+      logger.info("[CrateCurator] Using user-provided API key");
+      const customConfig = {
+        provider: "anthropic",
+        anthropic: {
+          apiKey: userApiKey,
+          model: config.ai.anthropic?.model || "claude-sonnet-4-20250514",
+        },
+        ...config.ai,
+      };
+      const userLLMService = new LLMService(customConfig);
+      if (userLLMService.initialize()) {
+        return userLLMService;
+      }
+      return null;
+    }
+
+    // Use default service
+    return this.llmService;
+  }
+
+  /**
    * Curate tracks using AI
    * @param {string} prompt - User's natural language prompt
    * @param {Object} filters - Filter criteria
-   * @param {Object} options - Additional options
+   * @param {Object} options - Additional options (includes userApiKey for BYOK)
    * @returns {Promise<Object>} Curation result
    */
   async curate(prompt, filters = {}, options = {}) {
+    const { userApiKey, ...curateOptions } = options;
+
+    // Get LLM service (either default or with user's key)
+    const llmService = this.getLLMServiceForRequest(userApiKey);
+
     // Check if LLM is configured
-    if (!this.llmService.isConfigured()) {
+    if (!llmService || !llmService.isConfigured()) {
+      if (userApiKey) {
+        return {
+          success: false,
+          error: "Invalid API key provided. Please check your Anthropic API key.",
+        };
+      }
       return {
         success: false,
-        error: "AI service not configured. Set ANTHROPIC_API_KEY environment variable.",
+        error: "AI service not configured. Set ANTHROPIC_API_KEY environment variable or provide your own API key.",
       };
     }
 
@@ -115,18 +155,18 @@ class CrateCurator {
     }
 
     // Build user prompt
-    const limit = Math.min(options.limit || 25, config.ai.maxCurationSize);
+    const limit = Math.min(curateOptions.limit || 25, config.ai.maxCurationSize);
     const userPrompt = buildUserPrompt(prompt, tracks, {
       limit,
-      prioritizeMixability: options.prioritizeMixability,
-      includeVariety: options.includeVariety,
-      buildEnergy: options.buildEnergy,
+      prioritizeMixability: curateOptions.prioritizeMixability,
+      includeVariety: curateOptions.includeVariety,
+      buildEnergy: curateOptions.buildEnergy,
     });
 
     try {
       // Call LLM
       logger.info(`[CrateCurator] Sending ${tracks.length} tracks to LLM for curation`);
-      const response = await this.llmService.complete(CURATION_SYSTEM_PROMPT, userPrompt, {
+      const response = await llmService.complete(CURATION_SYSTEM_PROMPT, userPrompt, {
         maxTokens: 4096,
         temperature: 0.7,
       });

@@ -107,8 +107,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.xl,
     width: '100%',
-    maxHeight: '90%',
-    overflow: 'hidden',
+    maxHeight: '85%',
   },
   header: {
     alignItems: 'center',
@@ -138,8 +137,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   content: {
-    flex: 1,
-    maxHeight: 400,
+    height: 350,
   },
   contentContainer: {
     padding: SPACING.lg,

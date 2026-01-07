@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_CONFIG, ENDPOINTS } from '../constants/config';
+import AIKeyService from './AIKeyService';
 
 // Create axios instance
 const api = axios.create({
@@ -182,11 +183,16 @@ export const apiService = {
   },
 
   curateWithAI: async (prompt, filters = {}, limit = 25, options = {}) => {
+    // Check if user has their own API key
+    const userApiKey = await AIKeyService.getApiKey();
+
     const response = await api.post(`${ENDPOINTS.AI}/curate`, {
       prompt,
       filters,
       limit,
       options,
+      // Include user's API key if they have one configured
+      userApiKey: userApiKey || undefined,
     }, {
       timeout: 120000, // 2 minutes for AI curation
     });

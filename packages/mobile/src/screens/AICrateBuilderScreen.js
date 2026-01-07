@@ -17,6 +17,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
+import AIKeyService from '../services/AIKeyService';
 
 // Available musical keys
 const MUSICAL_KEYS = [
@@ -26,7 +27,10 @@ const MUSICAL_KEYS = [
 
 const AICrateBuilderScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { loadCrates, crates } = useStore();
+  const { loadCrates, crates, incrementAIUsage, getRemainingFreeUses } = useStore();
+
+  // BYOK (Bring Your Own Key) state
+  const [hasUserApiKey, setHasUserApiKey] = useState(false);
 
   // State
   const [state, setState] = useState('builder'); // 'builder', 'loading', 'preview'
@@ -56,12 +60,18 @@ const AICrateBuilderScreen = ({ navigation }) => {
   // AI status
   const [aiConfigured, setAiConfigured] = useState(null);
 
-  // Check AI status on mount
+  // Check AI status and user API key on mount
   useEffect(() => {
     checkAIStatus();
     loadFilterOptions();
     loadCrates(); // Load crates for "Add to existing" option
+    checkUserApiKey();
   }, []);
+
+  const checkUserApiKey = async () => {
+    const hasKey = await AIKeyService.hasApiKey();
+    setHasUserApiKey(hasKey);
+  };
 
   const checkAIStatus = async () => {
     try {
@@ -131,6 +141,23 @@ const AICrateBuilderScreen = ({ navigation }) => {
       return;
     }
 
+    // Check if user can use AI (has their own key OR has free uses remaining)
+    const remainingFreeUses = getRemainingFreeUses();
+    if (!hasUserApiKey && remainingFreeUses <= 0) {
+      Alert.alert(
+        'Free Trial Ended',
+        'You\'ve used all 5 free AI curations. Add your own Anthropic API key in Settings to continue using this feature.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Go to Settings',
+            onPress: () => navigation.navigate('Settings'),
+          },
+        ]
+      );
+      return;
+    }
+
     setError(null);
     setState('loading');
 
@@ -152,6 +179,12 @@ const AICrateBuilderScreen = ({ navigation }) => {
         setError(result.error || 'Failed to generate crate');
         setState('builder');
         return;
+      }
+
+      // Increment usage count only if using free tier (no user API key)
+      if (!hasUserApiKey) {
+        incrementAIUsage();
+        console.log('[AI] Incremented free tier usage');
       }
 
       setCuration(result.curation);
@@ -354,6 +387,16 @@ const AICrateBuilderScreen = ({ navigation }) => {
             </View>
           )}
 
+          {/* Usage indicator for free tier */}
+          {!hasUserApiKey && (
+            <View style={styles.usageIndicator}>
+              <Ionicons name="gift" size={16} color={COLORS.primary} />
+              <Text style={styles.usageIndicatorText}>
+                {getRemainingFreeUses()} free {getRemainingFreeUses() === 1 ? 'use' : 'uses'} remaining
+              </Text>
+            </View>
+          )}
+
           {/* Generate Button */}
           <TouchableOpacity
             style={[styles.generateButton, !prompt.trim() && styles.generateButtonDisabled]}
@@ -549,10 +592,11 @@ const AICrateBuilderScreen = ({ navigation }) => {
     );
   };
 
-  // Not configured state
-  if (aiConfigured === false) {
+  // Not configured state - only show if server AND user have no API key
+  if (aiConfigured === false && !hasUserApiKey) {
+    const remainingFreeUses = getRemainingFreeUses();
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 30 : insets.top }]}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleClose}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
@@ -561,18 +605,28 @@ const AICrateBuilderScreen = ({ navigation }) => {
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.centerContent}>
-          <Ionicons name="warning" size={64} color={COLORS.textSecondary} />
-          <Text style={styles.mainText}>AI Not Configured</Text>
+          <Ionicons name="key" size={64} color={COLORS.textSecondary} />
+          <Text style={styles.mainText}>API Key Required</Text>
           <Text style={styles.subText}>
-            Set ANTHROPIC_API_KEY on your server to enable AI features
+            {remainingFreeUses > 0
+              ? `You have ${remainingFreeUses} free uses remaining. Add your Anthropic API key in Settings to get started.`
+              : 'Add your Anthropic API key in Settings to use AI Crate Builder.'
+            }
           </Text>
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={() => navigation.navigate('Settings')}
+          >
+            <Ionicons name="settings" size={20} color="#fff" />
+            <Text style={styles.settingsButtonText}>Go to Settings</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 30 : insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={state === 'preview' ? handleBack : handleClose}>
@@ -600,7 +654,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.xs,
   },
   backButton: { padding: SPACING.xs },
   headerTitle: { fontSize: FONT_SIZES.lg, fontWeight: '600', color: COLORS.text },
@@ -611,8 +665,20 @@ const styles = StyleSheet.create({
   content: { padding: SPACING.lg, paddingBottom: SPACING.xl * 2 },
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: SPACING.xl },
   mainText: { fontSize: 24, fontWeight: '700', color: COLORS.text, marginTop: SPACING.xl, textAlign: 'center' },
-  subText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginTop: SPACING.sm, textAlign: 'center' },
+  subText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginTop: SPACING.sm, textAlign: 'center', paddingHorizontal: SPACING.lg },
   loadingContainer: { width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center' },
+  settingsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    marginTop: SPACING.xl,
+    gap: SPACING.sm,
+  },
+  settingsButtonText: { fontSize: FONT_SIZES.md, fontWeight: '600', color: '#fff' },
 
   // Sections
   section: { marginBottom: SPACING.lg },
@@ -695,6 +761,23 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   errorText: { flex: 1, fontSize: FONT_SIZES.sm, color: COLORS.error },
+
+  // Usage indicator
+  usageIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.md,
+    gap: SPACING.xs,
+  },
+  usageIndicatorText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
 
   // Generate button
   generateButton: {

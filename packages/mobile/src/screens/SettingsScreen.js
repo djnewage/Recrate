@@ -14,6 +14,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
 import ACRCloudService from '../services/ACRCloudService';
+import AIKeyService from '../services/AIKeyService';
 
 const SettingsScreen = ({ navigation }) => {
   const [installations, setInstallations] = useState([]);
@@ -30,7 +31,13 @@ const SettingsScreen = ({ navigation }) => {
   // ACRCloud settings (now server-side)
   const [hasACRCredentials, setHasACRCredentials] = useState(false);
 
-  const { resetLibrary, loadLibrary } = useStore();
+  // AI API Key settings
+  const [hasAIKey, setHasAIKey] = useState(false);
+  const [aiKeyInput, setAIKeyInput] = useState('');
+  const [showAIKeyInput, setShowAIKeyInput] = useState(false);
+  const [isSavingAIKey, setIsSavingAIKey] = useState(false);
+
+  const { resetLibrary, loadLibrary, aiUsageCount, getRemainingFreeUses } = useStore();
 
   useEffect(() => {
     loadData();
@@ -39,12 +46,78 @@ const SettingsScreen = ({ navigation }) => {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      await Promise.all([loadConfig(), scanForLibraries(), loadACRCloudConfig()]);
+      await Promise.all([loadConfig(), scanForLibraries(), loadACRCloudConfig(), loadAIKeyConfig()]);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadAIKeyConfig = async () => {
+    try {
+      const hasKey = await AIKeyService.hasApiKey();
+      setHasAIKey(hasKey);
+    } catch (error) {
+      console.error('Error loading AI key config:', error);
+      setHasAIKey(false);
+    }
+  };
+
+  const saveAIKey = async () => {
+    if (!aiKeyInput.trim()) {
+      Alert.alert('Error', 'Please enter an API key');
+      return;
+    }
+
+    if (!AIKeyService.isValidKeyFormat(aiKeyInput)) {
+      Alert.alert(
+        'Invalid Key Format',
+        'Anthropic API keys start with "sk-ant-". Please check your key and try again.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setIsSavingAIKey(true);
+    try {
+      const success = await AIKeyService.saveApiKey(aiKeyInput);
+      if (success) {
+        setHasAIKey(true);
+        setAIKeyInput('');
+        setShowAIKeyInput(false);
+        Alert.alert('Success', 'API key saved securely');
+      } else {
+        Alert.alert('Error', 'Failed to save API key');
+      }
+    } catch (error) {
+      console.error('Error saving AI key:', error);
+      Alert.alert('Error', 'Failed to save API key');
+    } finally {
+      setIsSavingAIKey(false);
+    }
+  };
+
+  const removeAIKey = async () => {
+    Alert.alert(
+      'Remove API Key',
+      'Are you sure you want to remove your API key? You will return to the free tier.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await AIKeyService.removeApiKey();
+            if (success) {
+              setHasAIKey(false);
+              setAIKeyInput('');
+              Alert.alert('Removed', 'Your API key has been removed');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const loadACRCloudConfig = async () => {
@@ -367,6 +440,101 @@ const SettingsScreen = ({ navigation }) => {
           </View>
         </View>
 
+        {/* AI Crate Builder Settings */}
+        <View style={styles.section}>
+          <View style={styles.acrStatusSection}>
+            <View style={styles.acrToggleRow}>
+              <View style={styles.acrToggleLeft}>
+                <Ionicons name="sparkles" size={20} color={COLORS.primary} />
+                <Text style={styles.advancedToggleText}>AI Crate Builder</Text>
+              </View>
+              {hasAIKey ? (
+                <View style={styles.configuredBadge}>
+                  <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
+                  <Text style={styles.configuredText}>API Key Set</Text>
+                </View>
+              ) : (
+                <View style={styles.freeTierBadge}>
+                  <Ionicons name="gift" size={14} color={COLORS.primary} />
+                  <Text style={styles.freeTierText}>{getRemainingFreeUses()} free left</Text>
+                </View>
+              )}
+            </View>
+
+            {!hasAIKey && (
+              <Text style={styles.acrHint}>
+                You have {getRemainingFreeUses()} free AI curations remaining.
+                Add your own Anthropic API key for unlimited use.
+              </Text>
+            )}
+
+            {hasAIKey ? (
+              <View style={styles.aiKeyActions}>
+                <Text style={styles.acrHint}>
+                  Your Anthropic API key is configured. AI curations will use your key.
+                </Text>
+                <TouchableOpacity
+                  style={styles.removeKeyButton}
+                  onPress={removeAIKey}
+                >
+                  <Ionicons name="trash-outline" size={16} color={COLORS.error} />
+                  <Text style={styles.removeKeyButtonText}>Remove API Key</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.aiKeySection}>
+                {!showAIKeyInput ? (
+                  <TouchableOpacity
+                    style={styles.addKeyButton}
+                    onPress={() => setShowAIKeyInput(true)}
+                  >
+                    <Ionicons name="key" size={16} color={COLORS.primary} />
+                    <Text style={styles.addKeyButtonText}>Add API Key</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.aiKeyInputContainer}>
+                    <TextInput
+                      style={styles.aiKeyInput}
+                      value={aiKeyInput}
+                      onChangeText={setAIKeyInput}
+                      placeholder="sk-ant-..."
+                      placeholderTextColor={COLORS.textSecondary}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      secureTextEntry
+                    />
+                    <View style={styles.aiKeyButtonRow}>
+                      <TouchableOpacity
+                        style={styles.aiKeyCancelButton}
+                        onPress={() => {
+                          setShowAIKeyInput(false);
+                          setAIKeyInput('');
+                        }}
+                      >
+                        <Text style={styles.aiKeyCancelButtonText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.aiKeySaveButton, isSavingAIKey && styles.saveButtonDisabled]}
+                        onPress={saveAIKey}
+                        disabled={isSavingAIKey}
+                      >
+                        {isSavingAIKey ? (
+                          <ActivityIndicator size="small" color={COLORS.text} />
+                        ) : (
+                          <Text style={styles.aiKeySaveButtonText}>Save Key</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.aiKeyHelp}>
+                      Get your API key from console.anthropic.com
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
+
         {/* Info Box */}
         <View style={styles.infoBox}>
           <Text style={styles.infoTitle}>💡 How It Works</Text>
@@ -669,6 +837,106 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
     marginTop: SPACING.sm,
+  },
+  // AI Key Settings styles
+  freeTierBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs / 2,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  freeTierText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  aiKeyActions: {
+    marginTop: SPACING.sm,
+  },
+  aiKeySection: {
+    marginTop: SPACING.md,
+  },
+  addKeyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    borderRadius: BORDER_RADIUS.md,
+    alignSelf: 'flex-start',
+  },
+  addKeyButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  removeKeyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: BORDER_RADIUS.md,
+    alignSelf: 'flex-start',
+    marginTop: SPACING.md,
+  },
+  removeKeyButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.error,
+    fontWeight: '600',
+  },
+  aiKeyInputContainer: {
+    marginTop: SPACING.sm,
+  },
+  aiKeyInput: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    fontFamily: 'monospace',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  aiKeyButtonRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  aiKeyCancelButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  aiKeyCancelButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  aiKeySaveButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  aiKeySaveButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  aiKeyHelp: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.sm,
+    textAlign: 'center',
   },
 });
 

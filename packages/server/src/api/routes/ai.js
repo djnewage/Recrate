@@ -59,12 +59,13 @@ function createAIRoutes(parser, writer = null) {
    *     prioritizeMixability?: boolean,
    *     includeVariety?: boolean,
    *     buildEnergy?: boolean
-   *   }
+   *   },
+   *   userApiKey?: string       // Optional: User's own Anthropic API key (BYOK)
    * }
    */
   router.post("/curate", async (req, res) => {
     try {
-      const { prompt, filters = {}, limit = 25, options = {} } = req.body;
+      const { prompt, filters = {}, limit = 25, options = {}, userApiKey } = req.body;
 
       if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
         return res.status(400).json({
@@ -72,11 +73,12 @@ function createAIRoutes(parser, writer = null) {
         });
       }
 
-      logger.info(`[AI] Curation request: "${prompt.substring(0, 50)}..."`);
+      logger.info(`[AI] Curation request: "${prompt.substring(0, 50)}..."${userApiKey ? " (using user API key)" : ""}`);
 
       const result = await curator.curate(prompt.trim(), filters, {
         limit,
         ...options,
+        userApiKey, // Pass user's API key if provided (BYOK)
       });
 
       if (!result.success) {
