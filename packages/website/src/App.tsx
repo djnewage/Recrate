@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, Apple, Monitor, Mail, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform } from 'lucide-react'
+import { Download, Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send } from 'lucide-react'
 
 const GITHUB_REPO = 'djnewage/Recrate'
 
@@ -90,6 +90,10 @@ function App() {
   const [winDownloadState, setWinDownloadState] = useState<DownloadState>('idle')
   const [isAppleSiliconMac, setIsAppleSiliconMac] = useState(false)
 
+  // Contact form state
+  const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' })
+  const [contactStatus, setContactStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
+
   // Detect chip type on mount
   useEffect(() => {
     setIsAppleSiliconMac(isAppleSilicon())
@@ -164,6 +168,31 @@ function App() {
       setTimeout(() => setDownloadState('idle'), 3000)
     }, 1000)
   }, [])
+
+  const handleContactSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    setContactStatus('sending')
+
+    try {
+      const response = await fetch('https://formspree.io/f/xwpkgpdr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contactForm),
+      })
+
+      if (response.ok) {
+        setContactStatus('success')
+        setContactForm({ name: '', email: '', message: '' })
+        setTimeout(() => setContactStatus('idle'), 5000)
+      } else {
+        setContactStatus('error')
+        setTimeout(() => setContactStatus('idle'), 5000)
+      }
+    } catch {
+      setContactStatus('error')
+      setTimeout(() => setContactStatus('idle'), 5000)
+    }
+  }, [contactForm])
 
   return (
     <div className="min-h-screen">
@@ -583,36 +612,126 @@ function App() {
 
       {/* Contact Section */}
       <section id="contact" className="py-24 px-6 bg-gradient-to-b from-zinc-900 to-black">
-        <div className="max-w-4xl mx-auto text-center">
+        <div className="max-w-2xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
+            className="text-center mb-12"
           >
             <h2 className="text-4xl md:text-5xl font-bold mb-4">
               Get in Touch
             </h2>
-            <p className="text-xl text-gray-400 mb-12">
+            <p className="text-xl text-gray-400">
               Questions, feedback, or just want to say hi? We'd love to hear from you.
             </p>
           </motion.div>
 
-          <motion.div
+          <motion.form
+            onSubmit={handleContactSubmit}
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="flex flex-col sm:flex-row gap-4 justify-center"
+            className="space-y-6"
           >
-            <a
-              href="mailto:tristan@recrate.app"
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold text-lg hover:from-purple-600 hover:to-pink-600 transition-all btn-glow"
-            >
-              <Mail size={20} />
-              Email Us
-            </a>
-          </motion.div>
+            <div className="grid sm:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  id="name"
+                  required
+                  value={contactForm.name}
+                  onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
+                  placeholder="Your name"
+                />
+              </div>
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  id="email"
+                  required
+                  value={contactForm.email}
+                  onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
+                  placeholder="your@email.com"
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="message" className="block text-sm font-medium text-gray-300 mb-2">
+                Message
+              </label>
+              <textarea
+                id="message"
+                required
+                rows={5}
+                value={contactForm.message}
+                onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors resize-none"
+                placeholder="How can we help?"
+              />
+            </div>
+            <div className="flex justify-center">
+              <button
+                type="submit"
+                disabled={contactStatus === 'sending'}
+                className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold text-lg hover:from-purple-600 hover:to-pink-600 transition-all btn-glow disabled:opacity-50 disabled:cursor-not-allowed min-w-[200px]"
+              >
+                {contactStatus === 'sending' ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    Sending...
+                  </>
+                ) : contactStatus === 'success' ? (
+                  <>
+                    <Check size={20} />
+                    Sent!
+                  </>
+                ) : contactStatus === 'error' ? (
+                  <>
+                    <AlertCircle size={20} />
+                    Try Again
+                  </>
+                ) : (
+                  <>
+                    <Send size={20} />
+                    Send Message
+                  </>
+                )}
+              </button>
+            </div>
+            <AnimatePresence>
+              {contactStatus === 'success' && (
+                <motion.p
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="text-center text-green-400"
+                >
+                  Thanks for reaching out! We'll get back to you soon.
+                </motion.p>
+              )}
+              {contactStatus === 'error' && (
+                <motion.p
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="text-center text-red-400"
+                >
+                  Something went wrong. Please try again or email us directly.
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </motion.form>
         </div>
       </section>
 
