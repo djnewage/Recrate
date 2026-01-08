@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send } from 'lucide-react'
+import { Download, Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain } from 'lucide-react'
 
 const GITHUB_REPO = 'djnewage/Recrate'
 
@@ -174,7 +174,7 @@ function App() {
     setContactStatus('sending')
 
     try {
-      const response = await fetch('https://formspree.io/f/xwpkgpdr', {
+      const response = await fetch('https://formspree.io/f/mbdlnzqq', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(contactForm),
@@ -369,6 +369,18 @@ function App() {
                 title: 'Track Identify',
                 description: 'Identify any playing track and find it in your library. See matching variations and add to crates instantly.',
                 screenshot: '/screenshots/track-identify.png',
+              },
+              {
+                icon: Sparkles,
+                title: 'Recrate Builder',
+                description: 'Describe your ideal set and let AI curate it. Set BPM range, select keys, and generate perfectly curated crates in seconds.',
+                screenshot: '/screenshots/recrate-builder.png',
+              },
+              {
+                icon: Brain,
+                title: 'AI Curation',
+                description: 'See AI reasoning for every track selection. Understand BPM flow, key compatibility, and how tracks fulfill your request.',
+                screenshot: '/screenshots/recrate-builder-preview.png',
               },
             ].map((feature, index, arr) => {
               // Center the last item if it's alone in its row (7th item in 3-col grid)

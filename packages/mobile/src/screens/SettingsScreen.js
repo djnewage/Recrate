@@ -440,13 +440,13 @@ const SettingsScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* AI Crate Builder Settings */}
+        {/* Recrate Builder Settings */}
         <View style={styles.section}>
           <View style={styles.acrStatusSection}>
             <View style={styles.acrToggleRow}>
               <View style={styles.acrToggleLeft}>
                 <Ionicons name="sparkles" size={20} color={COLORS.primary} />
-                <Text style={styles.advancedToggleText}>AI Crate Builder</Text>
+                <Text style={styles.advancedToggleText}>Recrate Builder</Text>
               </View>
               {hasAIKey ? (
                 <View style={styles.configuredBadge}>

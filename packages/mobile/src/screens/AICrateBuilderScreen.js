@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Slider from '@react-native-community/slider';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
@@ -354,20 +355,21 @@ const AICrateBuilderScreen = ({ navigation }) => {
 
           {/* Track Limit */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>NUMBER OF TRACKS</Text>
-            <View style={styles.limitRow}>
-              {[15, 25, 35, 50].map(num => (
-                <TouchableOpacity
-                  key={num}
-                  style={[styles.limitChip, trackLimit === num && styles.limitChipSelected]}
-                  onPress={() => setTrackLimit(num)}
-                >
-                  <Text style={[styles.limitText, trackLimit === num && styles.limitTextSelected]}>
-                    {num}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.sliderHeader}>
+              <Text style={styles.sectionTitle}>NUMBER OF TRACKS</Text>
+              <Text style={styles.sliderValue}>{trackLimit}</Text>
             </View>
+            <Slider
+              style={styles.slider}
+              minimumValue={1}
+              maximumValue={50}
+              step={1}
+              value={trackLimit}
+              onValueChange={setTrackLimit}
+              minimumTrackTintColor={COLORS.primary}
+              maximumTrackTintColor={COLORS.border}
+              thumbTintColor={COLORS.primary}
+            />
           </View>
 
           {/* Matching Count */}
@@ -464,13 +466,16 @@ const AICrateBuilderScreen = ({ navigation }) => {
           {/* Summary Card */}
           <View style={styles.summaryCard}>
             {saveMode === 'new' ? (
-              <TextInput
-                style={styles.crateNameInput}
-                value={crateName}
-                onChangeText={setCrateName}
-                placeholder="Crate name..."
-                placeholderTextColor={COLORS.textSecondary}
-              />
+              <View style={styles.cratePickerSection}>
+                <Text style={styles.cratePickerLabel}>CRATE NAME</Text>
+                <TextInput
+                  style={styles.crateNameInput}
+                  value={crateName}
+                  onChangeText={setCrateName}
+                  placeholder="Enter crate name..."
+                  placeholderTextColor={COLORS.textSecondary}
+                />
+              </View>
             ) : (
               <View style={styles.cratePickerSection}>
                 <Text style={styles.cratePickerLabel}>SELECT CRATE</Text>
@@ -602,7 +607,7 @@ const AICrateBuilderScreen = ({ navigation }) => {
           <TouchableOpacity style={styles.backButton} onPress={handleClose}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>AI Crate Builder</Text>
+          <Text style={styles.headerTitle}>Recrate Builder</Text>
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.centerContent}>
@@ -611,7 +616,7 @@ const AICrateBuilderScreen = ({ navigation }) => {
           <Text style={styles.subText}>
             {remainingFreeUses > 0
               ? `You have ${remainingFreeUses} free uses remaining. Add your Anthropic API key in Settings to get started.`
-              : 'Add your Anthropic API key in Settings to use AI Crate Builder.'
+              : 'Add your Anthropic API key in Settings to use Recrate Builder.'
             }
           </Text>
           <TouchableOpacity
@@ -634,7 +639,7 @@ const AICrateBuilderScreen = ({ navigation }) => {
           <Ionicons name="chevron-back" size={28} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {state === 'preview' ? 'Preview Crate' : 'AI Crate Builder'}
+          {state === 'preview' ? 'Preview Crate' : 'Recrate Builder'}
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -726,20 +731,22 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
 
-  // Limit
-  limitRow: { flexDirection: 'row', gap: SPACING.sm },
-  limitChip: {
-    flex: 1,
-    paddingVertical: SPACING.md,
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
+  // Slider
+  sliderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    marginBottom: SPACING.xs,
   },
-  limitChipSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  limitText: { fontSize: FONT_SIZES.md, fontWeight: '600', color: COLORS.text },
-  limitTextSelected: { color: '#fff' },
+  sliderValue: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+  },
 
   // Matching count
   matchingRow: {
