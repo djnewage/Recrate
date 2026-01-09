@@ -54,6 +54,8 @@ const LibraryScreen = ({ navigation }) => {
 
   const flatListRef = useRef(null);
   const scrollBarRef = useRef(null);
+  const lastPlayTimeRef = useRef(0);
+  const PLAY_COOLDOWN = 300; // 300ms between track selections to prevent race conditions
 
   useEffect(() => {
     loadLibrary();
@@ -83,11 +85,19 @@ const LibraryScreen = ({ navigation }) => {
     if (isEditMode || selectedTracks.length > 0) {
       toggleTrackSelection(track.id);
     } else {
+      // Debounce rapid taps to prevent race conditions
+      const now = Date.now();
+      if (now - lastPlayTimeRef.current < PLAY_COOLDOWN) {
+        console.log('[handleTrackPress] Throttled - too rapid');
+        return;
+      }
+      lastPlayTimeRef.current = now;
+
       // Find the index of the tapped track in the current list
       const trackIndex = sortedTracks.findIndex(t => t.id === track.id);
 
       // Set queue with all tracks, starting at the tapped track
-      const { setQueue, playTrack } = useStore.getState();
+      const { setQueue } = useStore.getState();
       await setQueue(sortedTracks, trackIndex);
 
       // Navigate to player
@@ -168,8 +178,10 @@ const LibraryScreen = ({ navigation }) => {
     }
   };
 
-  const sortTracks = (tracksToSort) => {
-    return [...tracksToSort].sort((a, b) => {
+  // Memoize sorted tracks to prevent re-sorting on every render
+  // This is critical for performance with large libraries (30K+ tracks)
+  const sortedTracks = useMemo(() => {
+    return [...displayTracks].sort((a, b) => {
       let comparison = 0;
 
       switch (sortBy) {
@@ -192,9 +204,7 @@ const LibraryScreen = ({ navigation }) => {
       // Reverse if descending
       return sortDirection === 'desc' ? -comparison : comparison;
     });
-  };
-
-  const sortedTracks = sortTracks(displayTracks);
+  }, [displayTracks, sortBy, sortDirection]);
 
   // Build alphabet index for fast scrolling
   const alphabetIndex = useMemo(() => {
@@ -447,7 +457,7 @@ const LibraryScreen = ({ navigation }) => {
           <FlatList
             ref={flatListRef}
             data={sortedTracks}
-            keyExtractor={(item, index) => `${item.id}-${index}`}
+            keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TrackRow
                 track={item}

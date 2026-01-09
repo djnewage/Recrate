@@ -133,6 +133,23 @@ const config = {
   cache: {
     maxSize: parseInt(process.env.CACHE_MAX_SIZE, 10) || 1000,
     ttl: parseInt(process.env.CACHE_TTL, 10) || 3600000, // 1 hour in ms
+    // Persistent file cache directory
+    get directory() {
+      if (process.env.CACHE_DIR) {
+        return process.env.CACHE_DIR;
+      }
+      const platform = os.platform();
+      if (platform === 'darwin') {
+        // macOS: ~/Library/Application Support/Recrate/cache
+        return path.join(os.homedir(), 'Library', 'Application Support', 'Recrate', 'cache');
+      } else if (platform === 'win32') {
+        // Windows: %APPDATA%/Recrate/cache
+        return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Recrate', 'cache');
+      } else {
+        // Linux/other: ~/.config/recrate/cache
+        return path.join(os.homedir(), '.config', 'recrate', 'cache');
+      }
+    },
   },
 
   // Service discovery

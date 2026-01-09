@@ -7,6 +7,40 @@ import TrackPlayer, {
 } from 'react-native-track-player';
 import apiService from './api';
 
+// Debounce lock for error recovery to prevent race conditions
+let isRecoveringFromError = false;
+let lastErrorRecoveryTime = 0;
+const ERROR_RECOVERY_COOLDOWN = 2000; // 2 second cooldown between recovery attempts
+
+/**
+ * Wait for TrackPlayer to reach a stable state (not loading/buffering)
+ * This prevents issues from interacting with the player while it's still loading
+ */
+async function waitForStableState(maxWait = 3000) {
+  const startTime = Date.now();
+  const stableStates = [State.Ready, State.Playing, State.Paused, State.Stopped, State.Error];
+
+  while (Date.now() - startTime < maxWait) {
+    try {
+      const playbackState = await TrackPlayer.getPlaybackState();
+      if (stableStates.includes(playbackState.state)) {
+        return playbackState;
+      }
+    } catch (err) {
+      console.log('[waitForStableState] Error getting state:', err);
+    }
+    // Wait 100ms before checking again
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // Return whatever state we have after timeout
+  try {
+    return await TrackPlayer.getPlaybackState();
+  } catch (err) {
+    return { state: State.Error };
+  }
+}
+
 /**
  * Setup TrackPlayer with capabilities and configuration
  */
@@ -201,20 +235,45 @@ export function setupEventHandlers(store) {
         const fullTrack = queue.find(t => t.id === track.id);
 
         if (fullTrack) {
+          // Find the actual index in the full queue (not TrackPlayer's index)
+          const actualQueueIndex = queue.findIndex(t => t.id === track.id);
+
           // Use the full track object from queue
           store.setState({
             currentTrack: fullTrack,
-            currentQueueIndex: event.nextTrack,
+            currentQueueIndex: actualQueueIndex >= 0 ? actualQueueIndex : event.nextTrack,
           });
-          console.log('Updated currentTrack to:', fullTrack.title);
+          console.log('Updated currentTrack to:', fullTrack.title, 'at index:', actualQueueIndex);
 
-          // Preload next track in queue for instant playback
-          const nextIndex = event.nextTrack + 1;
-          if (nextIndex < queue.length) {
-            const nextTrack = queue[nextIndex];
-            console.log('Preloading next track:', nextTrack.title);
-            preloadTrack(nextTrack);
+          // Check if we need to replenish TrackPlayer queue (for large libraries)
+          const tpQueue = await TrackPlayer.getQueue();
+          const REPLENISH_THRESHOLD = 20;
+          const TRACKS_TO_ADD = 100;
+          const remainingInTP = tpQueue.length - event.nextTrack - 1;
+
+          if (remainingInTP < REPLENISH_THRESHOLD) {
+            // Find which tracks from the full queue are already in TrackPlayer
+            const tpTrackIds = new Set(tpQueue.map(t => t.id));
+
+            // Find next tracks in queue that aren't in TrackPlayer yet
+            const tracksToAdd = [];
+            for (let i = actualQueueIndex + 1; i < queue.length && tracksToAdd.length < TRACKS_TO_ADD; i++) {
+              if (!tpTrackIds.has(queue[i].id)) {
+                tracksToAdd.push(queue[i]);
+              }
+            }
+
+            if (tracksToAdd.length > 0) {
+              console.log(`[PlaybackTrackChanged] Replenishing queue: adding ${tracksToAdd.length} tracks`);
+              const formattedTracks = tracksToAdd.map(t => formatTrackForPlayer(t));
+              await TrackPlayer.add(formattedTracks);
+            }
           }
+
+          // NOTE: Removed preloadTrack() call here - it was causing race conditions
+          // during rapid skip operations. The fire-and-forget HTTP fetch requests
+          // competed with iOS's audio loading, causing SwiftAudioEx.PlaybackError error 1
+          // and HTTP 429 (Too Many Requests) responses from the server.
         } else {
           // Fallback: convert from TrackPlayer format
           store.setState({
@@ -235,9 +294,105 @@ export function setupEventHandlers(store) {
     }
   });
 
-  // Playback error
-  TrackPlayer.addEventListener(Event.PlaybackError, ({ error }) => {
+  // Playback error - try to recover by skipping to next working track
+  TrackPlayer.addEventListener(Event.PlaybackError, async ({ error }) => {
     console.error('Playback error:', error);
+
+    // Debounce: prevent multiple concurrent recovery attempts
+    const now = Date.now();
+    if (isRecoveringFromError) {
+      console.log('[PlaybackError] Recovery already in progress, skipping duplicate...');
+      return;
+    }
+    if (now - lastErrorRecoveryTime < ERROR_RECOVERY_COOLDOWN) {
+      console.log('[PlaybackError] Cooldown active, skipping recovery attempt...');
+      return;
+    }
+
+    isRecoveringFromError = true;
+    lastErrorRecoveryTime = now;
+
+    const MAX_SKIP_ATTEMPTS = 5; // Try up to 5 consecutive tracks
+
+    try {
+      const queue = await TrackPlayer.getQueue();
+      const startIndex = await TrackPlayer.getActiveTrackIndex();
+
+      if (startIndex === null || startIndex >= queue.length - 1) {
+        console.log('[PlaybackError] No more tracks to try');
+        isRecoveringFromError = false;
+        store.setState({ playerError: error.message || 'Playback error occurred', isPlaying: false });
+        return;
+      }
+
+      console.log('[PlaybackError] Attempting to recover - will try up to', MAX_SKIP_ATTEMPTS, 'tracks...');
+
+      // Reset player state before skipping
+      try {
+        await TrackPlayer.pause();
+        await TrackPlayer.seekTo(0);
+      } catch (resetError) {
+        console.log('[PlaybackError] Reset failed, continuing...');
+      }
+
+      // Try consecutive tracks until one works
+      for (let attempt = 0; attempt < MAX_SKIP_ATTEMPTS; attempt++) {
+        const nextIndex = startIndex + 1 + attempt;
+
+        if (nextIndex >= queue.length) {
+          console.log('[PlaybackError] Reached end of queue after', attempt, 'attempts');
+          break;
+        }
+
+        console.log('[PlaybackError] Trying track at index:', nextIndex, '(attempt', attempt + 1, 'of', MAX_SKIP_ATTEMPTS + ')');
+
+        try {
+          await TrackPlayer.skip(nextIndex);
+        } catch (skipErr) {
+          console.log('[PlaybackError] Skip failed for index', nextIndex, '- trying next');
+          continue;
+        }
+
+        // Wait for stable state (not loading/buffering) with 3 second timeout
+        console.log('[PlaybackError] Waiting for stable state...');
+        const playbackState = await waitForStableState(3000);
+        console.log('[PlaybackError] Got state:', playbackState.state);
+
+        // Check if this track also failed
+        if (playbackState.state === State.Error) {
+          console.log('[PlaybackError] Track at index', nextIndex, 'failed, trying next...');
+          continue; // Try next track
+        }
+
+        // Success! Track is ready or playing
+        if (playbackState.state === State.Ready || playbackState.state === State.Paused || playbackState.state === State.Stopped) {
+          await TrackPlayer.play();
+          console.log('[PlaybackError] Successfully recovered at track index:', nextIndex);
+        } else if (playbackState.state === State.Playing) {
+          console.log('[PlaybackError] Track already playing at index:', nextIndex);
+        } else {
+          console.log('[PlaybackError] Track state:', playbackState.state, '- attempting play');
+          try {
+            await TrackPlayer.play();
+          } catch (playErr) {
+            console.log('[PlaybackError] Play failed, track may auto-start');
+          }
+        }
+
+        isRecoveringFromError = false;
+        return; // Successfully recovered
+      }
+
+      // All attempts failed
+      console.log('[PlaybackError] All', MAX_SKIP_ATTEMPTS, 'recovery attempts failed');
+
+    } catch (recoveryError) {
+      console.error('[PlaybackError] Recovery failed:', recoveryError);
+    }
+
+    isRecoveringFromError = false;
+
+    // Only set error state if we couldn't recover
     store.setState({
       playerError: error.message || 'Playback error occurred',
       isPlaying: false,
