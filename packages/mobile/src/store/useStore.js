@@ -5,6 +5,8 @@ import TrackPlayer, { RepeatMode } from 'react-native-track-player';
 import apiService from '../services/api';
 import * as TrackPlayerService from '../services/TrackPlayerService';
 import { normalizeTitle, normalizeArtist } from '../services/TrackMatchingService';
+import useOfflineStore, { OPERATION_TYPES, generateTempCrateId } from './offlineStore';
+import { useConnectionStore } from './connectionStore';
 
 /**
  * Pre-normalize tracks for faster search matching
@@ -384,9 +386,21 @@ const useStore = create(
 
   // Crates actions
   loadCrates: async () => {
+    console.log('[loadCrates] Starting...');
+    const { isConnected } = useConnectionStore.getState();
+    const { crates: cachedCrates } = get();
+
+    // If offline and we have cached crates, don't try API call
+    if (!isConnected && cachedCrates.length > 0) {
+      console.log('[loadCrates] Offline with', cachedCrates.length, 'cached crates, skipping API call');
+      set({ isLoadingCrates: false, cratesError: null });
+      return;
+    }
+
     set({ isLoadingCrates: true, cratesError: null });
     try {
       const data = await apiService.getCrates();
+      console.log('[loadCrates] Received', data.crates?.length, 'crates from server');
       const crateTree = get().buildCrateTree(data.crates);
       set({
         crates: data.crates,
@@ -394,23 +408,115 @@ const useStore = create(
         isLoadingCrates: false,
       });
     } catch (error) {
-      set({ cratesError: error.message, isLoadingCrates: false });
+      console.error('[loadCrates] Error:', error.message);
+      // If we have cached crates, don't show error - just use cached data
+      if (cachedCrates.length > 0) {
+        console.log('[loadCrates] Using', cachedCrates.length, 'cached crates due to error');
+        set({ isLoadingCrates: false, cratesError: null });
+      } else {
+        set({ cratesError: error.message, isLoadingCrates: false });
+      }
     }
   },
 
   loadCrate: async (crateId) => {
+    const { crates, tracks } = get();
+
+    // Check if this is a local/offline crate
+    const isLocalCrate = crateId.startsWith('temp-');
+    const localCrate = crates.find((c) => c.id === crateId);
+
+    if (isLocalCrate && localCrate) {
+      // Load from local state instead of API
+      const trackIds = useOfflineStore.getState().getLocalCrateTracks(crateId);
+      const crateTracks = trackIds
+        .map((id) => tracks.find((t) => t.id === id))
+        .filter(Boolean);
+
+      set({
+        selectedCrate: { ...localCrate, tracks: crateTracks },
+        isLoadingCrates: false,
+        cratesError: null,
+      });
+      console.log('[loadCrate] Loaded local crate:', crateId, 'with', crateTracks.length, 'tracks');
+      return;
+    }
+
+    // Otherwise, try API call with offline fallback
     set({ isLoadingCrates: true, cratesError: null });
     try {
       const crate = await apiService.getCrate(crateId);
       set({ selectedCrate: crate, isLoadingCrates: false });
     } catch (error) {
-      set({ cratesError: error.message, isLoadingCrates: false });
+      console.error('[loadCrate] API error:', error.message);
+
+      // If API fails and we have cached crate data, use it
+      if (localCrate) {
+        // Try to get tracks from local storage (for offline-added tracks)
+        const localTrackIds = useOfflineStore.getState().getLocalCrateTracks(crateId);
+        const localTracks = localTrackIds
+          .map((id) => tracks.find((t) => t.id === id))
+          .filter(Boolean);
+
+        set({
+          selectedCrate: {
+            ...localCrate,
+            tracks: localTracks.length > 0 ? localTracks : (localCrate.tracks || []),
+          },
+          isLoadingCrates: false,
+          cratesError: null,
+        });
+        console.log('[loadCrate] Using cached crate:', crateId);
+      } else {
+        set({ cratesError: error.message, isLoadingCrates: false });
+      }
     }
   },
 
   createCrate: async (name, color, parentId = null) => {
+    const { isConnected } = useConnectionStore.getState();
+    const { enqueueOperation, getServerId } = useOfflineStore.getState();
+
+    // Resolve parent ID if it's a temp ID
+    const resolvedParentId = parentId ? (getServerId(parentId) || parentId) : null;
+
+    if (!isConnected) {
+      // Generate temporary local ID
+      const tempId = generateTempCrateId();
+
+      // Enqueue operation for later sync
+      enqueueOperation(OPERATION_TYPES.CREATE_CRATE, {
+        name,
+        color,
+        parentId: resolvedParentId,
+        localCrateId: tempId,
+      });
+
+      // Optimistic UI update - add crate locally
+      const { crates, buildCrateTree } = get();
+      const newCrate = {
+        id: tempId,
+        name,
+        color,
+        parentId: resolvedParentId,
+        trackCount: 0,
+        isLocal: true, // Mark as pending sync
+        lastModified: Date.now(),
+      };
+
+      const updatedCrates = [...crates, newCrate];
+      set({
+        crates: updatedCrates,
+        crateTree: buildCrateTree(updatedCrates),
+      });
+
+      console.log('[useStore] Crate queued for offline sync:', tempId);
+      return true;
+    }
+
+    // Online mode - original behavior
     try {
-      await apiService.createCrate(name, color, parentId);
+      await apiService.createCrate(name, color, resolvedParentId);
       await get().loadCrates();
       return true;
     } catch (error) {
@@ -440,8 +546,60 @@ const useStore = create(
   },
 
   addTracksToCrate: async (crateId, trackIds) => {
+    const { isConnected } = useConnectionStore.getState();
+    const { enqueueOperation, getServerId } = useOfflineStore.getState();
+
+    // Resolve crate ID if it's a temp ID
+    const resolvedCrateId = getServerId(crateId) || crateId;
+
+    if (!isConnected) {
+      // Capture current crate state for conflict detection
+      const { crates, selectedCrate, tracks } = get();
+      const crate = crates.find((c) => c.id === crateId);
+
+      // Enqueue operation
+      enqueueOperation(OPERATION_TYPES.ADD_TRACKS, {
+        crateId: resolvedCrateId,
+        trackIds,
+        serverVersion: crate?.lastModified || null,
+      });
+
+      // Store track IDs locally for offline crate viewing
+      useOfflineStore.getState().addLocalCrateTracks(crateId, trackIds);
+
+      // Optimistic UI update - update selected crate if viewing it
+      if (selectedCrate && selectedCrate.id === crateId) {
+        const newTracks = trackIds
+          .map((id) => tracks.find((t) => t.id === id))
+          .filter(Boolean);
+
+        set({
+          selectedCrate: {
+            ...selectedCrate,
+            tracks: [...(selectedCrate.tracks || []), ...newTracks],
+          },
+        });
+      }
+
+      // Update crate track count in list
+      const { crates: currentCrates, buildCrateTree } = get();
+      const updatedCrates = currentCrates.map((c) =>
+        c.id === crateId
+          ? { ...c, trackCount: (c.trackCount || 0) + trackIds.length }
+          : c
+      );
+      set({
+        crates: updatedCrates,
+        crateTree: buildCrateTree(updatedCrates),
+      });
+
+      console.log('[useStore] Add tracks queued for offline sync:', crateId, trackIds.length);
+      return true;
+    }
+
+    // Online mode - original behavior
     try {
-      await apiService.addTracksToCrate(crateId, trackIds);
+      await apiService.addTracksToCrate(resolvedCrateId, trackIds);
       await get().loadCrate(crateId);
       await get().loadCrates(); // Refresh the crates list to update track counts
       return true;
@@ -452,8 +610,56 @@ const useStore = create(
   },
 
   removeTrackFromCrate: async (crateId, trackId) => {
+    const { isConnected } = useConnectionStore.getState();
+    const { enqueueOperation, getServerId } = useOfflineStore.getState();
+
+    // Resolve crate ID if it's a temp ID
+    const resolvedCrateId = getServerId(crateId) || crateId;
+
+    if (!isConnected) {
+      // Capture current crate state for conflict detection
+      const { crates, selectedCrate } = get();
+      const crate = crates.find((c) => c.id === crateId);
+
+      // Enqueue operation
+      enqueueOperation(OPERATION_TYPES.REMOVE_TRACK, {
+        crateId: resolvedCrateId,
+        trackId,
+        serverVersion: crate?.lastModified || null,
+      });
+
+      // Remove track from local storage for offline crate viewing
+      useOfflineStore.getState().removeLocalCrateTrack(crateId, trackId);
+
+      // Optimistic UI update - remove from selected crate if viewing it
+      if (selectedCrate && selectedCrate.id === crateId) {
+        set({
+          selectedCrate: {
+            ...selectedCrate,
+            tracks: (selectedCrate.tracks || []).filter((t) => t.id !== trackId),
+          },
+        });
+      }
+
+      // Update crate track count in list
+      const { crates: currentCrates, buildCrateTree } = get();
+      const updatedCrates = currentCrates.map((c) =>
+        c.id === crateId
+          ? { ...c, trackCount: Math.max(0, (c.trackCount || 0) - 1) }
+          : c
+      );
+      set({
+        crates: updatedCrates,
+        crateTree: buildCrateTree(updatedCrates),
+      });
+
+      console.log('[useStore] Remove track queued for offline sync:', crateId, trackId);
+      return true;
+    }
+
+    // Online mode - original behavior
     try {
-      await apiService.removeTrackFromCrate(crateId, trackId);
+      await apiService.removeTrackFromCrate(resolvedCrateId, trackId);
       await get().loadCrate(crateId);
       await get().loadCrates(); // Refresh the crates list to update track counts
       return true;
@@ -464,14 +670,55 @@ const useStore = create(
   },
 
   deleteCrate: async (crateId) => {
+    const { isConnected } = useConnectionStore.getState();
+    const { enqueueOperation, getServerId, dequeueOperation, operationQueue } = useOfflineStore.getState();
+
+    // Check if this is a local-only crate (temp ID)
+    const isLocalOnly = crateId.startsWith('temp-');
+
+    if (!isConnected) {
+      if (isLocalOnly) {
+        // If it's a local-only crate, just remove it and cancel any pending operations for it
+        const pendingOps = operationQueue.filter(
+          (op) => op.payload.localCrateId === crateId || op.payload.crateId === crateId
+        );
+        pendingOps.forEach((op) => dequeueOperation(op.id));
+      } else {
+        // Resolve crate ID and enqueue delete operation
+        const resolvedCrateId = getServerId(crateId) || crateId;
+        enqueueOperation(OPERATION_TYPES.DELETE_CRATE, {
+          crateId: resolvedCrateId,
+        });
+      }
+
+      // Optimistic UI update - remove crate from list
+      const { crates, buildCrateTree } = get();
+      const updatedCrates = crates.filter((c) => c.id !== crateId);
+      set({
+        crates: updatedCrates,
+        crateTree: buildCrateTree(updatedCrates),
+        selectedCrate: null,
+      });
+
+      console.log('[useStore] Delete crate queued for offline sync:', crateId);
+      return true;
+    }
+
+    // Online mode - original behavior
+    const resolvedCrateId = getServerId(crateId) || crateId;
     try {
-      await apiService.deleteCrate(crateId);
+      await apiService.deleteCrate(resolvedCrateId);
       await get().loadCrates(); // Refresh the crates list
       return true;
     } catch (error) {
       set({ cratesError: error.message });
       return false;
     }
+  },
+
+  // Helper to check if a crate is locally created (pending sync)
+  isLocalCrate: (crateId) => {
+    return crateId?.startsWith('temp-');
   },
 
   // Selection actions

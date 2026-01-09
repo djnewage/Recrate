@@ -12,7 +12,9 @@ import { ActionSheetProvider } from '@expo/react-native-action-sheet';
 import { COLORS } from './src/constants/theme';
 import { useConnectionStore } from './src/store/connectionStore';
 import useStore from './src/store/useStore';
+import useOfflineStore from './src/store/offlineStore';
 import * as TrackPlayerService from './src/services/TrackPlayerService';
+import { syncQueue } from './src/services/SyncService';
 
 // Screens
 import ConnectionScreen from './src/screens/ConnectionScreen';
@@ -27,6 +29,8 @@ import AICrateBuilderScreen from './src/screens/AICrateBuilderScreen';
 // Components
 import MiniPlayer from './src/components/MiniPlayer';
 import DisclaimerModal from './src/components/DisclaimerModal';
+import ConnectionStatusBar from './src/components/ConnectionStatusBar';
+import ConflictModal from './src/components/ConflictModal';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -89,6 +93,7 @@ function TabNavigator({ navigation }) {
       }}
       tabBar={(props) => (
         <>
+          <ConnectionStatusBar />
           <MiniPlayer />
           <BottomTabBar {...props} />
         </>
@@ -242,25 +247,48 @@ export default function App() {
     };
   }, []);
 
-  // Auto-reconnect on network change
+  // Auto-reconnect on network change and trigger sync
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      console.log('Network state changed:', state.type, 'Connected:', state.isConnected);
+    const unsubscribe = NetInfo.addEventListener(async (state) => {
+      console.log('[App] Network state changed:', state.type, 'Connected:', state.isConnected);
+
+      // Update network state in connection store
+      useConnectionStore.getState().setNetworkState(state);
 
       if (state.isConnected) {
         // Network came back - try to reconnect
-        const { isConnected, lastSuccessfulIP, testConnection, setConnected } =
+        const { isConnected, lastSuccessfulIP, serverURL, quickTestConnection, setConnected, setServerURL } =
           useConnectionStore.getState();
 
-        if (!isConnected && lastSuccessfulIP) {
-          console.log('Attempting to reconnect to:', lastSuccessfulIP);
-          testConnection(lastSuccessfulIP).then((works) => {
-            if (works) {
-              setConnected(true);
-              console.log('Reconnected successfully!');
+        // Use serverURL if available, otherwise fall back to lastSuccessfulIP
+        const urlToTest = serverURL || lastSuccessfulIP;
+
+        if (!isConnected && urlToTest) {
+          console.log('[App] Network back, testing connection to:', urlToTest);
+
+          // Use quick test (5 sec timeout) for faster reconnection
+          const works = await quickTestConnection(urlToTest);
+          if (works) {
+            setConnected(true);
+            // Ensure serverURL is set (in case only lastSuccessfulIP was available)
+            if (!serverURL && lastSuccessfulIP) {
+              setServerURL(lastSuccessfulIP);
             }
-          });
+            console.log('[App] Reconnected successfully!');
+
+            // Auto-sync when reconnected if there are pending operations
+            if (useOfflineStore.getState().hasPendingOperations()) {
+              console.log('[App] Auto-syncing pending operations...');
+              syncQueue();
+            }
+          } else {
+            console.log('[App] Reconnection test failed, will retry on next network change');
+          }
         }
+      } else {
+        // Mark as disconnected when network is lost
+        console.log('[App] Network lost, marking as disconnected');
+        useConnectionStore.getState().setConnected(false);
       }
     });
 
@@ -274,6 +302,7 @@ export default function App() {
           <>
             <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
             <DisclaimerModal />
+            <ConflictModal />
             <SafeAreaView style={styles.container}>
               <NavigationContainer ref={navigationRef} linking={linking}>
                 <AppContent />

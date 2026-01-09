@@ -9,11 +9,14 @@ import {
   Alert,
   TextInput,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
+import { useConnectionStore } from '../store/connectionStore';
+import apiService from '../services/api';
 
 // Recursive component for rendering crate tree items
 const CrateTreeItem = ({
@@ -29,6 +32,8 @@ const CrateTreeItem = ({
   const hasChildren = crate.children && crate.children.length > 0;
   // Auto-expand if filtering and this node has matching children
   const shouldExpand = isExpanded || crate._autoExpand;
+  // Check if this is a locally-created crate pending sync
+  const isPendingSync = crate.isLocal || crate.id?.startsWith('temp-');
 
   return (
     <View>
@@ -61,9 +66,20 @@ const CrateTreeItem = ({
             size={24}
             color="#8B5CF6"
           />
+          {/* Pending sync indicator badge */}
+          {isPendingSync && (
+            <View style={styles.pendingBadge}>
+              <Ionicons name="cloud-upload-outline" size={10} color={COLORS.warning} />
+            </View>
+          )}
         </View>
         <View style={styles.crateInfo}>
-          <Text style={styles.crateName}>{crate.name}</Text>
+          <View style={styles.crateNameRow}>
+            <Text style={styles.crateName}>{crate.name}</Text>
+            {isPendingSync && (
+              <Text style={styles.pendingLabel}>Pending</Text>
+            )}
+          </View>
           <Text style={styles.crateCount}>
             {crate.trackCount || 0} tracks
             {hasChildren ? ` · ${crate.children.length} subcrate${crate.children.length > 1 ? 's' : ''}` : ''}
@@ -100,6 +116,7 @@ const CratesScreen = ({ navigation, route }) => {
     crateTree,
     expandedCrates,
     isLoadingCrates,
+    cratesError,
     loadCrates,
     createCrate,
     addTracksToCrate,
@@ -117,6 +134,21 @@ const CratesScreen = ({ navigation, route }) => {
   const [sortDirection, setSortDirection] = useState('asc');
   const [routeSelectedTracks, setRouteSelectedTracks] = useState([]);
   const [retryCount, setRetryCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Pull-to-refresh handler
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      // Force server to refresh its cache from Serato files
+      await apiService.refreshCrates();
+    } catch (error) {
+      console.warn('[CratesScreen] Failed to refresh server cache:', error.message);
+    }
+    // Then reload crates
+    await loadCrates();
+    setIsRefreshing(false);
+  };
 
   // Initial load on mount - handles case where server is still indexing
   useEffect(() => {
@@ -142,6 +174,15 @@ const CratesScreen = ({ navigation, route }) => {
       loadCrates();
     }, [])
   );
+
+  // Clear error when offline with cached data
+  const { isConnected } = useConnectionStore();
+  useEffect(() => {
+    if (!isConnected && crateTree.length > 0 && cratesError) {
+      // We have cached data while offline - clear the error to show offline banner instead
+      useStore.setState({ cratesError: null });
+    }
+  }, [isConnected, crateTree.length, cratesError]);
 
   useEffect(() => {
     // If coming from Library with selected tracks via route params
@@ -309,11 +350,17 @@ const CratesScreen = ({ navigation, route }) => {
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
-            style={styles.aiButton}
-            onPress={() => navigation.navigate('AICrateBuilder')}
+            style={[styles.aiButton, !isConnected && styles.buttonDisabled]}
+            onPress={() => {
+              if (!isConnected) {
+                Alert.alert('Offline', 'AI Crate Builder requires a server connection.');
+                return;
+              }
+              navigation.navigate('AICrateBuilder');
+            }}
           >
-            <Ionicons name="sparkles" size={18} color={COLORS.primary} />
-            <Text style={styles.aiButtonText}>AI</Text>
+            <Ionicons name="sparkles" size={18} color={isConnected ? COLORS.primary : COLORS.textSecondary} />
+            <Text style={[styles.aiButtonText, !isConnected && styles.textDisabled]}>AI</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.createButton}
@@ -387,13 +434,40 @@ const CratesScreen = ({ navigation, route }) => {
       </View>
 
       {/* Crates List */}
-      {isLoadingCrates ? (
+      {isLoadingCrates && !isRefreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading crates...</Text>
         </View>
+      ) : cratesError && !isLoadingCrates && displayTree.length === 0 ? (
+        <ScrollView
+          contentContainerStyle={styles.errorContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={COLORS.primary}
+            />
+          }
+        >
+          <Ionicons name="alert-circle" size={48} color={COLORS.error} />
+          <Text style={styles.errorText}>Failed to load crates</Text>
+          <Text style={styles.errorSubtext}>{cratesError}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadCrates}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </ScrollView>
       ) : displayTree.length === 0 ? (
-        <View style={styles.emptyContainer}>
+        <ScrollView
+          contentContainerStyle={styles.emptyContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={COLORS.primary}
+            />
+          }
+        >
           <Text style={styles.emptyText}>
             {searchQuery ? 'No crates found' : 'No crates yet'}
           </Text>
@@ -402,9 +476,25 @@ const CratesScreen = ({ navigation, route }) => {
               ? 'Try a different search term'
               : 'Create a crate to organize your tracks'}
           </Text>
-        </View>
+        </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={COLORS.primary}
+            />
+          }
+        >
+          {/* Offline banner when showing local crates but couldn't reach server */}
+          {cratesError && displayTree.length > 0 && (
+            <View style={styles.offlineBanner}>
+              <Ionicons name="cloud-offline-outline" size={16} color={COLORS.warning} />
+              <Text style={styles.offlineBannerText}>Showing local crates (offline)</Text>
+            </View>
+          )}
           {displayTree.map((crate, index) => (
             <CrateTreeItem
               key={`${crate.id}-${index}`}
@@ -557,6 +647,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.primary,
   },
+  buttonDisabled: {
+    opacity: 0.5,
+    borderColor: COLORS.textSecondary,
+  },
+  textDisabled: {
+    color: COLORS.textSecondary,
+  },
   title: {
     fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
@@ -660,6 +757,54 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.textSecondary,
   },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.xl,
+  },
+  errorText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.error,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  errorSubtext: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  retryButton: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  retryButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.xs,
+  },
+  offlineBannerText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.warning,
+    fontWeight: '500',
+  },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
@@ -699,11 +844,33 @@ const styles = StyleSheet.create({
   crateInfo: {
     flex: 1,
   },
+  crateNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
   crateName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
-    marginBottom: 4,
+  },
+  pendingLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.warning,
+    fontWeight: '500',
+  },
+  pendingBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.warning,
   },
   crateCount: {
     fontSize: 13,

@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConnectionStore, CONNECTION_TYPES } from '../store/connectionStore';
+import useStore from '../store/useStore';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import QRScanner from '../components/QRScanner';
 
@@ -28,6 +29,10 @@ const ConnectionScreen = ({ navigation }) => {
     connectManually,
     disconnect,
   } = useConnectionStore();
+
+  // Check for cached data to enable offline mode
+  const { tracks, crates } = useStore();
+  const hasCachedData = tracks.length > 0 || crates.length > 0;
 
   const [showManualModal, setShowManualModal] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
@@ -169,6 +174,21 @@ const ConnectionScreen = ({ navigation }) => {
               <Text style={styles.secondaryButtonText}>Enter IP</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Continue Offline Option - shown when cached data exists */}
+          {hasCachedData && (
+            <TouchableOpacity
+              style={styles.offlineButton}
+              onPress={() => navigation.replace('Main')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="cloud-offline-outline" size={18} color={COLORS.warning} />
+              <Text style={styles.offlineButtonText}>Continue Offline</Text>
+              <Text style={styles.offlineSubtext}>
+                ({tracks.length} tracks, {crates.length} crates cached)
+              </Text>
+            </TouchableOpacity>
+          )}
         </>
       )}
 
@@ -353,6 +373,32 @@ const styles = StyleSheet.create({
     width: 1,
     height: 24,
     backgroundColor: COLORS.border,
+  },
+  offlineButton: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  offlineButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.warning,
+  },
+  offlineSubtext: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    width: '100%',
+    textAlign: 'center',
+    marginTop: SPACING.xs,
   },
   helpSection: {
     marginTop: 'auto',
