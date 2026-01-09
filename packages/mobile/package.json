@@ -5,12 +5,15 @@
   "scripts": {
     "start": "npx expo start",
     "start:clear": "npx expo start --clear",
-    "android": "npx expo start --android",
+    "anyydroid": "npx expo start --android",
     "ios": "npx expo start --ios",
     "web": "npx expo start --web",
     "build:preview": "eas build --profile preview --platform ios",
     "build:dev": "eas build --profile development-device --platform ios",
-    "kill-server": "lsof -ti :3000 | xargs kill -9 || echo 'No server running on port 3000'"
+    "kill-server": "lsof -ti :3000 | xargs kill -9 || echo 'No server running on port 3000'",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "@expo/react-native-action-sheet": "^4.1.1",
@@ -50,6 +53,8 @@
   "private": true,
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",
+    "jest": "^29.7.0",
+    "jest-expo": "^54.0.16",
     "typescript": "~5.9.2"
   }
 }

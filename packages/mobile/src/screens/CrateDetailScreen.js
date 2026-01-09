@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   TextInput,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useActionSheet } from '@expo/react-native-action-sheet';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
@@ -216,6 +217,9 @@ const CrateDetailScreen = ({ route, navigation }) => {
   const filteredTracks = filterTracks(selectedCrate?.tracks);
   const sortedTracks = sortTracks(filteredTracks);
 
+  // Check if this is a local/offline crate
+  const isLocalCrate = crateId.startsWith('temp-') || selectedCrate?.isLocal;
+
   if (isLoadingCrates || !selectedCrate) {
     return (
       <View style={styles.loadingContainer}>
@@ -263,6 +267,14 @@ const CrateDetailScreen = ({ route, navigation }) => {
           </View>
         </View>
       </View>
+
+      {/* Offline/Local crate banner */}
+      {isLocalCrate && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-upload-outline" size={16} color={COLORS.warning} />
+          <Text style={styles.offlineBannerText}>Local crate (pending sync)</Text>
+        </View>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -419,6 +431,23 @@ const styles = StyleSheet.create({
   clearButtonText: {
     fontSize: FONT_SIZES.lg,
     color: COLORS.textSecondary,
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.xs,
+  },
+  offlineBannerText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.warning,
+    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,

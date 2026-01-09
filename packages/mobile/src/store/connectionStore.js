@@ -15,12 +15,20 @@ export const useConnectionStore = create((set, get) => ({
   isConnected: false,
   isSearching: false,
   lastSuccessfulIP: null,
+  networkState: null, // Full NetInfo state object for offline detection
 
   // Actions
   setConnectionType: (type) => set({ connectionType: type }),
   setServerURL: (url) => set({ serverURL: url }),
   setConnected: (connected) => set({ isConnected: connected }),
   setSearching: (searching) => set({ isSearching: searching }),
+  setNetworkState: (state) => set({ networkState: state }),
+
+  // Check if device has network connectivity (regardless of server connection)
+  hasNetworkConnectivity: () => {
+    const { networkState } = get();
+    return networkState?.isConnected ?? false;
+  },
 
   // Test connection to a URL
   testConnection: async (url) => {
@@ -63,6 +71,30 @@ export const useConnectionStore = create((set, get) => ({
       }
     } catch (error) {
       console.error(`[ConnectionStore] Connection failed:`, error.name, error.message);
+      return false;
+    }
+  },
+
+  // Quick test with shorter timeout for reconnection attempts
+  quickTestConnection: async (url) => {
+    const healthURL = `${url}/health`;
+    console.log(`[ConnectionStore] Quick test to: ${healthURL}`);
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await fetch(healthURL, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      console.log(`[ConnectionStore] Quick test result: ${response.ok}`);
+      return response.ok;
+    } catch (error) {
+      console.log(`[ConnectionStore] Quick test failed:`, error.name);
       return false;
     }
   },
