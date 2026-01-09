@@ -8,6 +8,10 @@ import { normalizeTitle, normalizeArtist } from '../services/TrackMatchingServic
 import useOfflineStore, { OPERATION_TYPES, generateTempCrateId } from './offlineStore';
 import { useConnectionStore } from './connectionStore';
 
+// Skip cooldown to prevent rapid track changes that corrupt TrackPlayer state
+let lastSkipTime = 0;
+const SKIP_COOLDOWN = 800; // 800ms minimum between skips
+
 /**
  * Pre-normalize tracks for faster search matching
  * Adds _normalizedTitle and _normalizedArtist fields
@@ -44,9 +48,10 @@ const useStore = create(
   indexingPollInterval: null,
 
   // Pagination state
+  // Note: limit=0 means "load all tracks at once"
   libraryPagination: {
     total: 0,
-    limit: 2000,
+    limit: 0, // 0 = load all tracks at once (no pagination)
     offset: 0,
     hasMore: false,
   },
@@ -143,7 +148,7 @@ const useStore = create(
           isLoadingLibrary: false,
           libraryPagination: {
             total: 0,
-            limit: 2000,
+            limit: 0, // 0 = load all tracks
             offset: 0,
             hasMore: false,
           },
@@ -315,7 +320,7 @@ const useStore = create(
       tracks: [],
       libraryPagination: {
         total: 0,
-        limit: 2000,
+        limit: 0, // 0 = load all tracks
         offset: 0,
         hasMore: false,
       },
@@ -857,6 +862,14 @@ const useStore = create(
 
   playNext: async () => {
     try {
+      // Throttle rapid skips to prevent TrackPlayer state corruption
+      const now = Date.now();
+      if (now - lastSkipTime < SKIP_COOLDOWN) {
+        console.log('[playNext] Skip cooldown active, ignoring rapid skip');
+        return;
+      }
+      lastSkipTime = now;
+
       const { queue, currentQueueIndex, repeatMode } = get();
 
       if (queue.length === 0) return;
@@ -874,6 +887,32 @@ const useStore = create(
         }
       }
 
+      // Check if we need to replenish the TrackPlayer queue
+      // (for large libraries with windowed loading)
+      const tpQueue = await TrackPlayer.getQueue();
+      const tpCurrentIndex = await TrackPlayer.getActiveTrackIndex();
+      const REPLENISH_THRESHOLD = 20; // Add more tracks when this many left
+      const TRACKS_TO_ADD = 100;
+
+      if (tpCurrentIndex !== null && tpQueue.length > 0) {
+        const remainingInTP = tpQueue.length - tpCurrentIndex - 1;
+
+        if (remainingInTP < REPLENISH_THRESHOLD && nextIndex + remainingInTP < queue.length) {
+          // Add more tracks from the full queue
+          const startAddIndex = nextIndex + remainingInTP;
+          const endAddIndex = Math.min(startAddIndex + TRACKS_TO_ADD, queue.length);
+          const tracksToAdd = queue.slice(startAddIndex, endAddIndex);
+
+          if (tracksToAdd.length > 0) {
+            console.log(`[playNext] Replenishing queue: adding ${tracksToAdd.length} tracks (indices ${startAddIndex}-${endAddIndex})`);
+            const formattedTracks = tracksToAdd.map(track =>
+              TrackPlayerService.formatTrackForPlayer(track)
+            );
+            await TrackPlayer.add(formattedTracks);
+          }
+        }
+      }
+
       await TrackPlayer.skipToNext();
       set({ currentQueueIndex: nextIndex });
     } catch (error) {
@@ -883,6 +922,14 @@ const useStore = create(
 
   playPrevious: async () => {
     try {
+      // Throttle rapid skips to prevent TrackPlayer state corruption
+      const now = Date.now();
+      if (now - lastSkipTime < SKIP_COOLDOWN) {
+        console.log('[playPrevious] Skip cooldown active, ignoring rapid skip');
+        return;
+      }
+      lastSkipTime = now;
+
       const { queue, currentQueueIndex } = get();
 
       if (queue.length === 0) return;
@@ -941,10 +988,22 @@ const useStore = create(
 
       const shuffledQueue = [currentTrackInQueue, ...otherTracks];
 
-      // Update TrackPlayer queue
+      // Update TrackPlayer queue with windowing for large libraries
       try {
         await TrackPlayer.removeUpcomingTracks();
-        const upcomingTracks = shuffledQueue.slice(1).map(track =>
+
+        // Apply same windowing logic as setQueue for large libraries
+        const MAX_UPCOMING = 199; // Leave room for current track
+        const upcomingShuffled = shuffledQueue.slice(1);
+        const tracksToQueue = upcomingShuffled.length > MAX_UPCOMING
+          ? upcomingShuffled.slice(0, MAX_UPCOMING)
+          : upcomingShuffled;
+
+        if (upcomingShuffled.length > MAX_UPCOMING) {
+          console.log(`[toggleShuffle] Large library: queuing ${tracksToQueue.length} of ${upcomingShuffled.length} shuffled tracks`);
+        }
+
+        const upcomingTracks = tracksToQueue.map(track =>
           TrackPlayerService.formatTrackForPlayer(track)
         );
         await TrackPlayer.add(upcomingTracks);
@@ -968,10 +1027,22 @@ const useStore = create(
         const currentTrackIndex = originalQueue.findIndex(t => t.id === currentTrack?.id);
         const newIndex = currentTrackIndex >= 0 ? currentTrackIndex : originalQueueIndex || 0;
 
-        // Update TrackPlayer queue back to original order
+        // Update TrackPlayer queue back to original order with windowing
         try {
           await TrackPlayer.removeUpcomingTracks();
-          const upcomingTracks = originalQueue.slice(newIndex + 1).map(track =>
+
+          // Apply same windowing logic as setQueue for large libraries
+          const MAX_UPCOMING = 199; // Leave room for current track
+          const upcomingOriginal = originalQueue.slice(newIndex + 1);
+          const tracksToQueue = upcomingOriginal.length > MAX_UPCOMING
+            ? upcomingOriginal.slice(0, MAX_UPCOMING)
+            : upcomingOriginal;
+
+          if (upcomingOriginal.length > MAX_UPCOMING) {
+            console.log(`[toggleShuffle] Restoring: queuing ${tracksToQueue.length} of ${upcomingOriginal.length} tracks`);
+          }
+
+          const upcomingTracks = tracksToQueue.map(track =>
             TrackPlayerService.formatTrackForPlayer(track)
           );
           await TrackPlayer.add(upcomingTracks);
@@ -995,17 +1066,36 @@ const useStore = create(
   setQueue: async (tracks, startIndex = 0) => {
     try {
       await TrackPlayer.reset();
-      await TrackPlayerService.addTracksToQueue(tracks);
 
-      if (startIndex > 0) {
-        await TrackPlayer.skip(startIndex);
+      // For large libraries, only queue a window of tracks around the current position
+      // This dramatically improves performance when starting playback
+      const MAX_QUEUE_SIZE = 200; // Max tracks to queue at once
+      const BUFFER_BEFORE = 50;   // Tracks before current position
+
+      let queuedTracks = tracks;
+      let adjustedIndex = startIndex;
+
+      if (tracks.length > MAX_QUEUE_SIZE) {
+        // Calculate window around current position
+        const windowStart = Math.max(0, startIndex - BUFFER_BEFORE);
+        const windowEnd = Math.min(tracks.length, windowStart + MAX_QUEUE_SIZE);
+        queuedTracks = tracks.slice(windowStart, windowEnd);
+        adjustedIndex = startIndex - windowStart;
+
+        console.log(`[setQueue] Large library optimization: queuing ${queuedTracks.length} of ${tracks.length} tracks (window ${windowStart}-${windowEnd})`);
+      }
+
+      await TrackPlayerService.addTracksToQueue(queuedTracks);
+
+      if (adjustedIndex > 0) {
+        await TrackPlayer.skip(adjustedIndex);
       }
 
       // Start playback automatically
       await TrackPlayer.play();
 
       set({
-        queue: tracks,
+        queue: tracks,  // Keep full playlist reference for later navigation
         currentQueueIndex: startIndex,
         currentTrack: tracks[startIndex],
         isPlaying: true,
@@ -1138,7 +1228,8 @@ const useStore = create(
       // Version for cache invalidation - bump this to clear old caches
       // v2: Fixed pagination offset calculation
       // v3: Added disclaimer state
-      version: 3,
+      // v4: Changed to load all tracks at once (limit=0)
+      version: 4,
       onRehydrateStorage: () => (state, error) => {
         if (error) {
           console.log('Store rehydration error:', error);

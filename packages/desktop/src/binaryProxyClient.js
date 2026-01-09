@@ -43,7 +43,7 @@ class BinaryProxyClient {
 
       this.localWs = new WebSocket(this.localServerURL, {
         perMessageDeflate: false,
-        maxPayload: 10 * 1024 * 1024
+        maxPayload: 100 * 1024 * 1024 // 100MB to support large library responses
       });
 
       this.localWs.on('open', () => {
@@ -136,7 +136,7 @@ class BinaryProxyClient {
 
       this.proxyWs = new WebSocket(this.proxyURL, {
         perMessageDeflate: false,
-        maxPayload: 10 * 1024 * 1024
+        maxPayload: 100 * 1024 * 1024 // 100MB to support large library responses
       });
 
       this.proxyWs.on('open', () => {

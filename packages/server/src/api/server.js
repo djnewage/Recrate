@@ -192,12 +192,16 @@ class APIServer {
       legacyHeaders: false,
     });
 
-    // Streaming rate limiter - 20 streams per minute per IP
+    // Streaming rate limiter - 500 streams per minute per IP
+    // Increased from 20 because:
+    // 1. Each track makes multiple range requests as iOS buffers
+    // 2. Rapid track skipping in DJ app is a valid use case
+    // 3. Low limit was causing HTTP 429 → SwiftAudioEx.PlaybackError error 1
     const streamLimiter = rateLimit({
       windowMs: 1 * 60 * 1000, // 1 minute
-      max: 20,
+      max: 500,
       message: 'Too many stream requests, please try again later',
-      skipSuccessfulRequests: false,
+      skipSuccessfulRequests: true, // Only count failed requests
     });
 
     // Write operations rate limiter - 30 write operations per 15 minutes

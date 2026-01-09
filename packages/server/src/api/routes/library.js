@@ -32,8 +32,9 @@ function createLibraryRoutes(parser) {
       // Check if indexing is in progress
       const status = parser.getIndexingStatus();
       if (status.isIndexing && !status.isComplete) {
-        // Parse limit from query params (default to 2000 if not provided)
-        const requestedLimit = parseInt(req.query.limit, 10) || 2000;
+        // Parse limit from query params (default to 2000 if not provided, 0 means "all")
+        const requestedLimit = parseInt(req.query.limit, 10);
+        const effectiveLimit = requestedLimit === 0 ? 0 : (requestedLimit || 2000);
 
         // Return indexing status instead of empty library
         return res.json({
@@ -42,7 +43,7 @@ function createLibraryRoutes(parser) {
           tracks: [],
           pagination: {
             total: 0,
-            limit: requestedLimit,
+            limit: effectiveLimit,
             offset: 0,
             hasMore: false
           },
@@ -65,11 +66,15 @@ function createLibraryRoutes(parser) {
       // Get total count before pagination
       const total = tracks.length;
 
-      // Apply pagination
-      const paginatedTracks = tracks.slice(
-        parseInt(offset, 10),
-        parseInt(offset, 10) + parseInt(limit, 10)
-      );
+      // Parse limit - treat 0 as "return all tracks"
+      const parsedLimit = parseInt(limit, 10);
+      const parsedOffset = parseInt(offset, 10);
+      const returnAll = parsedLimit === 0;
+
+      // Apply pagination (skip if limit=0 means "return all")
+      const paginatedTracks = returnAll
+        ? tracks
+        : tracks.slice(parsedOffset, parsedOffset + parsedLimit);
 
       // Enhance tracks with metadata (for first batch only to avoid slowdown)
       const enhancedTracks = await enhanceTracksWithMetadata(
@@ -84,9 +89,9 @@ function createLibraryRoutes(parser) {
         tracks: [...enhancedTracks, ...remainingTracks],
         pagination: {
           total,
-          limit: parseInt(limit, 10),
-          offset: parseInt(offset, 10),
-          hasMore: parseInt(offset, 10) + parseInt(limit, 10) < total,
+          limit: returnAll ? total : parsedLimit,
+          offset: returnAll ? 0 : parsedOffset,
+          hasMore: returnAll ? false : (parsedOffset + parsedLimit < total),
         },
       });
     } catch (error) {

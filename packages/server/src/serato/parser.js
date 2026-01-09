@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const pLimit = require('p-limit');
-const LRUCache = require('../utils/cache');
+const { LRUCache, FileCache } = require('../utils/cache');
 const logger = require('../utils/logger');
 const MetadataExtractor = require('../audio/metadata');
 const pathResolver = require('../utils/pathResolver');
@@ -51,11 +51,16 @@ class SeratoParser extends EventEmitter {
     // Concurrency limiter to prevent "too many open files" errors
     this.fileOpLimit = pLimit(100); // Max 100 concurrent file operations
 
-    // Initialize cache
+    // Initialize in-memory LRU cache
     this.cache = new LRUCache(
       cacheConfig.maxSize || 1000,
       cacheConfig.ttl || 3600000
     );
+
+    // Initialize persistent file cache for fast cold starts
+    this.fileCache = cacheConfig.directory
+      ? new FileCache(cacheConfig.directory)
+      : null;
 
     // Track cache for O(1) lookups by ID (populated during indexing)
     this.trackCache = new Map(); // trackId → track object
@@ -161,9 +166,11 @@ class SeratoParser extends EventEmitter {
    */
   async parseLibrary(musicPath = null) {
     const cacheKey = 'library';
+
+    // Check in-memory cache first
     const cached = this.cache.get(cacheKey);
     if (cached && this.indexingStatus.isComplete) {
-      logger.debug('Returning cached library');
+      logger.debug('Returning cached library from memory');
       return cached;
     }
 
@@ -175,6 +182,44 @@ class SeratoParser extends EventEmitter {
           resolve(this.cache.get(cacheKey) || []);
         });
       });
+    }
+
+    // Try to load from persistent file cache (fast cold start)
+    if (this.fileCache) {
+      try {
+        // Get Serato database modification time for cache invalidation
+        const dbPath = path.join(this.seratoPath, 'database V2');
+        let sourceModified = 0;
+        try {
+          const dbStats = await fs.stat(dbPath);
+          sourceModified = dbStats.mtimeMs;
+        } catch {
+          // Database file may not exist yet
+        }
+
+        const fileCached = await this.fileCache.load(cacheKey, { sourceModified });
+        if (fileCached && fileCached.data) {
+          logger.info(`Loaded ${fileCached.data.length} tracks from persistent cache`);
+
+          // Populate in-memory caches
+          this.cache.set(cacheKey, fileCached.data);
+          this.trackCache.clear();
+          for (const track of fileCached.data) {
+            this.trackCache.set(track.id, track);
+          }
+
+          // Mark as complete
+          this.indexingStatus.isComplete = true;
+          this.indexingStatus.progress.phase = 'complete';
+          this.indexingStatus.progress.tracksFound = fileCached.data.length;
+          this.indexingStatus.progress.message = `Loaded ${fileCached.data.length} tracks from cache`;
+
+          return fileCached.data;
+        }
+      } catch (error) {
+        logger.warn('Failed to load from persistent cache:', error.message);
+        // Continue with normal indexing
+      }
     }
 
     this.indexingStatus.isIndexing = true;
@@ -391,6 +436,30 @@ class SeratoParser extends EventEmitter {
       logger.success(`Total library: ${tracks.length} tracks`);
 
       this.cache.set(cacheKey, tracks);
+
+      // Save to persistent file cache for fast cold starts
+      if (this.fileCache) {
+        try {
+          // Get Serato database modification time for cache invalidation
+          const dbPath = path.join(this.seratoPath, 'database V2');
+          let sourceModified = Date.now();
+          try {
+            const dbStats = await fs.stat(dbPath);
+            sourceModified = dbStats.mtimeMs;
+          } catch {
+            // Use current time if database file doesn't exist
+          }
+
+          const saveResult = await this.fileCache.save(cacheKey, tracks, {
+            sourceModified,
+            trackCount: tracks.length,
+          });
+          logger.info(`Saved library cache: ${saveResult.compressedSize} bytes (${saveResult.compressionRatio} of original)`);
+        } catch (error) {
+          logger.warn('Failed to save persistent cache:', error.message);
+          // Non-fatal - continue without persistent caching
+        }
+      }
 
       // Mark indexing as complete
       this.indexingStatus.isIndexing = false;
@@ -673,16 +742,30 @@ class SeratoParser extends EventEmitter {
     if (item) {
       this.cache.delete(item);
       logger.debug(`Cache invalidated for: ${item}`);
-      // If invalidating library, also clear track cache
+      // If invalidating library, also clear track cache and file cache
       if (item === 'library') {
         this.trackCache.clear();
         logger.debug('Track cache cleared');
+        // Also invalidate persistent file cache
+        if (this.fileCache) {
+          this.fileCache.delete(item).catch(err => {
+            logger.warn(`Failed to delete file cache for ${item}:`, err.message);
+          });
+        }
       }
     } else {
       this.cache.clear();
       this.trackCache.clear();
       logger.debug('All caches cleared (library + track cache)');
+      // Also clear persistent file cache
+      if (this.fileCache) {
+        this.fileCache.clear().catch(err => {
+          logger.warn('Failed to clear file cache:', err.message);
+        });
+      }
     }
+    // Reset indexing status so next parseLibrary will re-index
+    this.indexingStatus.isComplete = false;
   }
 
   /**

@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BPMBadge from './BPMBadge';
 
-const TrackRow = ({ track, onPress, onLongPress, onMenuPress, isSelected }) => {
+const TrackRow = React.memo(({ track, onPress, onLongPress, onMenuPress, isSelected }) => {
   // Format duration from seconds to MM:SS
   const formatDuration = (seconds) => {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -60,7 +60,16 @@ const TrackRow = ({ track, onPress, onLongPress, onMenuPress, isSelected }) => {
       )}
     </TouchableOpacity>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison: only re-render if these specific props change
+  return (
+    prevProps.track.id === nextProps.track.id &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.track.title === nextProps.track.title &&
+    prevProps.track.artist === nextProps.track.artist &&
+    prevProps.track.bpm === nextProps.track.bpm
+  );
+});
 
 const styles = StyleSheet.create({
   row: {

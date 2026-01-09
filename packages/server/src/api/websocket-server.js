@@ -14,7 +14,7 @@ class AudioWebSocketServer {
       path: '/ws/audio',
       // Binary frame configuration
       perMessageDeflate: false, // Disable compression for audio (already compressed)
-      maxPayload: 10 * 1024 * 1024 // 10MB max message size
+      maxPayload: 100 * 1024 * 1024 // 100MB to support large library responses
     });
 
     this.parser = parser;
