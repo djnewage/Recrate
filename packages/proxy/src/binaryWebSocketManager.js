@@ -14,7 +14,7 @@ class BinaryWebSocketManager {
       server,
       path: '/ws/desktop',
       perMessageDeflate: false,
-      maxPayload: 10 * 1024 * 1024
+      maxPayload: 100 * 1024 * 1024 // 100MB to support large library responses
     });
 
     // Device registry: deviceId → { connection, info }
