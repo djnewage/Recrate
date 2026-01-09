@@ -10,6 +10,7 @@ export const COLORS = {
   success: '#10B981',
   error: '#EF4444',
   warning: '#F59E0B',
+  sync: '#3B82F6', // Blue for sync indicators
 };
 
 export const SPACING = {

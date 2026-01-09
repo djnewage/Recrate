@@ -61,3 +61,6 @@ packages/desktop/resources/server/
 *.tmp
 .temp/
 packages/assets/
+
+# Generated docs
+docs/architecture-diagram.html

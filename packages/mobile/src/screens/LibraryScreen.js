@@ -14,11 +14,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useActionSheet } from '@expo/react-native-action-sheet';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
+import { useConnectionStore } from '../store/connectionStore';
 import TrackRow from '../components/TrackRow';
 import FilterModal from '../components/FilterModal';
 
 const LibraryScreen = ({ navigation }) => {
   const { showActionSheetWithOptions } = useActionSheet();
+  const { isConnected } = useConnectionStore();
 
   const {
     tracks,
@@ -327,10 +329,16 @@ const LibraryScreen = ({ navigation }) => {
           </Text>
           <View style={styles.headerActions}>
             <TouchableOpacity
-              style={styles.identifyButton}
-              onPress={() => navigation.navigate('IdentifyTrack')}
+              style={[styles.identifyButton, !isConnected && styles.buttonDisabled]}
+              onPress={() => {
+                if (!isConnected) {
+                  Alert.alert('Offline', 'Track identification requires a server connection.');
+                  return;
+                }
+                navigation.navigate('IdentifyTrack');
+              }}
             >
-              <Ionicons name="mic" size={20} color={COLORS.primary} />
+              <Ionicons name="mic" size={20} color={isConnected ? COLORS.primary : COLORS.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.editButton}
@@ -591,6 +599,9 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.surface,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   editButton: {
     paddingHorizontal: SPACING.sm,

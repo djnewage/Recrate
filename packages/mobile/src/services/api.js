@@ -13,9 +13,9 @@ const api = axios.create({
 
 // Add request interceptor to dynamically set base URL from connection store
 api.interceptors.request.use(
-  async (config) => {
-    // Dynamically import to avoid circular dependencies
-    const { useConnectionStore } = await import('../store/connectionStore');
+  (config) => {
+    // Use synchronous require to avoid async timing issues
+    const { useConnectionStore } = require('../store/connectionStore');
     const { serverURL } = useConnectionStore.getState();
 
     // Use serverURL from connection store if available
@@ -51,7 +51,10 @@ export const apiService = {
 
   // Library endpoints
   getLibrary: async (params = {}) => {
-    const response = await api.get(ENDPOINTS.LIBRARY, { params });
+    const response = await api.get(ENDPOINTS.LIBRARY, {
+      params,
+      timeout: 120000, // 2 minutes for large libraries
+    });
     return response.data;
   },
 
@@ -99,6 +102,11 @@ export const apiService = {
 
   deleteCrate: async (crateId) => {
     const response = await api.delete(`${ENDPOINTS.CRATES}/${crateId}`);
+    return response.data;
+  },
+
+  refreshCrates: async () => {
+    const response = await api.post(`${ENDPOINTS.CRATES}/refresh`);
     return response.data;
   },
 
