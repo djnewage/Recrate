@@ -70,7 +70,8 @@ export const apiService = {
 
   // Crates endpoints
   getCrates: async () => {
-    const response = await api.get(ENDPOINTS.CRATES);
+    // Include track IDs for offline caching
+    const response = await api.get(`${ENDPOINTS.CRATES}?includeTrackIds=true`);
     return response.data;
   },
 

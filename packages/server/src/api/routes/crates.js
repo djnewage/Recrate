@@ -36,11 +36,17 @@ function createCrateRoutes(parser, writer = null) {
 
   /**
    * GET /api/crates
-   * List all crates (metadata only)
+   * List all crates
+   * Query params:
+   *   - includeTrackIds=true: Include track IDs for each crate (for offline caching)
    */
   router.get('/', async (req, res) => {
     try {
-      const crates = await parser.getAllCrates();
+      const includeTrackIds = req.query.includeTrackIds === 'true';
+
+      const crates = includeTrackIds
+        ? await parser.getAllCratesWithTrackIds()
+        : await parser.getAllCrates();
 
       res.json({
         crates,

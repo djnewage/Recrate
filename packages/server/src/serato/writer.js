@@ -414,6 +414,7 @@ class SeratoWriter {
     // Invalidate cache
     this.parser.invalidateCache(`crate-${crateId}`);
     this.parser.invalidateCache('crates-list'); // Invalidate list to update track counts
+    this.parser.invalidateCache('crates-list-with-tracks'); // Invalidate list with track IDs for offline sync
 
     logger.success(`Added ${newTracks.length} tracks (skipped ${trackIds.length - newTracks.length} duplicates)`);
 
@@ -457,6 +458,7 @@ class SeratoWriter {
     // Invalidate cache
     this.parser.invalidateCache(`crate-${crateId}`);
     this.parser.invalidateCache('crates-list'); // Invalidate list to update track counts
+    this.parser.invalidateCache('crates-list-with-tracks'); // Invalidate list with track IDs for offline sync
 
     logger.success(`Removed track from crate`);
 
