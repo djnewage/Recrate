@@ -8,11 +8,6 @@ const ConnectionBadge = ({ style }) => {
   if (!isConnected) return null;
 
   const badges = {
-    [CONNECTION_TYPES.TAILSCALE]: {
-      icon: '🌐',
-      text: 'Remote',
-      color: '#48bb78',
-    },
     [CONNECTION_TYPES.LOCAL]: {
       icon: '🏠',
       text: 'Local',
@@ -22,6 +17,11 @@ const ConnectionBadge = ({ style }) => {
       icon: '⚙️',
       text: 'Manual',
       color: '#9f7aea',
+    },
+    [CONNECTION_TYPES.PROXY]: {
+      icon: '☁️',
+      text: 'Cloud',
+      color: '#8b5cf6',
     },
   };
 

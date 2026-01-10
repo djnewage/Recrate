@@ -160,11 +160,6 @@
       color: var(--accent-blue);
     }
 
-    .connection-badge.tailscale {
-      background: rgba(88, 86, 214, 0.1);
-      color: #5856D6;
-    }
-
     /* QR Section */
     .qr-wrapper {
       background: var(--bg-primary);
@@ -1285,7 +1280,6 @@
 
         // Get connection info
         const proxyStatus = await api.getProxyStatus();
-        const tailscaleInfo = await api.getTailscaleInfo();
         const localURL = statusData?.localURL || serverUrl;
 
         // Determine best connection and update UI
@@ -1295,12 +1289,6 @@
         if (proxyStatus.connected && proxyStatus.url) {
           displayURL = proxyStatus.url;
           connectionType = 'cloud';
-        } else if (tailscaleInfo.running && tailscaleInfo.ip) {
-          displayURL = statusData?.tailscaleHTTPSURL ||
-                       tailscaleInfo.httpsURL ||
-                       statusData?.tailscaleURL ||
-                       `http://${tailscaleInfo.ip}:3000`;
-          connectionType = 'tailscale';
         }
 
         // Update connection badge
@@ -1311,8 +1299,7 @@
 
         // Update stats
         document.getElementById('stat-connection').textContent =
-          connectionType === 'cloud' ? 'Cloud Proxy' :
-          connectionType === 'tailscale' ? 'Tailscale' : 'Local Network';
+          connectionType === 'cloud' ? 'Cloud Proxy' : 'Local Network';
 
         // Fetch library stats from server
         fetchLibraryStats();
@@ -1348,9 +1335,6 @@
       if (type === 'cloud') {
         icon.innerHTML = ICONS.cloud;
         label.textContent = 'Cloud';
-      } else if (type === 'tailscale') {
-        icon.innerHTML = ICONS.globe;
-        label.textContent = 'Tailscale';
       } else {
         icon.innerHTML = ICONS.home;
         label.textContent = 'Local';

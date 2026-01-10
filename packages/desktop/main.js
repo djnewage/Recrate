@@ -17,11 +17,9 @@ const store = new Store();
 let mainWindow = null;
 let tray = null;
 let recrateService = null;  // Changed from serverProcess - now holds the service instance
-let tailscaleServeProcess = null;
 let proxyClient = null;
 let serverPort = 3000;
 let serverStatus = 'stopped';
-let tailscaleServeURL = null;
 
 // Proxy configuration - can be overridden in settings
 const PROXY_URL = process.env.PROXY_URL || 'wss://steadfast-forgiveness-production.up.railway.app';
@@ -37,141 +35,6 @@ function getLocalIP() {
     }
   }
   return 'localhost';
-}
-
-/**
- * Detect if Tailscale is installed and running
- * Returns Tailscale IP (100.x.x.x) or null
- */
-function getTailscaleIP() {
-  const interfaces = os.networkInterfaces();
-
-  for (const [name, addrs] of Object.entries(interfaces)) {
-    for (const addr of addrs) {
-      // Tailscale IPs always start with 100.x.x.x
-      if (addr.family === 'IPv4' && addr.address.startsWith('100.')) {
-        log.info('Tailscale detected:', addr.address);
-        return addr.address;
-      }
-    }
-  }
-
-  log.info('Tailscale not detected');
-  return null;
-}
-
-/**
- * Check if Tailscale is installed (not just running)
- */
-function isTailscaleInstalled() {
-  const { execSync } = require('child_process');
-
-  try {
-    if (process.platform === 'darwin' || process.platform === 'linux') {
-      execSync('which tailscale', { stdio: 'ignore' });
-      return true;
-    } else if (process.platform === 'win32') {
-      execSync('where tailscale', { stdio: 'ignore' });
-      return true;
-    }
-  } catch {
-    return false;
-  }
-
-  return false;
-}
-
-/**
- * Start Tailscale HTTPS serve
- */
-function startTailscaleServe() {
-  // Only start if Tailscale is running (has an IP)
-  const tailscaleIP = getTailscaleIP();
-  if (!tailscaleIP) {
-    log.info('Tailscale not running, skipping HTTPS serve');
-    return;
-  }
-
-  if (tailscaleServeProcess) {
-    log.info('Tailscale serve already running');
-    return;
-  }
-
-  log.info('Starting Tailscale HTTPS serve...');
-
-  // Get the Tailscale command path based on platform
-  let tailscaleCmd;
-  if (process.platform === 'darwin') {
-    tailscaleCmd = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
-  } else if (process.platform === 'linux') {
-    tailscaleCmd = 'tailscale';
-  } else if (process.platform === 'win32') {
-    tailscaleCmd = 'tailscale';
-  }
-
-  // Check if command exists
-  if (!fs.existsSync(tailscaleCmd) && process.platform === 'darwin') {
-    log.warn('Tailscale not found at expected path');
-    return;
-  }
-
-  tailscaleServeProcess = spawn(tailscaleCmd, ['serve', '--https=443', `http://localhost:${serverPort}`]);
-
-  tailscaleServeProcess.stdout.on('data', (data) => {
-    const output = data.toString();
-    log.info('Tailscale Serve:', output);
-
-    // Extract the HTTPS URL from output
-    // Output format: "Available within your tailnet:\n\nhttps://..."
-    const urlMatch = output.match(/https:\/\/[^\s]+/);
-    if (urlMatch) {
-      tailscaleServeURL = urlMatch[0].replace(/\/$/, ''); // Remove trailing slash
-      log.info('Tailscale HTTPS URL:', tailscaleServeURL);
-
-      // Update UI with Tailscale URL
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('tailscale-serve-status', {
-          running: true,
-          url: tailscaleServeURL
-        });
-      }
-    }
-  });
-
-  tailscaleServeProcess.stderr.on('data', (data) => {
-    log.error('Tailscale Serve Error:', data.toString());
-  });
-
-  tailscaleServeProcess.on('close', (code) => {
-    log.info(`Tailscale serve exited with code ${code}`);
-    tailscaleServeProcess = null;
-    tailscaleServeURL = null;
-
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('tailscale-serve-status', {
-        running: false,
-        url: null
-      });
-    }
-  });
-
-  tailscaleServeProcess.on('error', (error) => {
-    log.error('Tailscale serve error:', error);
-    tailscaleServeProcess = null;
-    tailscaleServeURL = null;
-  });
-}
-
-/**
- * Stop Tailscale HTTPS serve
- */
-function stopTailscaleServe() {
-  if (tailscaleServeProcess) {
-    log.info('Stopping Tailscale serve...');
-    tailscaleServeProcess.kill();
-    tailscaleServeProcess = null;
-    tailscaleServeURL = null;
-  }
 }
 
 // Auto-detect Serato path
@@ -362,7 +225,7 @@ async function connectToProxy() {
   } catch (error) {
     log.error('Failed to connect to proxy:', error.message);
 
-    // Continue without proxy - local and Tailscale still work
+    // Continue without proxy - local network still works
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('proxy-status', {
         connected: false,
@@ -554,13 +417,8 @@ async function startServer() {
     // Connect to cloud proxy
     await connectToProxy();
 
-    // Start Tailscale HTTPS serve (fallback option)
-    startTailscaleServe();
-
     // Get connection info
     const localIP = getLocalIP();
-    const tailscaleIP = getTailscaleIP();
-    const tailscaleInstalled = isTailscaleInstalled();
 
     // Send status to renderer
     const sendStatus = () => {
@@ -574,9 +432,6 @@ async function startServer() {
           localURL: `http://${localIP}:${serverPort}`,
           proxyURL,
           proxyConnected: proxyClient && proxyClient.isConnected(),
-          tailscaleURL: tailscaleIP ? `http://${tailscaleIP}:${serverPort}` : null,
-          tailscaleHTTPSURL: tailscaleServeURL,
-          tailscaleInstalled,
           config: userConfig
         });
         log.info('Sent running status to renderer');
@@ -640,9 +495,6 @@ async function stopServer() {
 
   // Disconnect from proxy
   disconnectFromProxy();
-
-  // Also stop Tailscale serve
-  stopTailscaleServe();
 }
 
 // IPC Handlers
@@ -782,23 +634,6 @@ ipcMain.handle('open-external', (event, url) => {
   require('electron').shell.openExternal(url);
 });
 
-ipcMain.handle('get-tailscale-info', () => {
-  const tailscaleIP = getTailscaleIP();
-  const installed = isTailscaleInstalled();
-
-  return {
-    installed,
-    running: tailscaleIP !== null,
-    ip: tailscaleIP,
-    httpsURL: tailscaleServeURL,
-    serveRunning: tailscaleServeProcess !== null
-  };
-});
-
-ipcMain.handle('open-tailscale-url', () => {
-  require('electron').shell.openExternal('https://tailscale.com/download');
-});
-
 ipcMain.handle('get-proxy-status', () => {
   return {
     connected: proxyClient && proxyClient.isConnected(),
@@ -839,7 +674,6 @@ app.on('before-quit', () => {
 
   stopServer();
   disconnectFromProxy();
-  stopTailscaleServe();
 });
 
 // Handle uncaught exceptions during shutdown gracefully

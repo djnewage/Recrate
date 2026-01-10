@@ -99,12 +99,6 @@ const ConnectionDebug = () => {
 
       // Test 2: Local network
       { url: 'http://192.168.1.131:3000/health', name: 'Local IP (192.168.1.131)' },
-
-      // Test 3: Tailscale (remote)
-      { url: 'http://100.111.35.70:3000/health', name: 'Tailscale IP (100.111.35.70)' },
-
-      // Test 4: Alternative - try with explicit port
-      { url: 'http://100.111.35.70:3000/health', name: 'Tailscale retry' },
     ];
 
     const testResults = [];
@@ -216,16 +210,6 @@ const ConnectionDebug = () => {
             • Local IP: {results[1]?.status === 'success' ? '✅' : '❌'}
             {results[1]?.status === 'success' ? ' (Same WiFi works)' : ' (Local network issue)'}
           </Text>
-          <Text style={{ color: '#ccc', fontSize: 12, marginTop: 5 }}>
-            • Tailscale: {results[2]?.status === 'success' ? '✅' : '❌'}
-            {results[2]?.status === 'success' ? ' (Remote works!)' : ' (Tailscale issue)'}
-          </Text>
-
-          {results[2]?.status !== 'success' && (
-            <Text style={{ color: '#fbd38d', fontSize: 12, marginTop: 10, fontWeight: 'bold' }}>
-              ⚠️ Tailscale connection failed!
-            </Text>
-          )}
         </View>
       )}
     </View>
