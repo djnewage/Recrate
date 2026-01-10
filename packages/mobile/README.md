@@ -4,13 +4,17 @@ React Native mobile app for browsing and managing your Serato DJ library remotel
 
 ## Features
 
-- 📚 Browse your entire music library
+- 📚 Browse your entire music library with pagination
 - 🔍 Search tracks by title, artist, or album
-- 📦 View and manage crates
-- ➕ Create new crates
-- 🎵 Add tracks to crates
-- 🎧 Stream and preview tracks
-- 📊 View track metadata (BPM, key, duration)
+- 🎚️ Filter by BPM range, musical key, and genre
+- 📦 Full crate management (create, edit, delete)
+- 🎵 Add/remove tracks from crates
+- 🎧 Stream and preview tracks with full playback controls
+- 📊 View track metadata (BPM, key, duration, genre)
+- 🤖 AI-powered crate curation with natural language
+- 🎤 Track identification via audio fingerprinting
+- 📴 Offline mode with sync queue
+- 🔗 Auto-discovery and QR code connection
 - 🎨 Modern purple/pink gradient theme
 
 ## Prerequisites
@@ -103,22 +107,33 @@ This will start Expo and give you options:
 
 ```
 mobile/
-├── App.js                      # Main app entry with navigation
+├── App.js                          # Main app entry with navigation
 ├── src/
-│   ├── screens/                # App screens
-│   │   ├── LibraryScreen.js    # Browse library
-│   │   ├── CratesScreen.js     # View crates
-│   │   └── CrateDetailScreen.js # View crate details
-│   ├── components/             # Reusable components
-│   │   ├── TrackItem.js        # Track list item
-│   │   └── MiniPlayer.js       # Mini player component
-│   ├── services/               # API services
-│   │   └── api.js              # Backend API client
-│   ├── store/                  # State management
-│   │   └── useStore.js         # Zustand store
-│   └── constants/              # App constants
-│       ├── config.js           # API configuration
-│       └── theme.js            # Theme colors and styles
+│   ├── screens/                    # App screens (8 total)
+│   │   ├── ConnectionScreen.js     # Server discovery & connection
+│   │   ├── LibraryScreen.js        # Browse library with filters
+│   │   ├── CratesScreen.js         # View and manage crates
+│   │   ├── CrateDetailScreen.js    # View crate details
+│   │   ├── PlayerScreen.js         # Full-screen audio player
+│   │   ├── SettingsScreen.js       # App configuration
+│   │   ├── IdentifyTrackScreen.js  # Audio fingerprint identification
+│   │   └── AICrateBuilderScreen.js # AI-powered crate curation
+│   ├── components/                 # Reusable components
+│   │   ├── TrackItem.js            # Track list item
+│   │   ├── MiniPlayer.js           # Mini player component
+│   │   ├── FilterModal.js          # BPM/key/genre filters
+│   │   └── ConflictModal.js        # Offline sync conflicts
+│   ├── services/                   # API services
+│   │   ├── api.js                  # Backend API client
+│   │   ├── TrackPlayerService.js   # Audio playback
+│   │   └── SyncService.js          # Offline sync queue
+│   ├── store/                      # State management (Zustand)
+│   │   ├── useStore.js             # Main app store
+│   │   ├── connectionStore.js      # Connection state
+│   │   └── offlineStore.js         # Offline operations
+│   └── constants/                  # App constants
+│       ├── config.js               # API configuration
+│       └── theme.js                # Theme colors and styles
 ```
 
 ## Usage
@@ -196,18 +211,22 @@ The app uses Zustand for state management. The store is located in `src/store/us
 
 ## Notes
 
-- Currently in read-only mode for crate modifications (write support coming soon)
 - Audio streaming requires the device to have network access to the backend
 - Large libraries may take a moment to load initially
 
+## Implemented Features
+
+- Full crate management (create, edit, delete, add/remove tracks)
+- Offline mode with cached tracks and sync queue
+- Advanced search filters (BPM range, key, genre)
+- BPM and key detection/display
+- AI-powered crate curation
+- Track identification via audio fingerprinting
+
 ## Future Enhancements
 
-- Offline mode with cached tracks
-- Playlist creation
-- Advanced search filters
 - Waveform display
-- BPM detection
-- Key detection
+- Playlist sharing
 
 ## License
 

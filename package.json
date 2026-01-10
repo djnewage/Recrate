@@ -1,6 +1,6 @@
 {
   "name": "recrate",
-  "version": "1.0.0",
+  "version": "1.0.12",
   "description": "Recrate - Stream your Serato music library to mobile devices",
   "private": true,
   "workspaces": [
@@ -20,6 +20,10 @@
     "build:website": "npm run build -w @recrate/website",
     "preview:website": "npm run preview -w @recrate/website",
     "test": "npm run test --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"packages/**/*.{js,jsx,ts,tsx,json,css,md}\"",
+    "format:check": "prettier --check \"packages/**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "clean": "rm -rf node_modules packages/*/node_modules"
   },
   "keywords": [
@@ -34,7 +38,14 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "concurrently": "^8.2.0"
+    "@eslint/js": "^9.39.2",
+    "concurrently": "^8.2.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^17.0.0",
+    "prettier": "^3.7.4"
   },
   "engines": {
     "node": ">=18.0.0",
