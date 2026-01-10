@@ -571,6 +571,78 @@ class SeratoParser extends EventEmitter {
   }
 
   /**
+   * Get all crates with their track IDs (for offline caching)
+   * Returns crates with trackIds array instead of full track objects
+   */
+  async getAllCratesWithTrackIds() {
+    const cacheKey = 'crates-list-with-tracks';
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    logger.info('Reading crates with track IDs...');
+
+    try {
+      const crates = await this.getAllCrates();
+      const library = await this.parseLibrary();
+
+      // Create lookup maps for faster matching
+      const libraryByFilePath = new Map();
+      const libraryBySeratoPath = new Map();
+      for (const track of library) {
+        if (track.filePath) {
+          libraryByFilePath.set(track.filePath, track);
+        }
+        if (track.seratoPath) {
+          libraryBySeratoPath.set(track.seratoPath, track);
+          // Also try with leading slash removed
+          if (track.seratoPath.startsWith('/')) {
+            libraryBySeratoPath.set(track.seratoPath.substring(1), track);
+          }
+        }
+      }
+
+      const cratesWithTracks = await Promise.all(
+        crates.map(async (crate) => {
+          try {
+            const fileContent = await fs.readFile(crate.filePath);
+            const trackPaths = this._parseCrateFile(fileContent);
+
+            const trackIds = [];
+            for (const trackPath of trackPaths) {
+              // Try exact match on filePath first
+              let track = libraryByFilePath.get(trackPath);
+
+              // If no match, try seratoPath variations
+              if (!track) {
+                const seratoStylePath = trackPath.startsWith('/') ? trackPath.substring(1) : trackPath;
+                track = libraryBySeratoPath.get(seratoStylePath) || libraryBySeratoPath.get(trackPath);
+              }
+
+              if (track) {
+                trackIds.push(track.id);
+              }
+            }
+
+            return { ...crate, trackIds };
+          } catch (err) {
+            logger.warn(`Failed to parse crate ${crate.id}:`, err.message);
+            return { ...crate, trackIds: [] };
+          }
+        })
+      );
+
+      logger.success(`Loaded track IDs for ${cratesWithTracks.length} crates`);
+      this.cache.set(cacheKey, cratesWithTracks);
+      return cratesWithTracks;
+    } catch (error) {
+      logger.error('Error reading crates with track IDs:', error.message);
+      throw new ParseError(`Failed to read crates with track IDs: ${error.message}`);
+    }
+  }
+
+  /**
    * Parse a specific crate and return its tracks
    */
   async parseCrate(crateId) {
