@@ -33,10 +33,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
   validatePath: (path) => ipcRenderer.invoke('validate-path', path),
 
-  // Tailscale
-  getTailscaleInfo: () => ipcRenderer.invoke('get-tailscale-info'),
-  openTailscaleUrl: () => ipcRenderer.invoke('open-tailscale-url'),
-
   // Proxy
   getProxyStatus: () => ipcRenderer.invoke('get-proxy-status'),
   onProxyStatus: (callback) => {
