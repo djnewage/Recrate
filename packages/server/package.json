@@ -1,6 +1,6 @@
 {
   "name": "@recrate/server",
-  "version": "1.0.0",
+  "version": "1.0.12",
   "description": "Backend service for Recrate - Stream your Serato library to mobile",
   "main": "src/index.js",
   "scripts": {

@@ -1,6 +1,6 @@
 {
   "name": "@recrate/proxy",
-  "version": "1.0.0",
+  "version": "1.0.12",
   "description": "Cloud proxy for Recrate remote access",
   "main": "src/index.js",
   "scripts": {
