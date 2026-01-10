@@ -128,7 +128,6 @@ export const useConnectionStore = create((set, get) => ({
       }
 
       // 2. Scan local network (192.168.x.x)
-      // Note: Tailscale scanning removed - using Railway cloud proxy instead
       console.log('Scanning local network...');
       const localIP = await get().scanLocalRange();
       if (localIP) {

@@ -169,13 +169,12 @@ async function updateConnectionInfo(statusData) {
   const iconElement = document.getElementById('connection-icon');
   const labelElement = document.getElementById('connection-label');
 
-  // Get proxy status and Tailscale info
+  // Get proxy status
   const proxyStatus = await electronAPI.getProxyStatus();
-  const tailscaleInfo = await electronAPI.getTailscaleInfo();
 
   let displayURL = serverURL;
 
-  // Determine connection type - prioritize: Proxy > Tailscale > Local
+  // Determine connection type - prioritize: Proxy > Local
   if (proxyStatus.connected && proxyStatus.url) {
     // Cloud proxy is the best option - works everywhere
     displayURL = proxyStatus.url;
@@ -184,14 +183,6 @@ async function updateConnectionInfo(statusData) {
     urlElement.textContent = displayURL;
     iconElement.textContent = '☁️';
     labelElement.textContent = 'Cloud Proxy • Works anywhere';
-  } else if (tailscaleInfo.running && tailscaleInfo.ip) {
-    // Tailscale as fallback
-    displayURL = statusData?.tailscaleURL || `http://${tailscaleInfo.ip}:3000`;
-    connectionType = 'tailscale';
-
-    urlElement.textContent = displayURL;
-    iconElement.textContent = '🌐';
-    labelElement.textContent = 'Tailscale Remote • Tap to copy';
   } else {
     // Local network only
     displayURL = statusData?.localURL || serverURL;
