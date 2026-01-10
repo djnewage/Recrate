@@ -43,9 +43,13 @@ const useOfflineStore = create(
       // Temporary ID mapping (local temp IDs -> server IDs)
       idMapping: {},
 
-      // Local crate tracks storage (for offline crate viewing)
+      // Local crate tracks storage (for tracks added while offline)
       // Maps crateId -> array of trackIds
       localCrateTracks: {},
+
+      // Server crate tracks cache (for offline viewing of existing crates)
+      // Maps crateId -> array of trackIds loaded from server
+      serverCrateTracks: {},
 
       // Queue management actions
       enqueueOperation: (type, payload) => {
@@ -204,6 +208,43 @@ const useOfflineStore = create(
         });
       },
 
+      // Server crate tracks cache management (for offline viewing of existing crates)
+      cacheAllServerCrateTracks: (cratesWithTrackIds) => {
+        const mapping = {};
+        cratesWithTrackIds.forEach((crate) => {
+          if (crate.trackIds && crate.trackIds.length > 0) {
+            mapping[crate.id] = crate.trackIds;
+          }
+        });
+        set({ serverCrateTracks: mapping });
+        console.log('[OfflineStore] Cached track IDs for', Object.keys(mapping).length, 'crates');
+      },
+
+      updateServerCrateCache: (crateId, trackIds) => {
+        set((state) => ({
+          serverCrateTracks: {
+            ...state.serverCrateTracks,
+            [crateId]: trackIds,
+          },
+        }));
+      },
+
+      clearServerCrateCache: (crateId) => {
+        set((state) => {
+          const { [crateId]: removed, ...rest } = state.serverCrateTracks;
+          return { serverCrateTracks: rest };
+        });
+      },
+
+      // Get cached track IDs for a crate (merges server cache + local additions)
+      getCachedCrateTracks: (crateId) => {
+        const { localCrateTracks, serverCrateTracks } = get();
+        const serverTracks = serverCrateTracks[crateId] || [];
+        const localTracks = localCrateTracks[crateId] || [];
+        // Merge and dedupe: server cache + any tracks added while offline
+        return [...new Set([...serverTracks, ...localTracks])];
+      },
+
       // Utility getters
       getPendingCount: () => {
         const { operationQueue } = get();
@@ -260,8 +301,10 @@ const useOfflineStore = create(
         idMapping: state.idMapping,
         lastSyncAt: state.lastSyncAt,
         localCrateTracks: state.localCrateTracks,
+        serverCrateTracks: state.serverCrateTracks,
       }),
-      version: 1,
+      // v2: Added serverCrateTracks for offline crate viewing
+      version: 2,
       onRehydrateStorage: () => (state, error) => {
         if (error) {
           console.log('[OfflineStore] Rehydration error:', error);

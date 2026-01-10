@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import { useConnectionStore } from '../store/connectionStore';
+import useOfflineStore, { OPERATION_TYPES, OPERATION_STATUS } from '../store/offlineStore';
 import apiService from '../services/api';
 
 // Recursive component for rendering crate tree items
@@ -32,8 +33,20 @@ const CrateTreeItem = ({
   const hasChildren = crate.children && crate.children.length > 0;
   // Auto-expand if filtering and this node has matching children
   const shouldExpand = isExpanded || crate._autoExpand;
-  // Check if this is a locally-created crate pending sync
-  const isPendingSync = crate.isLocal || crate.id?.startsWith('temp-');
+
+  // Get pending operations from offline store
+  const { operationQueue } = useOfflineStore();
+
+  // Check if this crate has pending track operations (ADD_TRACKS or REMOVE_TRACK)
+  const hasPendingTrackOps = operationQueue.some(
+    (op) =>
+      (op.status === OPERATION_STATUS.PENDING || op.status === OPERATION_STATUS.SYNCING) &&
+      (op.type === OPERATION_TYPES.ADD_TRACKS || op.type === OPERATION_TYPES.REMOVE_TRACK) &&
+      op.payload.crateId === crate.id
+  );
+
+  // Check if this is a locally-created crate or has pending track operations
+  const isPendingSync = crate.isLocal || crate.id?.startsWith('temp-') || hasPendingTrackOps;
 
   return (
     <View>

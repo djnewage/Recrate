@@ -45,6 +45,7 @@ export async function syncQueue() {
   let syncedCount = 0;
   let conflictCount = 0;
   let failedCount = 0;
+  let cratesModified = false;
 
   // Process operations in order (FIFO)
   // Note: CREATE_CRATE operations should naturally come before ADD_TRACKS for the same crate
@@ -55,6 +56,14 @@ export async function syncQueue() {
 
     if (result.success) {
       syncedCount++;
+      // Track if any crate operations succeeded (need to refresh crate list after)
+      const opType = pendingOps[i].type;
+      if (opType === OPERATION_TYPES.CREATE_CRATE ||
+          opType === OPERATION_TYPES.ADD_TRACKS ||
+          opType === OPERATION_TYPES.REMOVE_TRACK ||
+          opType === OPERATION_TYPES.DELETE_CRATE) {
+        cratesModified = true;
+      }
     } else if (result.conflict) {
       conflictCount++;
     } else {
@@ -65,6 +74,16 @@ export async function syncQueue() {
     if (result.conflict) {
       console.log('[SyncService] Conflict detected, pausing sync for resolution');
       break;
+    }
+  }
+
+  // Refresh crates from server to get updated track counts after modifications
+  if (cratesModified) {
+    console.log('[SyncService] Refreshing crates after sync modifications');
+    try {
+      await useStore.getState().loadCrates();
+    } catch (error) {
+      console.error('[SyncService] Error refreshing crates after sync:', error);
     }
   }
 

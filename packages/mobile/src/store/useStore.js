@@ -406,9 +406,16 @@ const useStore = create(
     try {
       const data = await apiService.getCrates();
       console.log('[loadCrates] Received', data.crates?.length, 'crates from server');
-      const crateTree = get().buildCrateTree(data.crates);
+
+      // Cache all track ID mappings for offline use
+      useOfflineStore.getState().cacheAllServerCrateTracks(data.crates);
+
+      // Strip trackIds from crates before storing (already cached in offlineStore)
+      const cratesMetadata = data.crates.map(({ trackIds, ...rest }) => rest);
+
+      const crateTree = get().buildCrateTree(cratesMetadata);
       set({
-        crates: data.crates,
+        crates: cratesMetadata,
         crateTree: crateTree,
         isLoadingCrates: false,
       });
@@ -451,27 +458,36 @@ const useStore = create(
     set({ isLoadingCrates: true, cratesError: null });
     try {
       const crate = await apiService.getCrate(crateId);
+
+      // Update cache with latest track IDs (in case crate was modified on server)
+      if (crate.tracks && crate.tracks.length > 0) {
+        useOfflineStore.getState().updateServerCrateCache(
+          crateId,
+          crate.tracks.map((t) => t.id)
+        );
+      }
+
       set({ selectedCrate: crate, isLoadingCrates: false });
     } catch (error) {
       console.error('[loadCrate] API error:', error.message);
 
       // If API fails and we have cached crate data, use it
       if (localCrate) {
-        // Try to get tracks from local storage (for offline-added tracks)
-        const localTrackIds = useOfflineStore.getState().getLocalCrateTracks(crateId);
-        const localTracks = localTrackIds
+        // Get cached track IDs (merges server cache + any tracks added while offline)
+        const cachedTrackIds = useOfflineStore.getState().getCachedCrateTracks(crateId);
+        const cachedTracks = cachedTrackIds
           .map((id) => tracks.find((t) => t.id === id))
           .filter(Boolean);
 
         set({
           selectedCrate: {
             ...localCrate,
-            tracks: localTracks.length > 0 ? localTracks : (localCrate.tracks || []),
+            tracks: cachedTracks,
           },
           isLoadingCrates: false,
           cratesError: null,
         });
-        console.log('[loadCrate] Using cached crate:', crateId);
+        console.log('[loadCrate] Using cached crate:', crateId, 'with', cachedTracks.length, 'tracks');
       } else {
         set({ cratesError: error.message, isLoadingCrates: false });
       }
