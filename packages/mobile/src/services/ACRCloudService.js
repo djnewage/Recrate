@@ -1,15 +1,13 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import CryptoJS from 'crypto-js';
 import { API_CONFIG } from '../constants/config';
 
-// Cloud API URL for track identification credentials
-// This is the primary source - works without desktop app
+// Cloud API URL for track identification
 const CLOUD_API_URL = 'https://steadfast-forgiveness-production.up.railway.app';
 
 /**
  * Create a fetch with timeout (React Native compatible)
  */
-const fetchWithTimeout = async (url, options = {}, timeoutMs = 5000) => {
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 30000) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -38,41 +36,43 @@ const getServerURL = () => {
 };
 
 /**
- * Generate HMAC-SHA1 signature for ACRCloud API
+ * Get device ID for auth header
  */
-const generateSignature = (stringToSign, accessSecret) => {
-  const hash = CryptoJS.HmacSHA1(stringToSign, accessSecret);
-  return CryptoJS.enc.Base64.stringify(hash);
+const getDeviceId = () => {
+  try {
+    const { useConnectionStore } = require('../store/connectionStore');
+    return useConnectionStore.getState().deviceId;
+  } catch {
+    return null;
+  }
 };
 
 /**
- * Build the string to sign for ACRCloud authentication
+ * Get the appropriate API base URL based on connection type
  */
-const buildStringToSign = (httpMethod, httpUri, accessKey, dataType, signatureVersion, timestamp) => {
-  return [httpMethod, httpUri, accessKey, dataType, signatureVersion, timestamp].join('\n');
+const getApiBaseUrl = () => {
+  try {
+    const { useConnectionStore } = require('../store/connectionStore');
+    const { connectionType, serverURL } = useConnectionStore.getState();
+
+    if (connectionType === 'cloud') {
+      return CLOUD_API_URL;
+    }
+    return serverURL || API_CONFIG.BASE_URL;
+  } catch {
+    return API_CONFIG.BASE_URL;
+  }
 };
 
 export const ACRCloudService = {
   /**
    * Check if track identification is available
-   * Tries cloud first, then desktop server
+   * Checks server status endpoint
    */
   async hasCredentials() {
-    // Try cloud first
     try {
-      const cloudResponse = await fetchWithTimeout(`${CLOUD_API_URL}/api/identify/status`);
-      const cloudData = await cloudResponse.json();
-      if (cloudData.configured) {
-        return true;
-      }
-    } catch (error) {
-      console.log('Cloud API not available, trying desktop server...');
-    }
-
-    // Fall back to desktop server
-    try {
-      const serverURL = getServerURL();
-      const response = await fetchWithTimeout(`${serverURL}/api/identify/status`);
+      const baseUrl = getApiBaseUrl();
+      const response = await fetchWithTimeout(`${baseUrl}/api/identify/status`, {}, 5000);
       const data = await response.json();
       return data.configured === true;
     } catch (error) {
@@ -82,196 +82,95 @@ export const ACRCloudService = {
   },
 
   /**
-   * Fetch ACRCloud credentials
-   * Tries cloud first (works without desktop), then desktop server
-   */
-  async fetchCredentials() {
-    // Try cloud first - this is the primary source for end users
-    try {
-      console.log('Trying cloud API for credentials...');
-      const cloudResponse = await fetchWithTimeout(`${CLOUD_API_URL}/api/identify/credentials`);
-      if (cloudResponse.ok) {
-        console.log('Got credentials from cloud API');
-        return cloudResponse.json();
-      }
-    } catch (error) {
-      console.log('Cloud API not available, trying desktop server...');
-    }
-
-    // Fall back to desktop server (for local development/testing)
-    console.log('Trying desktop server for credentials...');
-    const serverURL = getServerURL();
-    const response = await fetchWithTimeout(`${serverURL}/api/identify/credentials`);
-    if (!response.ok) {
-      throw new Error('Track identification not configured. Please connect to desktop app or check cloud service.');
-    }
-    console.log('Got credentials from desktop server');
-    return response.json();
-  },
-
-  /**
    * Identify a track from an audio file
-   * Fetches credentials from server, then calls ACRCloud directly
+   * Sends audio to server which proxies to ACRCloud (credentials never exposed)
    * @param {string} audioUri - Local URI to the audio file
-   * @returns {Promise<{success: boolean, track?: object, error?: string}>}
+   * @returns {Promise<{success: boolean, track?: object, error?: string, quota?: object}>}
    */
   async identify(audioUri) {
     try {
-      // Fetch credentials from server
-      console.log('Fetching credentials from server...');
-      const credentials = await this.fetchCredentials();
-
       // Check if file exists
       const fileInfo = await FileSystem.getInfoAsync(audioUri);
       if (!fileInfo.exists) {
         return { success: false, error: 'Audio file not found' };
       }
 
-      const sampleBytes = fileInfo.size;
-      const timestamp = Math.floor(Date.now() / 1000).toString();
-      const dataType = 'audio';
-      const signatureVersion = '1';
-      const httpMethod = 'POST';
-      const httpUri = '/v1/identify';
-
-      // Generate signature
-      const stringToSign = buildStringToSign(
-        httpMethod,
-        httpUri,
-        credentials.accessKey,
-        dataType,
-        signatureVersion,
-        timestamp
-      );
-      const signature = generateSignature(stringToSign, credentials.accessSecret);
-
-      // Create form data - React Native will handle file upload
-      const formData = new FormData();
-      formData.append('sample', {
-        uri: audioUri,
-        type: 'audio/mp4',
-        name: 'sample.m4a',
-      });
-      formData.append('access_key', credentials.accessKey);
-      formData.append('data_type', dataType);
-      formData.append('signature_version', signatureVersion);
-      formData.append('signature', signature);
-      formData.append('sample_bytes', sampleBytes.toString());
-      formData.append('timestamp', timestamp);
-
-      console.log(`Calling ACRCloud directly: https://${credentials.host}/v1/identify`);
-
-      // Call ACRCloud directly (not through server proxy)
-      const response = await fetch(`https://${credentials.host}/v1/identify`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: `ACRCloud error: ${response.status}`,
-        };
+      // Check file size (max 10MB)
+      if (fileInfo.size > 10 * 1024 * 1024) {
+        return { success: false, error: 'Audio file too large (max 10MB)' };
       }
 
+      console.log(`Reading audio file: ${audioUri} (${fileInfo.size} bytes)`);
+
+      // Read file as base64
+      const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      console.log(`Converted to base64: ${base64Audio.length} characters`);
+
+      // Get API URL and device ID
+      const baseUrl = getApiBaseUrl();
+      const deviceId = getDeviceId();
+
+      // Build headers
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      if (deviceId) {
+        headers['X-Device-Id'] = deviceId;
+      }
+
+      console.log(`Sending to server: ${baseUrl}/api/identify`);
+
+      // Send to server (server proxies to ACRCloud)
+      const response = await fetchWithTimeout(
+        `${baseUrl}/api/identify`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            sample: base64Audio,
+            mimeType: 'audio/mp4',
+          }),
+        },
+        60000 // 60 second timeout for identification
+      );
+
       const result = await response.json();
-      return this.parseResult(result);
+
+      if (!response.ok) {
+        // Handle specific error codes
+        if (response.status === 401) {
+          return { success: false, error: 'Authentication required. Please restart the app.' };
+        }
+        if (response.status === 403) {
+          return { success: false, error: result.error || 'Track identification not available on your plan.' };
+        }
+        if (response.status === 429) {
+          return {
+            success: false,
+            error: result.error || 'Rate limit or quota exceeded.',
+            quota: result.quota,
+          };
+        }
+        return { success: false, error: result.error || `Server error: ${response.status}` };
+      }
+
+      // Server returns the parsed result directly
+      return result;
     } catch (error) {
-      console.error('ACRCloud identify error:', error);
+      console.error('Track identification error:', error);
+
+      if (error.name === 'AbortError') {
+        return { success: false, error: 'Request timed out - please try again' };
+      }
+
       return {
         success: false,
         error: error.message || 'Failed to identify track',
       };
     }
-  },
-
-  /**
-   * Parse ACRCloud API response
-   */
-  parseResult(result) {
-    // ACRCloud status codes
-    // 0 = Success
-    // 1001 = No result
-    // 2000 = Recording invalid
-    // 2001 = Recording timeout
-    // 3000 = Server busy
-    // 3001 = Access key does not exist
-    // 3003 = Limit exceeded
-    // 3006 = Invalid signature
-
-    if (result.status?.code !== 0) {
-      const errorMessages = {
-        1001: 'No match found - track not recognized',
-        2000: 'Invalid recording - please try again',
-        2001: 'Recording too short - please record longer',
-        3000: 'Service busy - please try again',
-        3001: 'Invalid access key - check server credentials',
-        3003: 'API limit exceeded - try again later',
-        3006: 'Invalid signature - check server credentials',
-      };
-
-      return {
-        success: false,
-        error: errorMessages[result.status?.code] || result.status?.msg || 'Recognition failed',
-        errorCode: result.status?.code,
-      };
-    }
-
-    const music = result.metadata?.music?.[0];
-    if (!music) {
-      return {
-        success: false,
-        error: 'No match found',
-      };
-    }
-
-    // Extract all available metadata
-    return {
-      success: true,
-      track: {
-        title: music.title || 'Unknown Title',
-        artist: music.artists?.map((a) => a.name).join(', ') || 'Unknown Artist',
-        album: music.album?.name || null,
-        releaseDate: music.release_date || null,
-        duration: music.duration_ms ? Math.round(music.duration_ms / 1000) : null,
-        genres: music.genres?.map((g) => g.name) || [],
-        label: music.label || null,
-        externalIds: {
-          isrc: music.external_ids?.isrc,
-          upc: music.external_ids?.upc,
-        },
-        externalMetadata: {
-          spotify: music.external_metadata?.spotify?.track?.id,
-          deezer: music.external_metadata?.deezer?.track?.id,
-          youtube: music.external_metadata?.youtube?.vid,
-        },
-        score: music.score,
-        playOffsetMs: music.play_offset_ms,
-      },
-      raw: music,
-    };
-  },
-
-  /**
-   * @deprecated Credentials are now managed server-side
-   */
-  async saveCredentials() {
-    console.warn('ACRCloudService.saveCredentials is deprecated. Credentials are managed server-side.');
-  },
-
-  /**
-   * @deprecated Credentials are now managed server-side
-   */
-  async getCredentials() {
-    console.warn('ACRCloudService.getCredentials is deprecated. Credentials are managed server-side.');
-    return {};
-  },
-
-  /**
-   * @deprecated Credentials are now managed server-side
-   */
-  async clearCredentials() {
-    console.warn('ACRCloudService.clearCredentials is deprecated. Credentials are managed server-side.');
   },
 };
 

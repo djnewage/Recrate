@@ -24,44 +24,10 @@ router.get('/health', (req, res) => {
 });
 
 // ============================================================================
-// ACRCloud Track Identification - Credentials API
-// These endpoints provide credentials for mobile to call ACRCloud directly
+// SECURITY: ACRCloud credential endpoints REMOVED
+// Mobile should use POST /api/identify which forwards to desktop server
+// The desktop server proxies to ACRCloud (credentials never exposed to clients)
 // ============================================================================
-
-/**
- * GET /api/identify/status
- * Check if ACRCloud credentials are configured
- * Note: Router is mounted at /api, so this becomes /api/identify/status
- */
-router.get('/identify/status', (req, res) => {
-  const accessKey = process.env.ACRCLOUD_ACCESS_KEY;
-  const accessSecret = process.env.ACRCLOUD_ACCESS_SECRET;
-  const host = process.env.ACRCLOUD_HOST;
-
-  res.json({
-    configured: !!(accessKey && accessSecret && host),
-    host: host || null,
-  });
-});
-
-/**
- * GET /api/identify/credentials
- * Returns ACRCloud credentials for direct API calls from mobile
- * Note: Router is mounted at /api, so this becomes /api/identify/credentials
- */
-router.get('/identify/credentials', (req, res) => {
-  const accessKey = process.env.ACRCLOUD_ACCESS_KEY;
-  const accessSecret = process.env.ACRCLOUD_ACCESS_SECRET;
-  const host = process.env.ACRCLOUD_HOST;
-
-  if (!accessKey || !accessSecret || !host) {
-    return res.status(503).json({
-      error: 'Track identification not configured',
-    });
-  }
-
-  res.json({ accessKey, accessSecret, host });
-});
 
 // Check if device is connected
 router.get('/device/:deviceId/status', async (req, res) => {
