@@ -11,16 +11,21 @@ const api = axios.create({
   },
 });
 
-// Add request interceptor to dynamically set base URL from connection store
+// Add request interceptor to dynamically set base URL and device ID header
 api.interceptors.request.use(
   (config) => {
     // Use synchronous require to avoid async timing issues
     const { useConnectionStore } = require('../store/connectionStore');
-    const { serverURL } = useConnectionStore.getState();
+    const { serverURL, deviceId } = useConnectionStore.getState();
 
     // Use serverURL from connection store if available
     if (serverURL) {
       config.baseURL = serverURL;
+    }
+
+    // Add device ID header for authentication
+    if (deviceId) {
+      config.headers['X-Device-Id'] = deviceId;
     }
 
     return config;

@@ -1,5 +1,6 @@
 const config = require("./utils/config");
 const logger = require("./utils/logger");
+const db = require("./utils/db");
 const { SeratoParser } = require("./serato/parser");
 const { SeratoWriter } = require("./serato/writer");
 const AudioStreamer = require("./audio/streamer");
@@ -29,6 +30,11 @@ class RecrateService {
     logger.info(`Serato path: ${config.serato.path}`);
 
     try {
+      // Initialize database for usage tracking and auth
+      logger.info("Initializing database...");
+      await db.initialize();
+      logger.success("Database initialized");
+
       // Initialize parser
       logger.info("Initializing Serato parser...");
       if (config.serato.musicPaths && config.serato.musicPaths.length > 0) {
@@ -198,6 +204,9 @@ class RecrateService {
       if (this.discovery) {
         await this.discovery.stop();
       }
+
+      // Close database (saves any pending changes)
+      db.close();
 
       logger.success("Recrate Service stopped gracefully");
       // Note: Don't call process.exit() here - let the caller decide

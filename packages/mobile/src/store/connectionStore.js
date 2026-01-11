@@ -8,6 +8,16 @@ const CONNECTION_TYPES = {
   OFFLINE: 'offline',
 };
 
+const DEVICE_ID_KEY = 'recrate_device_id';
+
+/**
+ * Generate a unique device ID
+ * Format: device-{timestamp}-{random}
+ */
+const generateDeviceId = () => {
+  return `device-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+};
+
 export const useConnectionStore = create((set, get) => ({
   // State
   connectionType: CONNECTION_TYPES.OFFLINE,
@@ -16,6 +26,7 @@ export const useConnectionStore = create((set, get) => ({
   isSearching: false,
   lastSuccessfulIP: null,
   networkState: null, // Full NetInfo state object for offline detection
+  deviceId: null, // Unique device identifier for auth
 
   // Actions
   setConnectionType: (type) => set({ connectionType: type }),
@@ -23,6 +34,31 @@ export const useConnectionStore = create((set, get) => ({
   setConnected: (connected) => set({ isConnected: connected }),
   setSearching: (searching) => set({ isSearching: searching }),
   setNetworkState: (state) => set({ networkState: state }),
+
+  // Initialize device ID (call on app start)
+  initializeDeviceId: async () => {
+    try {
+      let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+      if (!deviceId) {
+        deviceId = generateDeviceId();
+        await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+        console.log('[Connection] Generated new device ID:', deviceId);
+      } else {
+        console.log('[Connection] Loaded existing device ID:', deviceId);
+      }
+      set({ deviceId });
+      return deviceId;
+    } catch (error) {
+      console.error('[Connection] Failed to initialize device ID:', error);
+      // Generate a temporary ID for this session
+      const tempId = generateDeviceId();
+      set({ deviceId: tempId });
+      return tempId;
+    }
+  },
+
+  // Get device ID synchronously (for use in headers)
+  getDeviceId: () => get().deviceId,
 
   // Check if device has network connectivity (regardless of server connection)
   hasNetworkConnectivity: () => {
