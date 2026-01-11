@@ -217,6 +217,11 @@ export default function App() {
     },
   };
 
+  // Initialize device ID on app mount (for authentication)
+  useEffect(() => {
+    useConnectionStore.getState().initializeDeviceId();
+  }, []);
+
   // Initialize TrackPlayer on app mount
   useEffect(() => {
     let mounted = true;

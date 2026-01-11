@@ -4,9 +4,24 @@
  */
 
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const logger = require("../../utils/logger");
 const { getLLMService } = require("../../ai/llm-service");
 const CrateCurator = require("../../ai/crate-curator");
+const { requireAuth, requireTier, requireQuota } = require("../middleware/auth");
+const usageTracker = require("../../utils/usageTracker");
+const { isByokAllowed } = require("../../config/tiers");
+
+// AI rate limiter - applies to all AI routes (including BYOK)
+const aiRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 30, // 30 requests per hour
+  keyGenerator: (req) => req.user?.id || req.headers["x-device-id"] || req.ip,
+  message: { success: false, error: "Too many AI requests. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { default: false }, // We use device ID primarily, IP is only fallback
+});
 
 /**
  * Create AI routes
@@ -17,6 +32,9 @@ const CrateCurator = require("../../ai/crate-curator");
 function createAIRoutes(parser, writer = null) {
   const router = express.Router();
   const curator = new CrateCurator(parser);
+
+  // Apply auth to all AI routes
+  router.use(requireAuth);
 
   /**
    * GET /api/ai/status
@@ -46,6 +64,7 @@ function createAIRoutes(parser, writer = null) {
   /**
    * POST /api/ai/curate
    * Generate a curated track list using AI
+   * Requires authentication, tier check (trial/pro only), and quota check
    *
    * Body: {
    *   prompt: string,           // Natural language description
@@ -60,45 +79,83 @@ function createAIRoutes(parser, writer = null) {
    *     includeVariety?: boolean,
    *     buildEnergy?: boolean
    *   },
-   *   userApiKey?: string       // Optional: User's own Anthropic API key (BYOK)
+   *   userApiKey?: string       // Optional: User's own Anthropic API key (BYOK - Pro only)
    * }
    */
-  router.post("/curate", async (req, res) => {
-    try {
-      const { prompt, filters = {}, limit = 25, options = {}, userApiKey } = req.body;
+  router.post(
+    "/curate",
+    aiRateLimiter,
+    requireTier(["trial", "pro"]), // Basic tier blocked
+    requireQuota("crate_builder"), // BYOK bypasses this for crate_builder
+    async (req, res) => {
+      try {
+        const { prompt, filters = {}, limit = 25, options = {}, userApiKey } = req.body;
 
-      if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
-        return res.status(400).json({
-          error: "Prompt is required. Describe the kind of crate you want to build.",
+        // Determine if BYOK - only allow for Pro users, silently ignore for others
+        const isByok = !!userApiKey && isByokAllowed(req.user.tier);
+
+        // Log if BYOK key was provided but ignored (non-pro user)
+        if (userApiKey && !isByokAllowed(req.user.tier)) {
+          logger.info(`[AI] BYOK key provided but ignored for ${req.user.tier} user ${req.user.id}`);
+        }
+
+        if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: "Prompt is required. Describe the kind of crate you want to build.",
+          });
+        }
+
+        logger.info(
+          `[AI] Curation request from ${req.user?.id}: "${prompt.substring(0, 50)}..."${isByok ? " (BYOK)" : ""}`
+        );
+
+        const result = await curator.curate(prompt.trim(), filters, {
+          limit,
+          ...options,
+          userApiKey: isByok ? userApiKey : undefined, // Only pass BYOK key if allowed
         });
+
+        if (!result.success) {
+          // Determine appropriate status code based on error
+          let statusCode = 500;
+          if (result.error.includes("not configured")) statusCode = 503;
+          if (result.error.includes("No tracks match")) statusCode = 400;
+          if (result.error.includes("Rate limit")) statusCode = 429;
+
+          return res.status(statusCode).json({ success: false, error: result.error });
+        }
+
+        // Record usage AFTER success
+        usageTracker.recordUsage({
+          userId: req.user.id,
+          deviceId: req.headers["x-device-id"],
+          feature: "crate_builder",
+          tier: req.user.tier,
+          isByok,
+          tokensIn: result.tokensUsed?.inputTokens || 0,
+          tokensOut: result.tokensUsed?.outputTokens || 0,
+        });
+
+        logger.info(
+          `[AI] Curation successful: ${result.curation.tracks.length} tracks (quota remaining: ${isByok ? "unlimited" : req.quota.remaining - 1})`
+        );
+
+        res.json({
+          ...result,
+          quota: {
+            feature: "crate_builder",
+            remaining: isByok ? null : req.quota.remaining - 1,
+            limit: isByok ? null : req.quota.limit,
+            resetDate: isByok ? null : req.quota.resetDate,
+          },
+        });
+      } catch (error) {
+        logger.error("[AI] Error during curation:", error);
+        res.status(500).json({ success: false, error: "Failed to generate crate" });
       }
-
-      logger.info(`[AI] Curation request: "${prompt.substring(0, 50)}..."${userApiKey ? " (using user API key)" : ""}`);
-
-      const result = await curator.curate(prompt.trim(), filters, {
-        limit,
-        ...options,
-        userApiKey, // Pass user's API key if provided (BYOK)
-      });
-
-      if (!result.success) {
-        // Determine appropriate status code based on error
-        let statusCode = 500;
-        if (result.error.includes("not configured")) statusCode = 503;
-        if (result.error.includes("No tracks match")) statusCode = 400;
-        if (result.error.includes("Rate limit")) statusCode = 429;
-
-        return res.status(statusCode).json({ error: result.error });
-      }
-
-      logger.info(`[AI] Curation successful: ${result.curation.tracks.length} tracks`);
-
-      res.json(result);
-    } catch (error) {
-      logger.error("[AI] Error during curation:", error);
-      res.status(500).json({ error: "Failed to generate crate" });
     }
-  });
+  );
 
   /**
    * POST /api/ai/preview-filter
