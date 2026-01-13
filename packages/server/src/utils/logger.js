@@ -116,10 +116,30 @@ class Logger {
 
   /**
    * Error level logging (red)
+   * Also sends to Sentry if initialized
    */
   error(...args) {
     this.format('ERROR', this.colors.red, ...args);
     this._writeToFile('ERROR', ...args);
+
+    // Send to Sentry (lazy require to avoid circular deps)
+    try {
+      const { captureError } = require('./sentry');
+      const error = args.find((arg) => arg instanceof Error);
+      if (error) {
+        captureError(error, {
+          extra: { args: args.filter((a) => !(a instanceof Error)).map(String) },
+        });
+      } else {
+        // Create error from message for stack trace
+        const message = args
+          .map((arg) => (typeof arg === 'object' ? JSON.stringify(arg) : String(arg)))
+          .join(' ');
+        captureError(new Error(message));
+      }
+    } catch {
+      // Sentry not initialized yet, ignore
+    }
   }
 
   /**

@@ -4,7 +4,9 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const Sentry = require('@sentry/node');
 const logger = require('../utils/logger');
+const { initSentry, captureError } = require('../utils/sentry');
 
 const createLibraryRoutes = require('./routes/library');
 const createCrateRoutes = require('./routes/crates');
@@ -36,6 +38,12 @@ class APIServer {
    */
   initialize() {
     logger.info('Initializing API server...');
+
+    // Initialize Sentry first
+    initSentry();
+
+    // Sentry request handler must be first middleware
+    Sentry.setupExpressErrorHandler(this.app);
 
     // Middleware
     this.app.use(cors());
@@ -171,6 +179,20 @@ class APIServer {
    */
   errorHandler(err, req, res, next) {
     logger.error('Unhandled error:', err);
+
+    // Capture to Sentry with request context
+    captureError(err, {
+      extra: {
+        path: req.path,
+        method: req.method,
+        query: req.query,
+        ip: req.ip,
+      },
+      tags: {
+        endpoint: req.path,
+        method: req.method,
+      },
+    });
 
     res.status(err.status || 500).json({
       error: err.message || 'Internal server error',

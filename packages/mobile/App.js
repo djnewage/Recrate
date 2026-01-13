@@ -15,6 +15,11 @@ import useStore from './src/store/useStore';
 import useOfflineStore from './src/store/offlineStore';
 import * as TrackPlayerService from './src/services/TrackPlayerService';
 import { syncQueue } from './src/services/SyncService';
+import { initSentry, setUser } from './src/utils/sentry';
+import ErrorBoundary from './src/components/ErrorBoundary';
+
+// Initialize Sentry before component definition
+initSentry();
 
 // Screens
 import ConnectionScreen from './src/screens/ConnectionScreen';
@@ -219,7 +224,15 @@ export default function App() {
 
   // Initialize device ID on app mount (for authentication)
   useEffect(() => {
-    useConnectionStore.getState().initializeDeviceId();
+    const initDeviceId = async () => {
+      await useConnectionStore.getState().initializeDeviceId();
+      // Set Sentry user context with device ID
+      const deviceId = useConnectionStore.getState().deviceId;
+      if (deviceId) {
+        setUser({ deviceId });
+      }
+    };
+    initDeviceId();
   }, []);
 
   // Initialize TrackPlayer on app mount
@@ -301,22 +314,24 @@ export default function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <ActionSheetProvider>
-          <>
-            <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-            <DisclaimerModal />
-            <ConflictModal />
-            <SafeAreaView style={styles.container}>
-              <NavigationContainer ref={navigationRef} linking={linking}>
-                <AppContent />
-              </NavigationContainer>
-            </SafeAreaView>
-          </>
-        </ActionSheetProvider>
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <ActionSheetProvider>
+            <>
+              <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+              <DisclaimerModal />
+              <ConflictModal />
+              <SafeAreaView style={styles.container}>
+                <NavigationContainer ref={navigationRef} linking={linking}>
+                  <AppContent />
+                </NavigationContainer>
+              </SafeAreaView>
+            </>
+          </ActionSheetProvider>
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 
