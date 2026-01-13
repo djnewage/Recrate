@@ -7,6 +7,7 @@ const AudioStreamer = require("./audio/streamer");
 const APIServer = require("./api/server");
 const chokidar = require("chokidar");
 const path = require("path");
+const { initSentry, captureError, flush: flushSentry } = require("./utils/sentry");
 
 /**
  * Recrate Service - Main orchestrator
@@ -274,29 +275,39 @@ class RecrateService {
  * Bootstrap function - Entry point
  */
 async function bootstrap() {
+  // Initialize Sentry early for error tracking
+  initSentry();
+
   const service = new RecrateService();
 
   // Set up signal handlers for graceful shutdown
-  process.on("SIGINT", () => {
+  process.on("SIGINT", async () => {
     logger.info("");
     logger.warn("Received SIGINT signal");
+    await flushSentry();
     service.stop();
   });
 
-  process.on("SIGTERM", () => {
+  process.on("SIGTERM", async () => {
     logger.info("");
     logger.warn("Received SIGTERM signal");
+    await flushSentry();
     service.stop();
   });
 
   // Set up error handlers
-  process.on("uncaughtException", (error) => {
+  process.on("uncaughtException", async (error) => {
     logger.error("Uncaught exception:", error);
+    captureError(error, { tags: { type: "uncaughtException" } });
+    await flushSentry();
     service.stop();
   });
 
-  process.on("unhandledRejection", (reason, promise) => {
+  process.on("unhandledRejection", async (reason, promise) => {
     logger.error("Unhandled rejection at:", promise, "reason:", reason);
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    captureError(error, { tags: { type: "unhandledRejection" } });
+    await flushSentry();
     service.stop();
   });
 
@@ -306,6 +317,8 @@ async function bootstrap() {
     await service.start();
   } catch (error) {
     logger.error("Failed to start service:", error);
+    captureError(error, { tags: { type: "startupError" } });
+    await flushSentry();
     process.exit(1);
   }
 }

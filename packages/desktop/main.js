@@ -6,6 +6,10 @@ const log = require('electron-log');
 const os = require('os');
 const fs = require('fs');
 const BinaryProxyClient = require('./src/binaryProxyClient');
+const { initSentry, captureError, flush: flushSentry } = require('./src/sentry-main');
+
+// Initialize Sentry early for error tracking
+initSentry();
 
 // Configure logging - write to file for debugging packaged apps
 log.transports.file.level = 'debug';
@@ -662,10 +666,13 @@ app.whenReady().then(() => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   // Disable logging during shutdown to prevent EIO errors
   log.transports.console.level = false;
   log.transports.file.level = false;
+
+  // Flush Sentry before quit
+  await flushSentry();
 
   // Mark window as destroyed to prevent further IPC
   if (mainWindow) {
@@ -683,11 +690,14 @@ process.on('uncaughtException', (error) => {
     return;
   }
   log.error('Uncaught exception:', error);
+  captureError(error, { tags: { type: 'uncaughtException' } });
 });
 
 // Handle unhandled promise rejections (prevent silent crashes)
 process.on('unhandledRejection', (reason, promise) => {
   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  captureError(error, { tags: { type: 'unhandledRejection' } });
   // Don't crash - just log for debugging
 });
 

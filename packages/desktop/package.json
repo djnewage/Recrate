@@ -21,6 +21,7 @@
   "dependencies": {
     "@recrate/server": "*",
     "@recrate/shared": "*",
+    "@sentry/electron": "^7.5.0",
     "electron-log": "^5.0.0",
     "electron-store": "^8.1.0",
     "qrcode": "^1.5.3",

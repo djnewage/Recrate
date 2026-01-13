@@ -3,9 +3,14 @@ const express = require('express');
 const { createServer } = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
+const Sentry = require('@sentry/node');
 const BinaryWebSocketManager = require('./binaryWebSocketManager');
 const apiRouter = require('./api');
 const logger = require('./utils/logger');
+const { initSentry, captureError, flush: flushSentry } = require('./utils/sentry');
+
+// Initialize Sentry early
+initSentry();
 
 const app = express();
 const server = createServer(app);
@@ -14,6 +19,9 @@ const server = createServer(app);
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+
+// Sentry error handler (must be after other middleware but before routes)
+Sentry.setupExpressErrorHandler(app);
 
 // Initialize Binary WebSocket manager (desktop connects here)
 const wsManager = new BinaryWebSocketManager(server);
@@ -43,20 +51,37 @@ server.listen(PORT, HOST, () => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, closing server...');
+  await flushSentry();
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);
   });
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   logger.info('SIGINT received, closing server...');
+  await flushSentry();
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);
   });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', async (error) => {
+  logger.error('Uncaught exception:', error);
+  captureError(error, { tags: { type: 'uncaughtException' } });
+  await flushSentry();
+  process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', async (reason, promise) => {
+  logger.error('Unhandled rejection at:', promise, 'reason:', reason);
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  captureError(error, { tags: { type: 'unhandledRejection' } });
 });
 
 module.exports = { app, server };

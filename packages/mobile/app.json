@@ -65,7 +65,25 @@
     },
     "owner": "djnewage",
     "plugins": [
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "YOUR_SENTRY_ORG",
+          "project": "recrate-mobile"
+        }
+      ]
+    ],
+    "hooks": {
+      "postPublish": [
+        {
+          "file": "@sentry/react-native/expo",
+          "config": {
+            "organization": "YOUR_SENTRY_ORG",
+            "project": "recrate-mobile"
+          }
+        }
+      ]
+    }
   }
 }
