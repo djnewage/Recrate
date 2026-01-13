@@ -1,3 +1,6 @@
+// Load environment variables first
+require('dotenv').config();
+
 const { app, BrowserWindow, Tray, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
