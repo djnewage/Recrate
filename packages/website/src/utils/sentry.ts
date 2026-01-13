@@ -24,8 +24,8 @@ export function initSentry(): void {
     // Error tracking only - no performance monitoring
     tracesSampleRate: 0,
 
-    // Only enable in production
-    enabled: import.meta.env.PROD,
+    // Only enable in production unless debugging
+    enabled: import.meta.env.PROD || import.meta.env.VITE_SENTRY_DEBUG === 'true',
 
     // Filter noisy errors
     ignoreErrors: [
