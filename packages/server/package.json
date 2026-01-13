@@ -21,6 +21,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@recrate/shared": "*",
+    "@sentry/node": "^10.33.0",
     "axios": "^1.13.2",
     "bonjour": "^3.5.0",
     "chokidar": "^3.5.3",
