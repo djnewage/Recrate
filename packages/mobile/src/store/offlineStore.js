@@ -217,7 +217,6 @@ const useOfflineStore = create(
           }
         });
         set({ serverCrateTracks: mapping });
-        console.log('[OfflineStore] Cached track IDs for', Object.keys(mapping).length, 'crates');
       },
 
       updateServerCrateCache: (crateId, trackIds) => {
@@ -306,14 +305,7 @@ const useOfflineStore = create(
       // v2: Added serverCrateTracks for offline crate viewing
       version: 2,
       onRehydrateStorage: () => (state, error) => {
-        if (error) {
-          console.log('[OfflineStore] Rehydration error:', error);
-        } else if (state) {
-          console.log(
-            '[OfflineStore] Rehydrated with',
-            state.operationQueue?.length || 0,
-            'queued operations'
-          );
+        if (state) {
           // Reset syncing state on rehydration (app restart)
           if (state.isSyncing) {
             state.isSyncing = false;

@@ -30,7 +30,6 @@ export const AudioRecordingService = {
       }
     } catch (e) {
       // TrackPlayer might not be initialized, that's fine
-      console.log('TrackPlayer not active, proceeding with recording');
     }
   },
 
@@ -130,11 +129,9 @@ export const AudioRecordingService = {
           Audio.RecordingOptionsPresets.HIGH_QUALITY
         );
         recording = result.recording;
-        console.log(`Recording started on attempt ${attempt}`);
         break;
       } catch (error) {
         lastError = error;
-        console.log(`Recording attempt ${attempt} failed:`, error.message);
 
         if (attempt < maxRetries) {
           // Full reset between retries

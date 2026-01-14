@@ -80,7 +80,6 @@ const AICrateBuilderScreen = ({ navigation }) => {
       const status = await apiService.getAIStatus();
       setAiConfigured(status.configured);
     } catch (err) {
-      console.error('Failed to check AI status:', err);
       setAiConfigured(false);
     }
   };
@@ -94,7 +93,7 @@ const AICrateBuilderScreen = ({ navigation }) => {
         setBpmMax(options.bpmStats.max || 180);
       }
     } catch (err) {
-      console.error('Failed to load filter options:', err);
+      // Failed to load filter options
     }
   };
 
@@ -109,7 +108,7 @@ const AICrateBuilderScreen = ({ navigation }) => {
       const result = await apiService.previewAIFilter(filters);
       setMatchingCount(result.matchingTracks);
     } catch (err) {
-      console.error('Failed to preview filter:', err);
+      // Failed to preview filter
     }
   }, [bpmMin, bpmMax, selectedKeys, selectedGenres]);
 
@@ -170,12 +169,10 @@ const AICrateBuilderScreen = ({ navigation }) => {
         selectedGenres: selectedGenres.length > 0 ? selectedGenres : undefined,
       };
 
-      console.log('[AI] Sending curation request...');
       const result = await apiService.curateWithAI(prompt.trim(), filters, trackLimit, {
         prioritizeMixability: true,
         includeVariety: true,
       });
-      console.log('[AI] Got result:', result?.success, 'tracks:', result?.curation?.tracks?.length);
 
       if (!result.success) {
         setError(result.error || 'Failed to generate crate');
@@ -186,7 +183,6 @@ const AICrateBuilderScreen = ({ navigation }) => {
       // Increment usage count only if using free tier (no user API key)
       if (!hasUserApiKey) {
         incrementAIUsage();
-        console.log('[AI] Incremented free tier usage');
       }
 
       setCuration(result.curation);
@@ -195,8 +191,6 @@ const AICrateBuilderScreen = ({ navigation }) => {
       setCrateName(defaultName);
       setState('preview');
     } catch (err) {
-      console.error('Curation failed:', err);
-      console.error('Error response:', err.response?.status, err.response?.data);
       setError(err.response?.data?.error || err.message || 'Failed to generate crate');
       setState('builder');
     }
@@ -239,8 +233,6 @@ const AICrateBuilderScreen = ({ navigation }) => {
       // Refresh crates
       await loadCrates();
     } catch (err) {
-      console.error('Save failed:', err);
-      console.error('Save error details:', err.response?.status, err.response?.data);
       Alert.alert('Save Failed', err.response?.data?.error || err.message || 'Failed to save crate');
     } finally {
       setIsSaving(false);

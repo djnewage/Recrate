@@ -92,7 +92,6 @@ const IdentifyTrackScreen = ({ navigation }) => {
         if (isRecordingRef.current) await doStopRecording();
       }, RECORDING_DURATION * 1000);
     } catch (err) {
-      console.error('Failed to start recording:', err);
       isRecordingRef.current = false;
       setError(err.message || 'Failed to start recording');
       setState('idle');
@@ -108,7 +107,6 @@ const IdentifyTrackScreen = ({ navigation }) => {
       const audioUri = await AudioRecordingService.stopRecording();
       await identifyTrack(audioUri);
     } catch (err) {
-      console.error('Failed to stop recording:', err);
       setError(err.message || 'Failed to process recording');
       setState('idle');
     }
@@ -127,7 +125,6 @@ const IdentifyTrackScreen = ({ navigation }) => {
       }
 
       setRecognizedTrack(result.track);
-      console.log('ACRCloud:', result.track.title, 'by', result.track.artist);
 
       // Find matches
       const libraryMatches = TrackMatchingService.findMatches(result.track, tracks);
@@ -153,7 +150,6 @@ const IdentifyTrackScreen = ({ navigation }) => {
           .finally(() => setIsLoadingCrates(false));
       }
     } catch (err) {
-      console.error('Identification failed:', err);
       setError(err.message || 'Failed to identify track');
       setState('result');
     }

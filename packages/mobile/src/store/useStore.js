@@ -128,15 +128,7 @@ const useStore = create(
         ...params,
       };
 
-      console.log('[loadLibrary] Request params:', requestParams, 'append:', append);
-
       const data = await apiService.getLibrary(requestParams);
-
-      console.log('[loadLibrary] Response:', {
-        tracksReceived: data.tracks?.length,
-        pagination: data.pagination,
-        indexing: data.indexing,
-      });
 
       // Check if backend is indexing
       if (data.indexing) {
@@ -208,11 +200,6 @@ const useStore = create(
         hasMore,
       };
 
-      console.log('[loadLibrary] Setting state:', {
-        trackCount: uniqueTracks.length,
-        pagination: newPagination,
-      });
-
       set({
         tracks: uniqueTracks,
         isLoadingLibrary: false,
@@ -225,7 +212,6 @@ const useStore = create(
       // Stop polling if it was running
       get().stopIndexingPoll();
     } catch (error) {
-      console.error('[loadLibrary] Error:', error.message);
       set({ libraryError: error.message, isLoadingLibrary: false });
     }
   },
@@ -256,7 +242,7 @@ const useStore = create(
         await get().loadLibrary();
       }
     } catch (error) {
-      console.error('Error checking indexing status:', error);
+      // Error checking indexing status
     }
   },
 
@@ -283,22 +269,12 @@ const useStore = create(
   loadMoreTracks: async () => {
     const { libraryPagination, isLoadingLibrary, tracks } = get();
 
-    console.log('[loadMoreTracks] Called. State:', {
-      isLoadingLibrary,
-      hasMore: libraryPagination.hasMore,
-      offset: libraryPagination.offset,
-      total: libraryPagination.total,
-      currentTrackCount: tracks.length,
-    });
-
     // Don't load if already loading or no more tracks
     if (isLoadingLibrary) {
-      console.log('[loadMoreTracks] Skipping - already loading');
       return;
     }
 
     if (!libraryPagination.hasMore) {
-      console.log('[loadMoreTracks] Skipping - no more tracks');
       return;
     }
 
@@ -306,13 +282,9 @@ const useStore = create(
     // e.g., if we've loaded 2000 tracks, request offset=2000 to get tracks 2001+
     const nextOffset = libraryPagination.offset;
 
-    console.log('[loadMoreTracks] Loading more with offset:', nextOffset);
-
     // Pass the nextOffset as a parameter to loadLibrary
     // This will override the offset from state and ensure proper pagination
     await get().loadLibrary({ offset: nextOffset }, true);
-
-    console.log('[loadMoreTracks] Done. New track count:', get().tracks.length);
   },
 
   resetLibrary: () => {
@@ -391,13 +363,11 @@ const useStore = create(
 
   // Crates actions
   loadCrates: async () => {
-    console.log('[loadCrates] Starting...');
     const { isConnected } = useConnectionStore.getState();
     const { crates: cachedCrates } = get();
 
     // If offline and we have cached crates, don't try API call
     if (!isConnected && cachedCrates.length > 0) {
-      console.log('[loadCrates] Offline with', cachedCrates.length, 'cached crates, skipping API call');
       set({ isLoadingCrates: false, cratesError: null });
       return;
     }
@@ -405,7 +375,6 @@ const useStore = create(
     set({ isLoadingCrates: true, cratesError: null });
     try {
       const data = await apiService.getCrates();
-      console.log('[loadCrates] Received', data.crates?.length, 'crates from server');
 
       // Cache all track ID mappings for offline use
       useOfflineStore.getState().cacheAllServerCrateTracks(data.crates);
@@ -420,10 +389,8 @@ const useStore = create(
         isLoadingCrates: false,
       });
     } catch (error) {
-      console.error('[loadCrates] Error:', error.message);
       // If we have cached crates, don't show error - just use cached data
       if (cachedCrates.length > 0) {
-        console.log('[loadCrates] Using', cachedCrates.length, 'cached crates due to error');
         set({ isLoadingCrates: false, cratesError: null });
       } else {
         set({ cratesError: error.message, isLoadingCrates: false });
@@ -450,7 +417,6 @@ const useStore = create(
         isLoadingCrates: false,
         cratesError: null,
       });
-      console.log('[loadCrate] Loaded local crate:', crateId, 'with', crateTracks.length, 'tracks');
       return;
     }
 
@@ -469,8 +435,6 @@ const useStore = create(
 
       set({ selectedCrate: crate, isLoadingCrates: false });
     } catch (error) {
-      console.error('[loadCrate] API error:', error.message);
-
       // If API fails and we have cached crate data, use it
       if (localCrate) {
         // Get cached track IDs (merges server cache + any tracks added while offline)
@@ -487,7 +451,6 @@ const useStore = create(
           isLoadingCrates: false,
           cratesError: null,
         });
-        console.log('[loadCrate] Using cached crate:', crateId, 'with', cachedTracks.length, 'tracks');
       } else {
         set({ cratesError: error.message, isLoadingCrates: false });
       }
@@ -531,7 +494,6 @@ const useStore = create(
         crateTree: buildCrateTree(updatedCrates),
       });
 
-      console.log('[useStore] Crate queued for offline sync:', tempId);
       return true;
     }
 
@@ -614,7 +576,6 @@ const useStore = create(
         crateTree: buildCrateTree(updatedCrates),
       });
 
-      console.log('[useStore] Add tracks queued for offline sync:', crateId, trackIds.length);
       return true;
     }
 
@@ -674,7 +635,6 @@ const useStore = create(
         crateTree: buildCrateTree(updatedCrates),
       });
 
-      console.log('[useStore] Remove track queued for offline sync:', crateId, trackId);
       return true;
     }
 
@@ -721,7 +681,6 @@ const useStore = create(
         selectedCrate: null,
       });
 
-      console.log('[useStore] Delete crate queued for offline sync:', crateId);
       return true;
     }
 
@@ -827,7 +786,6 @@ const useStore = create(
         });
       }
     } catch (error) {
-      console.error('Error playing track:', error);
       set({
         playerError: error.message,
         isPlaying: false,
@@ -841,7 +799,7 @@ const useStore = create(
       await TrackPlayer.pause();
       set({ isPlaying: false });
     } catch (error) {
-      console.error('Error pausing track:', error);
+      // Error pausing track
     }
   },
 
@@ -850,7 +808,7 @@ const useStore = create(
       await TrackPlayer.play();
       set({ isPlaying: true });
     } catch (error) {
-      console.error('Error resuming track:', error);
+      // Error resuming track
     }
   },
 
@@ -864,7 +822,7 @@ const useStore = create(
         currentQueueIndex: -1,
       });
     } catch (error) {
-      console.error('Error stopping track:', error);
+      // Error stopping track
     }
   },
 
@@ -872,7 +830,7 @@ const useStore = create(
     try {
       await TrackPlayer.seekTo(positionSeconds);
     } catch (error) {
-      console.error('Error seeking:', error);
+      // Error seeking
     }
   },
 
@@ -881,7 +839,6 @@ const useStore = create(
       // Throttle rapid skips to prevent TrackPlayer state corruption
       const now = Date.now();
       if (now - lastSkipTime < SKIP_COOLDOWN) {
-        console.log('[playNext] Skip cooldown active, ignoring rapid skip');
         return;
       }
       lastSkipTime = now;
@@ -920,7 +877,6 @@ const useStore = create(
           const tracksToAdd = queue.slice(startAddIndex, endAddIndex);
 
           if (tracksToAdd.length > 0) {
-            console.log(`[playNext] Replenishing queue: adding ${tracksToAdd.length} tracks (indices ${startAddIndex}-${endAddIndex})`);
             const formattedTracks = tracksToAdd.map(track =>
               TrackPlayerService.formatTrackForPlayer(track)
             );
@@ -932,7 +888,7 @@ const useStore = create(
       await TrackPlayer.skipToNext();
       set({ currentQueueIndex: nextIndex });
     } catch (error) {
-      console.error('Error playing next:', error);
+      // Error playing next
     }
   },
 
@@ -941,7 +897,6 @@ const useStore = create(
       // Throttle rapid skips to prevent TrackPlayer state corruption
       const now = Date.now();
       if (now - lastSkipTime < SKIP_COOLDOWN) {
-        console.log('[playPrevious] Skip cooldown active, ignoring rapid skip');
         return;
       }
       lastSkipTime = now;
@@ -960,7 +915,7 @@ const useStore = create(
       await TrackPlayer.skipToPrevious();
       set({ currentQueueIndex: prevIndex });
     } catch (error) {
-      console.error('Error playing previous:', error);
+      // Error playing previous
     }
   },
 
@@ -1015,16 +970,12 @@ const useStore = create(
           ? upcomingShuffled.slice(0, MAX_UPCOMING)
           : upcomingShuffled;
 
-        if (upcomingShuffled.length > MAX_UPCOMING) {
-          console.log(`[toggleShuffle] Large library: queuing ${tracksToQueue.length} of ${upcomingShuffled.length} shuffled tracks`);
-        }
-
         const upcomingTracks = tracksToQueue.map(track =>
           TrackPlayerService.formatTrackForPlayer(track)
         );
         await TrackPlayer.add(upcomingTracks);
       } catch (error) {
-        console.error('Error updating TrackPlayer queue for shuffle:', error);
+        // Error updating TrackPlayer queue for shuffle
       }
 
       set({
@@ -1054,16 +1005,12 @@ const useStore = create(
             ? upcomingOriginal.slice(0, MAX_UPCOMING)
             : upcomingOriginal;
 
-          if (upcomingOriginal.length > MAX_UPCOMING) {
-            console.log(`[toggleShuffle] Restoring: queuing ${tracksToQueue.length} of ${upcomingOriginal.length} tracks`);
-          }
-
           const upcomingTracks = tracksToQueue.map(track =>
             TrackPlayerService.formatTrackForPlayer(track)
           );
           await TrackPlayer.add(upcomingTracks);
         } catch (error) {
-          console.error('Error restoring TrackPlayer queue:', error);
+          // Error restoring TrackPlayer queue
         }
 
         set({
@@ -1097,8 +1044,6 @@ const useStore = create(
         const windowEnd = Math.min(tracks.length, windowStart + MAX_QUEUE_SIZE);
         queuedTracks = tracks.slice(windowStart, windowEnd);
         adjustedIndex = startIndex - windowStart;
-
-        console.log(`[setQueue] Large library optimization: queuing ${queuedTracks.length} of ${tracks.length} tracks (window ${windowStart}-${windowEnd})`);
       }
 
       await TrackPlayerService.addTracksToQueue(queuedTracks);
@@ -1117,7 +1062,7 @@ const useStore = create(
         isPlaying: true,
       });
     } catch (error) {
-      console.error('Error setting queue:', error);
+      // Error setting queue
     }
   },
 
@@ -1247,13 +1192,7 @@ const useStore = create(
       // v4: Changed to load all tracks at once (limit=0)
       version: 4,
       onRehydrateStorage: () => (state, error) => {
-        if (error) {
-          console.log('Store rehydration error:', error);
-        } else if (state) {
-          console.log('Store rehydrated with', state.tracks?.length || 0, 'cached tracks');
-        } else {
-          console.log('Store rehydrated with no cached data (fresh start)');
-        }
+        // Handle rehydration silently
       },
     }
   )

@@ -88,7 +88,6 @@ const LibraryScreen = ({ navigation }) => {
       // Debounce rapid taps to prevent race conditions
       const now = Date.now();
       if (now - lastPlayTimeRef.current < PLAY_COOLDOWN) {
-        console.log('[handleTrackPress] Throttled - too rapid');
         return;
       }
       lastPlayTimeRef.current = now;
@@ -295,15 +294,8 @@ const LibraryScreen = ({ navigation }) => {
   }, []);
 
   const handleEndReached = () => {
-    console.log('[handleEndReached] Called. State:', {
-      searchQuery: !!searchQuery,
-      hasMore: libraryPagination.hasMore,
-      isLoadingLibrary,
-    });
-
     // Only trigger pagination for library view, not search results
     if (!searchQuery && libraryPagination.hasMore && !isLoadingLibrary) {
-      console.log('[handleEndReached] Calling loadMoreTracks');
       loadMoreTracks();
     }
   };
