@@ -42,14 +42,10 @@ export const useConnectionStore = create((set, get) => ({
       if (!deviceId) {
         deviceId = generateDeviceId();
         await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
-        console.log('[Connection] Generated new device ID:', deviceId);
-      } else {
-        console.log('[Connection] Loaded existing device ID:', deviceId);
       }
       set({ deviceId });
       return deviceId;
     } catch (error) {
-      console.error('[Connection] Failed to initialize device ID:', error);
       // Generate a temporary ID for this session
       const tempId = generateDeviceId();
       set({ deviceId: tempId });
@@ -71,12 +67,9 @@ export const useConnectionStore = create((set, get) => ({
     // Build health URL - all servers have /health endpoint
     const healthURL = `${url}/health`;
 
-    console.log(`[ConnectionStore] Testing connection to: ${healthURL}`);
-
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
-        console.error(`[ConnectionStore] Request timed out after 30 seconds`);
         controller.abort();
       }, 30000); // Increased to 30 seconds for slow cellular
 
@@ -95,18 +88,13 @@ export const useConnectionStore = create((set, get) => ({
 
       clearTimeout(timeoutId);
 
-      console.log(`[ConnectionStore] Response status: ${response.status}, ok: ${response.ok}`);
-
       if (response.ok) {
-        const data = await response.json();
-        console.log(`[ConnectionStore] Response data:`, data);
+        await response.json();
         return true;
       } else {
-        console.error(`[ConnectionStore] HTTP error: ${response.status}`);
         return false;
       }
     } catch (error) {
-      console.error(`[ConnectionStore] Connection failed:`, error.name, error.message);
       return false;
     }
   },
@@ -114,7 +102,6 @@ export const useConnectionStore = create((set, get) => ({
   // Quick test with shorter timeout for reconnection attempts
   quickTestConnection: async (url) => {
     const healthURL = `${url}/health`;
-    console.log(`[ConnectionStore] Quick test to: ${healthURL}`);
 
     try {
       const controller = new AbortController();
@@ -127,10 +114,8 @@ export const useConnectionStore = create((set, get) => ({
       });
 
       clearTimeout(timeoutId);
-      console.log(`[ConnectionStore] Quick test result: ${response.ok}`);
       return response.ok;
     } catch (error) {
-      console.log(`[ConnectionStore] Quick test failed:`, error.name);
       return false;
     }
   },
@@ -143,7 +128,6 @@ export const useConnectionStore = create((set, get) => ({
       // 1. Try last successful IP
       const lastIP = await AsyncStorage.getItem('lastServerIP');
       if (lastIP) {
-        console.log('Trying last known IP:', lastIP);
         const works = await get().testConnection(lastIP);
         if (works) {
           // Determine connection type
@@ -164,7 +148,6 @@ export const useConnectionStore = create((set, get) => ({
       }
 
       // 2. Scan local network (192.168.x.x)
-      console.log('Scanning local network...');
       const localIP = await get().scanLocalRange();
       if (localIP) {
         await AsyncStorage.setItem('lastServerIP', localIP);
@@ -187,7 +170,6 @@ export const useConnectionStore = create((set, get) => ({
       });
       return null;
     } catch (error) {
-      console.error('Error finding server:', error);
       set({ isSearching: false });
       return null;
     }
@@ -212,7 +194,6 @@ export const useConnectionStore = create((set, get) => ({
     for (const ip of commonIPs) {
       const works = await get().testConnection(ip);
       if (works) {
-        console.log('Found local server:', ip);
         return ip;
       }
     }
@@ -222,8 +203,6 @@ export const useConnectionStore = create((set, get) => ({
 
   // Manual connection
   connectManually: async (url) => {
-    console.log(`[ConnectionStore] Manual connect attempt with: "${url}"`);
-
     // Clean the URL
     url = url.trim();
 
@@ -236,7 +215,6 @@ export const useConnectionStore = create((set, get) => ({
     // Ensure URL has http://
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = `http://${url}`;
-      console.log(`[ConnectionStore] Added http://, now: ${url}`);
     }
 
     // Ensure URL has port (check if port is already in URL)
@@ -245,24 +223,19 @@ export const useConnectionStore = create((set, get) => ({
     const isHttps = url.startsWith('https://');
     if (!hasPort && !isHttps) {
       url = `${url}:3000`;
-      console.log(`[ConnectionStore] Added port, final URL: ${url}`);
     }
 
-    console.log(`[ConnectionStore] Final URL for testing: ${url}`);
     const works = await get().testConnection(url);
 
     if (works) {
-      console.log(`[ConnectionStore] ✅ Manual connection successful!`);
       await AsyncStorage.setItem('lastServerIP', url);
 
       // Determine connection type based on URL pattern
       let connType = CONNECTION_TYPES.MANUAL;
       if (url.includes('/api/') && url.startsWith('https://')) {
         connType = CONNECTION_TYPES.PROXY;
-        console.log(`[ConnectionStore] Detected cloud proxy connection`);
       } else if (url.includes('192.168.') || url.includes('10.0.') || url.includes('localhost')) {
         connType = CONNECTION_TYPES.LOCAL;
-        console.log(`[ConnectionStore] Detected local network connection`);
       }
 
       set({
@@ -274,7 +247,6 @@ export const useConnectionStore = create((set, get) => ({
       return true;
     }
 
-    console.log(`[ConnectionStore] ❌ Manual connection failed`);
     return false;
   },
 

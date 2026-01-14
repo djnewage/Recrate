@@ -28,7 +28,7 @@ const ConflictModal = () => {
     try {
       await applyConflictResolution(activeConflict.id, resolution);
     } catch (error) {
-      console.error('Error resolving conflict:', error);
+      // Error resolving conflict
     } finally {
       setIsResolving(false);
       setSelectedResolution(null);

@@ -48,7 +48,7 @@ const SettingsScreen = ({ navigation }) => {
       setIsLoading(true);
       await Promise.all([loadConfig(), scanForLibraries(), loadACRCloudConfig(), loadAIKeyConfig()]);
     } catch (error) {
-      console.error('Error loading data:', error);
+      // Error loading data
     } finally {
       setIsLoading(false);
     }
@@ -59,7 +59,6 @@ const SettingsScreen = ({ navigation }) => {
       const hasKey = await AIKeyService.hasApiKey();
       setHasAIKey(hasKey);
     } catch (error) {
-      console.error('Error loading AI key config:', error);
       setHasAIKey(false);
     }
   };
@@ -91,7 +90,6 @@ const SettingsScreen = ({ navigation }) => {
         Alert.alert('Error', 'Failed to save API key');
       }
     } catch (error) {
-      console.error('Error saving AI key:', error);
       Alert.alert('Error', 'Failed to save API key');
     } finally {
       setIsSavingAIKey(false);
@@ -125,7 +123,6 @@ const SettingsScreen = ({ navigation }) => {
       const hasCredentials = await ACRCloudService.hasCredentials();
       setHasACRCredentials(hasCredentials);
     } catch (error) {
-      console.error('Error loading ACRCloud config:', error);
       setHasACRCredentials(false);
     }
   };
@@ -141,7 +138,7 @@ const SettingsScreen = ({ navigation }) => {
           : config.musicPath || ''
       );
     } catch (error) {
-      console.error('Error loading config:', error);
+      // Error loading config
     }
   };
 
@@ -152,7 +149,6 @@ const SettingsScreen = ({ navigation }) => {
       setInstallations(data.installations || []);
       setCurrentSeratoPath(data.currentSeratoPath || '');
     } catch (error) {
-      console.error('Error scanning for libraries:', error);
       Alert.alert('Scan Error', 'Could not scan for Serato libraries. Check server connection.');
     } finally {
       setIsScanning(false);
@@ -208,7 +204,6 @@ const SettingsScreen = ({ navigation }) => {
     } catch (error) {
       const errorMessage = error.response?.data?.error || 'Failed to update configuration';
       Alert.alert('Error', errorMessage);
-      console.error('Error saving config:', error);
     } finally {
       setIsSaving(false);
     }
@@ -247,7 +242,6 @@ const SettingsScreen = ({ navigation }) => {
     } catch (error) {
       const errorMessage = error.response?.data?.error || 'Failed to update configuration';
       Alert.alert('Error', errorMessage);
-      console.error('Error saving config:', error);
     } finally {
       setIsSaving(false);
     }

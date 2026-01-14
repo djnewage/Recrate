@@ -23,43 +23,36 @@ const QRScanner = ({ onScan, onClose }) => {
 
     setScanned(true);
     setLastScanTime(now);
-    console.log('[QRScanner] Scanned:', data);
 
     try {
       let serverURL = null;
 
       // Format 1: Deep link format (recrate://connect?ip=100.111.35.70&port=3000)
       if (data.startsWith('recrate://connect')) {
-        console.log('[QRScanner] Detected deep link format');
         const url = new URL(data);
         const ip = url.searchParams.get('ip');
         const port = url.searchParams.get('port') || '3000';
 
         if (ip) {
           serverURL = `http://${ip}:${port}`;
-          console.log('[QRScanner] Converted to:', serverURL);
         }
       }
       // Format 2: Direct HTTP URL (http://100.111.35.70:3000)
       else if (data.startsWith('http://') && data.includes(':3000')) {
-        console.log('[QRScanner] Detected HTTP URL format');
         serverURL = data;
       }
       // Format 3: HTTPS/Proxy URL (https://proxy.up.railway.app/api/deviceId)
       else if (data.startsWith('https://') || data.includes('/api/')) {
-        console.log('[QRScanner] Detected HTTPS/proxy URL format');
         serverURL = data;
       }
 
       // If we got a valid URL, connect
       if (serverURL) {
-        console.log('[QRScanner] Valid server URL:', serverURL);
         onScan(serverURL);
         return;
       }
 
       // Invalid format - show error (only once due to cooldown)
-      console.log('[QRScanner] Invalid QR code format');
       Alert.alert(
         'Invalid QR Code',
         'This doesn\'t look like a Recrate server URL. Please scan the QR code from your desktop app.',
@@ -72,7 +65,6 @@ const QRScanner = ({ onScan, onClose }) => {
         }]
       );
     } catch (error) {
-      console.error('[QRScanner] Error parsing QR code:', error);
       Alert.alert(
         'Scan Error',
         'Could not read QR code. Please try again.',

@@ -27,7 +27,7 @@ async function waitForStableState(maxWait = 3000) {
         return playbackState;
       }
     } catch (err) {
-      console.log('[waitForStableState] Error getting state:', err);
+      // Error getting state, continue waiting
     }
     // Wait 100ms before checking again
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -57,12 +57,10 @@ export async function setupPlayer() {
   }
 
   if (isAlreadySetup) {
-    console.log('TrackPlayer already initialized, skipping setup');
     return true;
   }
 
   try {
-    console.log('Setting up TrackPlayer...');
     await TrackPlayer.setupPlayer({
       autoHandleInterruptions: true,
       // iOS-specific optimizations
@@ -107,10 +105,8 @@ export async function setupPlayer() {
       progressUpdateEventInterval: 1,
     });
 
-    console.log('TrackPlayer setup complete with optimized buffering');
     return true;
   } catch (error) {
-    console.error('Error setting up TrackPlayer:', error);
     return false;
   }
 }
@@ -163,15 +159,11 @@ export async function preloadTrack(track) {
       headers: {
         'Range': 'bytes=0-262143', // First 256KB
       },
-    }).catch(err => {
+    }).catch(() => {
       // Silently fail - this is just optimization
-      console.log('Preload failed (non-critical):', err.message);
     });
-
-    console.log(`Preloaded first chunk of: ${track.title}`);
   } catch (error) {
-    // Non-critical - just log and continue
-    console.log('Preload error (non-critical):', error.message);
+    // Non-critical - continue
   }
 }
 
@@ -180,8 +172,6 @@ export async function preloadTrack(track) {
  */
 export async function playTrack(track) {
   try {
-    console.log(`Playing track: ${track.title}`);
-
     // Preload the track to warm up connection (non-blocking)
     preloadTrack(track);
 
@@ -197,7 +187,6 @@ export async function playTrack(track) {
 
     return true;
   } catch (error) {
-    console.error('Error playing track:', error);
     return false;
   }
 }
@@ -208,11 +197,8 @@ export async function playTrack(track) {
 export function setupEventHandlers(store) {
   // Track playback state changes (from both app and remote controls)
   TrackPlayer.addEventListener(Event.PlaybackState, async ({ state }) => {
-    console.log('Playback state changed:', state);
-
     const isPlaying = state === State.Playing;
     const isBuffering = state === State.Buffering || state === State.Loading;
-    const isPaused = state === State.Paused;
 
     // Update store to sync UI with actual playback state
     store.setState({
@@ -223,11 +209,8 @@ export function setupEventHandlers(store) {
 
   // Track changed (next/previous)
   TrackPlayer.addEventListener(Event.PlaybackTrackChanged, async (event) => {
-    console.log('Track changed event:', event);
-
     if (event.nextTrack !== undefined && event.nextTrack !== null) {
       const track = await TrackPlayer.getTrack(event.nextTrack);
-      console.log('New track from TrackPlayer:', track);
 
       if (track) {
         // Get the queue from store to find the full track object
@@ -243,7 +226,6 @@ export function setupEventHandlers(store) {
             currentTrack: fullTrack,
             currentQueueIndex: actualQueueIndex >= 0 ? actualQueueIndex : event.nextTrack,
           });
-          console.log('Updated currentTrack to:', fullTrack.title, 'at index:', actualQueueIndex);
 
           // Check if we need to replenish TrackPlayer queue (for large libraries)
           const tpQueue = await TrackPlayer.getQueue();
@@ -264,7 +246,6 @@ export function setupEventHandlers(store) {
             }
 
             if (tracksToAdd.length > 0) {
-              console.log(`[PlaybackTrackChanged] Replenishing queue: adding ${tracksToAdd.length} tracks`);
               const formattedTracks = tracksToAdd.map(t => formatTrackForPlayer(t));
               await TrackPlayer.add(formattedTracks);
             }
@@ -296,16 +277,12 @@ export function setupEventHandlers(store) {
 
   // Playback error - try to recover by skipping to next working track
   TrackPlayer.addEventListener(Event.PlaybackError, async ({ error }) => {
-    console.error('Playback error:', error);
-
     // Debounce: prevent multiple concurrent recovery attempts
     const now = Date.now();
     if (isRecoveringFromError) {
-      console.log('[PlaybackError] Recovery already in progress, skipping duplicate...');
       return;
     }
     if (now - lastErrorRecoveryTime < ERROR_RECOVERY_COOLDOWN) {
-      console.log('[PlaybackError] Cooldown active, skipping recovery attempt...');
       return;
     }
 
@@ -319,20 +296,17 @@ export function setupEventHandlers(store) {
       const startIndex = await TrackPlayer.getActiveTrackIndex();
 
       if (startIndex === null || startIndex >= queue.length - 1) {
-        console.log('[PlaybackError] No more tracks to try');
         isRecoveringFromError = false;
         store.setState({ playerError: error.message || 'Playback error occurred', isPlaying: false });
         return;
       }
-
-      console.log('[PlaybackError] Attempting to recover - will try up to', MAX_SKIP_ATTEMPTS, 'tracks...');
 
       // Reset player state before skipping
       try {
         await TrackPlayer.pause();
         await TrackPlayer.seekTo(0);
       } catch (resetError) {
-        console.log('[PlaybackError] Reset failed, continuing...');
+        // Reset failed, continuing
       }
 
       // Try consecutive tracks until one works
@@ -340,42 +314,31 @@ export function setupEventHandlers(store) {
         const nextIndex = startIndex + 1 + attempt;
 
         if (nextIndex >= queue.length) {
-          console.log('[PlaybackError] Reached end of queue after', attempt, 'attempts');
           break;
         }
-
-        console.log('[PlaybackError] Trying track at index:', nextIndex, '(attempt', attempt + 1, 'of', MAX_SKIP_ATTEMPTS + ')');
 
         try {
           await TrackPlayer.skip(nextIndex);
         } catch (skipErr) {
-          console.log('[PlaybackError] Skip failed for index', nextIndex, '- trying next');
           continue;
         }
 
         // Wait for stable state (not loading/buffering) with 3 second timeout
-        console.log('[PlaybackError] Waiting for stable state...');
         const playbackState = await waitForStableState(3000);
-        console.log('[PlaybackError] Got state:', playbackState.state);
 
         // Check if this track also failed
         if (playbackState.state === State.Error) {
-          console.log('[PlaybackError] Track at index', nextIndex, 'failed, trying next...');
           continue; // Try next track
         }
 
         // Success! Track is ready or playing
         if (playbackState.state === State.Ready || playbackState.state === State.Paused || playbackState.state === State.Stopped) {
           await TrackPlayer.play();
-          console.log('[PlaybackError] Successfully recovered at track index:', nextIndex);
-        } else if (playbackState.state === State.Playing) {
-          console.log('[PlaybackError] Track already playing at index:', nextIndex);
-        } else {
-          console.log('[PlaybackError] Track state:', playbackState.state, '- attempting play');
+        } else if (playbackState.state !== State.Playing) {
           try {
             await TrackPlayer.play();
           } catch (playErr) {
-            console.log('[PlaybackError] Play failed, track may auto-start');
+            // Play failed, track may auto-start
           }
         }
 
@@ -384,10 +347,9 @@ export function setupEventHandlers(store) {
       }
 
       // All attempts failed
-      console.log('[PlaybackError] All', MAX_SKIP_ATTEMPTS, 'recovery attempts failed');
 
     } catch (recoveryError) {
-      console.error('[PlaybackError] Recovery failed:', recoveryError);
+      // Recovery failed
     }
 
     isRecoveringFromError = false;
@@ -417,35 +379,30 @@ export function setupEventHandlers(store) {
 
   // Remote control events (lock screen, notification, control center)
   TrackPlayer.addEventListener(Event.RemotePlay, async () => {
-    console.log('Remote play pressed');
     await TrackPlayer.play();
   });
 
   TrackPlayer.addEventListener(Event.RemotePause, async () => {
-    console.log('Remote pause pressed');
     await TrackPlayer.pause();
   });
 
   TrackPlayer.addEventListener(Event.RemoteNext, async () => {
-    console.log('Remote next pressed');
     try {
       await TrackPlayer.skipToNext();
     } catch (error) {
-      console.log('No next track available');
+      // No next track available
     }
   });
 
   TrackPlayer.addEventListener(Event.RemotePrevious, async () => {
-    console.log('Remote previous pressed');
     try {
       await TrackPlayer.skipToPrevious();
     } catch (error) {
-      console.log('No previous track available');
+      // No previous track available
     }
   });
 
   TrackPlayer.addEventListener(Event.RemoteStop, async () => {
-    console.log('Remote stop pressed');
     await TrackPlayer.reset();
     store.setState({
       currentTrack: null,
@@ -454,23 +411,18 @@ export function setupEventHandlers(store) {
   });
 
   TrackPlayer.addEventListener(Event.RemoteSeek, async ({ position }) => {
-    console.log('Remote seek to position:', position);
     await TrackPlayer.seekTo(position);
   });
 
   TrackPlayer.addEventListener(Event.RemoteJumpForward, async ({ interval }) => {
-    console.log('Remote jump forward:', interval);
     const currentPosition = await TrackPlayer.getPosition();
     await TrackPlayer.seekTo(currentPosition + (interval || 15));
   });
 
   TrackPlayer.addEventListener(Event.RemoteJumpBackward, async ({ interval }) => {
-    console.log('Remote jump backward:', interval);
     const currentPosition = await TrackPlayer.getPosition();
     await TrackPlayer.seekTo(Math.max(0, currentPosition - (interval || 15)));
   });
-
-  console.log('TrackPlayer event handlers setup complete');
 }
 
 /**
@@ -490,6 +442,6 @@ export async function cleanup() {
     // Note: destroy() was removed in react-native-track-player v3.x
     // TrackPlayer is a singleton and doesn't need explicit cleanup
   } catch (error) {
-    console.log('Cleanup error:', error);
+    // Cleanup error - ignore
   }
 }
