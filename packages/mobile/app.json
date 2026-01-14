@@ -4,7 +4,7 @@
     "slug": "recrate",
     "version": "1.2.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/officialLogo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "recrate",

@@ -15,6 +15,7 @@ import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import TextTicker from 'react-native-text-ticker';
 import { useProgress } from 'react-native-track-player';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import { apiService } from '../services/api';
@@ -22,6 +23,7 @@ import { apiService } from '../services/api';
 const { width } = Dimensions.get('window');
 
 const PlayerScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { track: initialTrack } = route.params || {};
   const [showCratesModal, setShowCratesModal] = useState(false);
   const [selectedCrates, setSelectedCrates] = useState([]);
@@ -216,7 +218,7 @@ const PlayerScreen = ({ route, navigation }) => {
       style={styles.container}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
         <TouchableOpacity
           style={styles.headerButton}
           onPress={() => navigation.goBack()}
@@ -368,7 +370,7 @@ const PlayerScreen = ({ route, navigation }) => {
         onRequestClose={() => setShowCratesModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add to Crates</Text>
               <TouchableOpacity

@@ -13,6 +13,7 @@ import { COLORS } from './src/constants/theme';
 import { useConnectionStore } from './src/store/connectionStore';
 import useStore from './src/store/useStore';
 import useOfflineStore from './src/store/offlineStore';
+import { useSubscriptionStore } from './src/store/subscriptionStore';
 import * as TrackPlayerService from './src/services/TrackPlayerService';
 import { syncQueue } from './src/services/SyncService';
 import { initSentry, setUser } from './src/utils/sentry';
@@ -30,6 +31,8 @@ import PlayerScreen from './src/screens/PlayerScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import IdentifyTrackScreen from './src/screens/IdentifyTrackScreen';
 import AICrateBuilderScreen from './src/screens/AICrateBuilderScreen';
+import TrialStartScreen from './src/screens/TrialStartScreen';
+import PaywallScreen from './src/screens/PaywallScreen';
 
 // Components
 import MiniPlayer from './src/components/MiniPlayer';
@@ -167,6 +170,21 @@ function RootNavigator() {
         }}
       />
       <RootStack.Screen
+        name="TrialStart"
+        component={TrialStartScreen}
+        options={{
+          presentation: 'fullScreenModal',
+          gestureEnabled: false,
+        }}
+      />
+      <RootStack.Screen
+        name="Paywall"
+        component={PaywallScreen}
+        options={{
+          presentation: 'modal',
+        }}
+      />
+      <RootStack.Screen
         name="CrateDetailFromIdentify"
         component={CrateDetailScreen}
         options={({ navigation }) => ({
@@ -233,6 +251,19 @@ export default function App() {
       }
     };
     initDeviceId();
+  }, []);
+
+  // Initialize subscription state on app mount
+  useEffect(() => {
+    const initSubscription = async () => {
+      try {
+        await useSubscriptionStore.getState().initializeSubscription();
+        console.log('[App] Subscription initialized');
+      } catch (error) {
+        console.error('[App] Failed to initialize subscription:', error);
+      }
+    };
+    initSubscription();
   }, []);
 
   // Initialize TrackPlayer on app mount

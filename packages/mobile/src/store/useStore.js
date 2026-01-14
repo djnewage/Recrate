@@ -30,11 +30,6 @@ const useStore = create(
   // Disclaimer state (shown on first launch)
   hasAcceptedDisclaimer: false,
 
-  // AI Usage tracking (BYOK - Bring Your Own Key)
-  // Users get 5 free AI curations, then need their own API key
-  aiUsageCount: 0,
-  aiUsageResetDate: null, // Optional: for monthly reset
-
   // Library state
   tracks: [],
   selectedTracks: [],
@@ -95,27 +90,6 @@ const useStore = create(
 
   // Disclaimer actions
   acceptDisclaimer: () => set({ hasAcceptedDisclaimer: true }),
-
-  // AI usage actions
-  incrementAIUsage: () => {
-    const { aiUsageCount } = get();
-    set({ aiUsageCount: aiUsageCount + 1 });
-  },
-
-  resetAIUsage: () => {
-    set({ aiUsageCount: 0, aiUsageResetDate: new Date().toISOString() });
-  },
-
-  // Check if user has free uses remaining (5 free uses)
-  hasFreeTierRemaining: () => {
-    const { aiUsageCount } = get();
-    return aiUsageCount < 5;
-  },
-
-  getRemainingFreeUses: () => {
-    const { aiUsageCount } = get();
-    return Math.max(0, 5 - aiUsageCount);
-  },
 
   // Library actions
   loadLibrary: async (params = {}, append = false) => {
@@ -1228,9 +1202,6 @@ const useStore = create(
       partialize: (state) => ({
         // Disclaimer acceptance - persist so user only sees once
         hasAcceptedDisclaimer: state.hasAcceptedDisclaimer,
-        // AI usage tracking - persist to track free tier usage
-        aiUsageCount: state.aiUsageCount,
-        aiUsageResetDate: state.aiUsageResetDate,
         // Library data - persist for offline/quick reload
         tracks: state.tracks,
         libraryPagination: state.libraryPagination,

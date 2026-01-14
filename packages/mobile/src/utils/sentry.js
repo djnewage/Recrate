@@ -42,7 +42,7 @@ export function initSentry() {
       'AbortError',
       'Non-Error promise rejection captured',
       'timeout',
-      'The operation couldn't be completed',
+      'The operation couldn\'t be completed',
     ],
 
     // Sanitize sensitive data before sending

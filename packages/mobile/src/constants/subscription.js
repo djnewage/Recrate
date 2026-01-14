@@ -1,0 +1,97 @@
+// RevenueCat API Keys - Replace with your actual keys from RevenueCat dashboard
+export const REVENUECAT_API_KEY_IOS = 'appl_XXXXXXXX'; // TODO: Replace with actual iOS key
+export const REVENUECAT_API_KEY_ANDROID = 'goog_XXXXXXXX'; // TODO: Replace with actual Android key
+
+// RevenueCat Entitlement IDs
+export const ENTITLEMENTS = {
+  PRO: 'pro_access',
+  BASIC: 'basic_access',
+};
+
+// RevenueCat Product IDs
+export const PRODUCT_IDS = {
+  BASIC_MONTHLY: 'recrate_basic_monthly',
+  PRO_MONTHLY: 'recrate_pro_monthly',
+};
+
+// Subscription tier identifiers
+export const SUBSCRIPTION_TIERS = {
+  TRIAL: 'trial',
+  BASIC: 'basic',
+  PRO: 'pro',
+  EXPIRED: 'expired',
+};
+
+// Trial duration
+export const TRIAL_DURATION_DAYS = 3;
+
+// Feature limits and descriptions per tier
+export const TIER_FEATURES = {
+  [SUBSCRIPTION_TIERS.TRIAL]: {
+    name: 'Free Trial',
+    aiCrateBuilds: 2,
+    trackIdentifications: 5,
+    hasAIAccess: true,
+    price: 'Free',
+    priceValue: 0,
+    description: '3-day full access',
+    features: [
+      'Full library sync',
+      'Crate management',
+      'Audio streaming',
+      'AI Crate Builder (2 builds)',
+      'Track Identification (5 IDs)',
+    ],
+  },
+  [SUBSCRIPTION_TIERS.BASIC]: {
+    name: 'Basic',
+    aiCrateBuilds: 0,
+    trackIdentifications: 0,
+    hasAIAccess: false,
+    price: '$4.99/mo',
+    priceValue: 4.99,
+    description: 'Library & crate management',
+    features: [
+      'Full library sync',
+      'Crate management',
+      'Audio streaming',
+      'Search & filtering',
+    ],
+  },
+  [SUBSCRIPTION_TIERS.PRO]: {
+    name: 'Pro',
+    aiCrateBuilds: 10,
+    trackIdentifications: 50,
+    hasAIAccess: true,
+    price: '$9.99/mo',
+    priceValue: 9.99,
+    description: 'Full AI access',
+    features: [
+      'Everything in Basic',
+      'AI Crate Builder (10/month)',
+      'Track Identification (50/month)',
+      'Priority support',
+    ],
+  },
+  [SUBSCRIPTION_TIERS.EXPIRED]: {
+    name: 'Expired',
+    aiCrateBuilds: 0,
+    trackIdentifications: 0,
+    hasAIAccess: false,
+    price: 'Subscribe',
+    priceValue: 0,
+    description: 'Trial ended',
+    features: [
+      'Limited library access',
+      'Subscribe to unlock features',
+    ],
+  },
+};
+
+// Storage keys for persisting subscription data
+export const STORAGE_KEYS = {
+  TRIAL_START_DATE: 'recrate_trial_start_date',
+  HAS_SEEN_TRIAL_SCREEN: 'recrate_has_seen_trial_screen',
+  CACHED_TIER: 'recrate_cached_tier',
+  USAGE_DATA: 'recrate_usage_data',
+};
