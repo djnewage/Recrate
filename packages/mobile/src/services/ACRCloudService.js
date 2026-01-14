@@ -76,7 +76,6 @@ export const ACRCloudService = {
       const data = await response.json();
       return data.configured === true;
     } catch (error) {
-      console.error('Error checking identify status:', error);
       return false;
     }
   },
@@ -100,14 +99,10 @@ export const ACRCloudService = {
         return { success: false, error: 'Audio file too large (max 10MB)' };
       }
 
-      console.log(`Reading audio file: ${audioUri} (${fileInfo.size} bytes)`);
-
       // Read file as base64
       const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-
-      console.log(`Converted to base64: ${base64Audio.length} characters`);
 
       // Get API URL and device ID
       const baseUrl = getApiBaseUrl();
@@ -120,8 +115,6 @@ export const ACRCloudService = {
       if (deviceId) {
         headers['X-Device-Id'] = deviceId;
       }
-
-      console.log(`Sending to server: ${baseUrl}/api/identify`);
 
       // Send to server (server proxies to ACRCloud)
       const response = await fetchWithTimeout(
@@ -160,8 +153,6 @@ export const ACRCloudService = {
       // Server returns the parsed result directly
       return result;
     } catch (error) {
-      console.error('Track identification error:', error);
-
       if (error.name === 'AbortError') {
         return { success: false, error: 'Request timed out - please try again' };
       }

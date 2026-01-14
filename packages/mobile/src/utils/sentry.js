@@ -11,7 +11,6 @@ export function initSentry() {
 
   const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
   if (!dsn) {
-    console.log('[Sentry] No DSN configured, skipping initialization');
     return;
   }
 
@@ -42,7 +41,7 @@ export function initSentry() {
       'AbortError',
       'Non-Error promise rejection captured',
       'timeout',
-      'The operation couldn't be completed',
+      "The operation couldn't be completed",
     ],
 
     // Sanitize sensitive data before sending
@@ -62,7 +61,6 @@ export function initSentry() {
 
   Sentry.setTag('package', 'mobile');
   initialized = true;
-  console.log('[Sentry] Initialized for mobile package');
 }
 
 /**

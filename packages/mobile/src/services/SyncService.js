@@ -22,24 +22,20 @@ export async function syncQueue() {
 
   // Don't sync if not connected
   if (!isConnected) {
-    console.log('[SyncService] Not connected, skipping sync');
     return { success: false, reason: 'not_connected' };
   }
 
   // Don't sync if no server URL configured
   if (!serverURL) {
-    console.log('[SyncService] No server URL configured, skipping sync');
     return { success: false, reason: 'no_server_url' };
   }
 
   const pendingOps = operationQueue.filter((op) => op.status === OPERATION_STATUS.PENDING);
 
   if (pendingOps.length === 0) {
-    console.log('[SyncService] No pending operations to sync');
     return { success: true, synced: 0 };
   }
 
-  console.log('[SyncService] Starting sync with', pendingOps.length, 'pending operations');
   startSync();
 
   let syncedCount = 0;
@@ -72,24 +68,20 @@ export async function syncQueue() {
 
     // If we hit a conflict, stop processing to let user resolve it
     if (result.conflict) {
-      console.log('[SyncService] Conflict detected, pausing sync for resolution');
       break;
     }
   }
 
   // Refresh crates from server to get updated track counts after modifications
   if (cratesModified) {
-    console.log('[SyncService] Refreshing crates after sync modifications');
     try {
       await useStore.getState().loadCrates();
     } catch (error) {
-      console.error('[SyncService] Error refreshing crates after sync:', error);
+      // Error refreshing crates after sync
     }
   }
 
   completeSync();
-
-  console.log('[SyncService] Sync complete:', { syncedCount, conflictCount, failedCount });
 
   return {
     success: conflictCount === 0 && failedCount === 0,
@@ -105,8 +97,6 @@ export async function syncQueue() {
 async function processOperation(operation) {
   const offlineStore = useOfflineStore.getState();
   const { updateOperationStatus, addConflict, mapLocalToServerId, dequeueOperation } = offlineStore;
-
-  console.log('[SyncService] Processing operation:', operation.type, operation.id);
 
   updateOperationStatus(operation.id, OPERATION_STATUS.SYNCING);
 
@@ -127,7 +117,6 @@ async function processOperation(operation) {
       mapLocalToServerId(operation.payload.localCrateId, result.crate.id);
       // Clean up local crate tracks storage for the temp ID
       offlineStore.clearLocalCrate(operation.payload.localCrateId);
-      console.log('[SyncService] Mapped temp ID:', operation.payload.localCrateId, '→', result.crate.id);
     }
 
     // Remove from queue on success
@@ -205,7 +194,6 @@ async function detectConflict(operation) {
       };
     }
     // For other errors, skip conflict detection and let the operation fail normally
-    console.error('[SyncService] Error during conflict detection:', error);
     return null;
   }
 }
@@ -263,12 +251,9 @@ function handleOperationError(operation, error) {
   const offlineStore = useOfflineStore.getState();
   const { updateOperationStatus, dequeueOperation } = offlineStore;
 
-  console.error('[SyncService] Operation failed:', operation.type, error.message);
-
   // Check for specific error types
   if (error.response?.status === 404) {
     // Resource no longer exists - remove from queue
-    console.log('[SyncService] Resource not found, removing operation from queue');
     dequeueOperation(operation.id);
     return { success: false, removed: true };
   }
@@ -283,13 +268,11 @@ function handleOperationError(operation, error) {
   if (operation.retryCount < MAX_RETRIES) {
     // Mark as pending to retry later
     updateOperationStatus(operation.id, OPERATION_STATUS.PENDING);
-    console.log('[SyncService] Will retry operation later, attempt:', operation.retryCount + 1);
     return { success: false, willRetry: true };
   }
 
   // Max retries exceeded - mark as failed
   updateOperationStatus(operation.id, OPERATION_STATUS.FAILED, error.message);
-  console.log('[SyncService] Operation failed after max retries');
   return { success: false, failed: true };
 }
 
@@ -298,24 +281,19 @@ function handleOperationError(operation, error) {
  */
 export async function applyConflictResolution(conflictId, resolution) {
   const offlineStore = useOfflineStore.getState();
-  const mainStore = useStore.getState();
 
   const { conflicts, resolveConflict, operationQueue, dequeueOperation } = offlineStore;
 
   const conflict = conflicts.find((c) => c.id === conflictId);
   if (!conflict) {
-    console.error('[SyncService] Conflict not found:', conflictId);
     return false;
   }
 
   const operation = operationQueue.find((op) => op.id === conflict.operationId);
   if (!operation) {
-    console.error('[SyncService] Operation not found for conflict:', conflict.operationId);
     resolveConflict(conflictId, resolution);
     return false;
   }
-
-  console.log('[SyncService] Applying resolution:', resolution, 'for conflict:', conflictId);
 
   try {
     switch (resolution) {
@@ -354,7 +332,6 @@ export async function applyConflictResolution(conflictId, resolution) {
         break;
 
       default:
-        console.error('[SyncService] Unknown resolution type:', resolution);
         return false;
     }
 
@@ -370,7 +347,6 @@ export async function applyConflictResolution(conflictId, resolution) {
 
     return true;
   } catch (error) {
-    console.error('[SyncService] Error applying resolution:', error);
     return false;
   }
 }
@@ -390,7 +366,7 @@ async function refreshCrateFromServer(crateId) {
       await mainStore.loadCrate(crateId);
     }
   } catch (error) {
-    console.error('[SyncService] Error refreshing crate from server:', error);
+    // Error refreshing crate from server
   }
 }
 
@@ -412,9 +388,6 @@ async function mergeTrackAdditions(conflict, operation) {
     if (newTrackIds.length > 0) {
       // Add only the new tracks
       await apiService.addTracksToCrate(conflict.crateId, newTrackIds);
-      console.log('[SyncService] Merged', newTrackIds.length, 'new tracks');
-    } else {
-      console.log('[SyncService] No new tracks to merge, all already exist on server');
     }
 
     // Remove the operation from queue
@@ -423,7 +396,6 @@ async function mergeTrackAdditions(conflict, operation) {
     // Refresh local state
     await refreshCrateFromServer(conflict.crateId);
   } catch (error) {
-    console.error('[SyncService] Error merging track additions:', error);
     throw error;
   }
 }
@@ -436,7 +408,6 @@ export async function syncSingleOperation(operationId) {
   const operation = offlineStore.operationQueue.find((op) => op.id === operationId);
 
   if (!operation) {
-    console.error('[SyncService] Operation not found:', operationId);
     return false;
   }
 

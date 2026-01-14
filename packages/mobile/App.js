@@ -248,12 +248,9 @@ export default function App() {
         if (success && mounted) {
           // Setup event handlers with Zustand store
           TrackPlayerService.setupEventHandlers(useStore);
-          console.log('TrackPlayer initialized successfully');
-        } else if (!success) {
-          console.error('Failed to initialize TrackPlayer');
         }
       } catch (error) {
-        console.error('Error initializing TrackPlayer:', error);
+        // TrackPlayer initialization failed
       }
     }
 
@@ -268,8 +265,6 @@ export default function App() {
   // Auto-reconnect on network change and trigger sync
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(async (state) => {
-      console.log('[App] Network state changed:', state.type, 'Connected:', state.isConnected);
-
       // Update network state in connection store
       useConnectionStore.getState().setNetworkState(state);
 
@@ -282,8 +277,6 @@ export default function App() {
         const urlToTest = serverURL || lastSuccessfulIP;
 
         if (!isConnected && urlToTest) {
-          console.log('[App] Network back, testing connection to:', urlToTest);
-
           // Use quick test (5 sec timeout) for faster reconnection
           const works = await quickTestConnection(urlToTest);
           if (works) {
@@ -292,20 +285,15 @@ export default function App() {
             if (!serverURL && lastSuccessfulIP) {
               setServerURL(lastSuccessfulIP);
             }
-            console.log('[App] Reconnected successfully!');
 
             // Auto-sync when reconnected if there are pending operations
             if (useOfflineStore.getState().hasPendingOperations()) {
-              console.log('[App] Auto-syncing pending operations...');
               syncQueue();
             }
-          } else {
-            console.log('[App] Reconnection test failed, will retry on next network change');
           }
         }
       } else {
         // Mark as disconnected when network is lost
-        console.log('[App] Network lost, marking as disconnected');
         useConnectionStore.getState().setConnected(false);
       }
     });

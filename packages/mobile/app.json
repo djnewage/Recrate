@@ -2,7 +2,7 @@
   "expo": {
     "name": "Recrate",
     "slug": "recrate",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -20,6 +20,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Recrate needs camera access to scan QR codes for connecting to your server.",
         "NSLocalNetworkUsageDescription": "Recrate needs local network access to connect to your music server on your home network.",
+        "NSMicrophoneUsageDescription": "Recrate uses the microphone to identify songs playing around you by capturing a short audio sample.",
         "NSBonjourServices": [
           "_http._tcp"
         ],

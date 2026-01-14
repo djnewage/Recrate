@@ -23,8 +23,6 @@ class ErrorBoundaryInner extends React.Component {
       scope.setExtra('componentStack', errorInfo.componentStack);
       Sentry.captureException(error);
     });
-
-    console.error('ErrorBoundary caught error:', error, errorInfo);
   }
 
   handleRetry = () => {

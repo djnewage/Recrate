@@ -21,7 +21,6 @@ const AIKeyService = {
         return true;
       }
     } catch (error) {
-      console.error('Error saving API key:', error);
       return false;
     }
   },
@@ -34,7 +33,6 @@ const AIKeyService = {
       const key = await SecureStore.getItemAsync(AI_KEY_STORAGE_KEY);
       return key || null;
     } catch (error) {
-      console.error('Error getting API key:', error);
       return null;
     }
   },
@@ -55,7 +53,6 @@ const AIKeyService = {
       await SecureStore.deleteItemAsync(AI_KEY_STORAGE_KEY);
       return true;
     } catch (error) {
-      console.error('Error removing API key:', error);
       return false;
     }
   },

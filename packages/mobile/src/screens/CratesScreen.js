@@ -156,7 +156,7 @@ const CratesScreen = ({ navigation, route }) => {
       // Force server to refresh its cache from Serato files
       await apiService.refreshCrates();
     } catch (error) {
-      console.warn('[CratesScreen] Failed to refresh server cache:', error.message);
+      // Failed to refresh server cache
     }
     // Then reload crates
     await loadCrates();
