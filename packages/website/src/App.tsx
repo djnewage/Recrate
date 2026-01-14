@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain } from 'lucide-react'
+import { Download, Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Mail } from 'lucide-react'
 
 const GITHUB_REPO = 'djnewage/Recrate'
 
@@ -93,6 +93,10 @@ function App() {
   // Contact form state
   const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' })
   const [contactStatus, setContactStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
+
+  // Waitlist form state
+  const [waitlistEmail, setWaitlistEmail] = useState('')
+  const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
 
   // Detect chip type on mount
   useEffect(() => {
@@ -194,6 +198,30 @@ function App() {
     }
   }, [contactForm])
 
+  const handleWaitlistSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    setWaitlistStatus('sending')
+
+    try {
+      const response = await fetch('https://formspree.io/f/xwkzbkkl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: waitlistEmail }),
+      })
+
+      if (response.ok) {
+        setWaitlistStatus('success')
+        setWaitlistEmail('')
+      } else {
+        setWaitlistStatus('error')
+        setTimeout(() => setWaitlistStatus('idle'), 5000)
+      }
+    } catch {
+      setWaitlistStatus('error')
+      setTimeout(() => setWaitlistStatus('idle'), 5000)
+    }
+  }, [waitlistEmail])
+
   return (
     <div className="min-h-screen">
       {/* Navigation */}
@@ -273,21 +301,65 @@ function App() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.6 }}
-            className="flex flex-col sm:flex-row gap-4 justify-center"
+            className="flex flex-col items-center gap-6"
           >
-            <a
+            {/* Desktop Download CTA - Hidden for pre-launch */}
+            {/* <a
               href="#download"
               className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold text-lg hover:from-purple-600 hover:to-pink-600 transition-all btn-glow"
             >
               <Download size={20} />
-              Download Now
-            </a>
-            <a
-              href="#features"
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white/10 border border-white/20 rounded-full font-semibold text-lg hover:bg-white/20 transition-all"
-            >
-              Learn More
-            </a>
+              Download for Mac
+            </a> */}
+
+            {/* Mobile App Waitlist */}
+            <div className="w-full max-w-md">
+              <p className="text-gray-400 text-sm mb-3 text-center">
+                Get notified when the mobile app launches
+              </p>
+              {waitlistStatus === 'success' ? (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="flex items-center justify-center gap-2 px-6 py-3 bg-green-500/20 border border-green-500/30 rounded-full text-green-400"
+                >
+                  <Check size={18} />
+                  You're on the list!
+                </motion.div>
+              ) : (
+                <form onSubmit={handleWaitlistSubmit} className="flex gap-2">
+                  <input
+                    type="email"
+                    required
+                    value={waitlistEmail}
+                    onChange={(e) => setWaitlistEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-full text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    disabled={waitlistStatus === 'sending'}
+                    className="px-6 py-3 bg-white/10 border border-white/20 rounded-full font-semibold hover:bg-white/20 transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {waitlistStatus === 'sending' ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <Mail size={18} />
+                    )}
+                    <span className="hidden sm:inline">Join Waitlist</span>
+                  </button>
+                </form>
+              )}
+              {waitlistStatus === 'error' && (
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-red-400 text-sm mt-2 text-center"
+                >
+                  Something went wrong. Please try again.
+                </motion.p>
+              )}
+            </div>
           </motion.div>
         </div>
 
@@ -479,7 +551,34 @@ function App() {
           </motion.div>
 
           <div className="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            {/* macOS Download - Auto-detects Apple Silicon vs Intel */}
+            {/* macOS Download - Coming Soon (pre-launch) */}
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="relative flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/5 opacity-60 cursor-not-allowed text-left"
+            >
+              {/* Coming Soon badge */}
+              <div className="absolute -top-3 -right-3 z-10 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-semibold text-white shadow-lg">
+                Coming Soon
+              </div>
+              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center flex-shrink-0">
+                <Apple size={32} className="text-white" />
+              </div>
+              <div className="text-left flex-grow">
+                <div className="text-sm text-gray-400 mb-1">Download for</div>
+                <div className="text-2xl font-bold">macOS</div>
+                <div className="text-sm text-gray-500">
+                  macOS 12+
+                </div>
+              </div>
+              <div className="ml-auto flex-shrink-0">
+                <AlertCircle size={20} className="text-gray-500" />
+              </div>
+            </motion.div>
+
+            {/* macOS Download - Functional version (uncomment when ready to launch)
             {(() => {
               const macDownloadUrl = isAppleSiliconMac ? downloads.macArm : downloads.macIntel
               const macSize = isAppleSiliconMac ? downloads.macArmSize : downloads.macIntelSize
@@ -509,7 +608,6 @@ function App() {
                     <div className="text-sm text-gray-500">
                       {loading ? 'Checking...' : hasMacDownload ? `${chipLabel}${macSize ? ` • ${macSize}` : ''}` : 'Coming Soon'}
                     </div>
-                    {/* Show link to other version */}
                     {!loading && hasMacDownload && (
                       <button
                         onClick={(e) => {
@@ -550,6 +648,7 @@ function App() {
                 </motion.button>
               )
             })()}
+            */}
 
             {/* Windows Download - Coming Soon */}
             <motion.div
