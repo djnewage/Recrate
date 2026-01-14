@@ -14,7 +14,7 @@ function initSentry() {
     return;
   }
 
-  const packageVersion = require('../../../package.json').version;
+  const packageVersion = require('../../package.json').version;
 
   Sentry.init({
     dsn,
