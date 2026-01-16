@@ -11,23 +11,25 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import TextTicker from 'react-native-text-ticker';
 import { useProgress } from 'react-native-track-player';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import { apiService } from '../services/api';
+import SpectralWaveformContainer from '../components/SpectralWaveformContainer';
+import CuePointBank from '../components/CuePointBank';
 
 const { width } = Dimensions.get('window');
+
+// Waveform width (full width minus padding)
+const WAVEFORM_WIDTH = width - SPACING.xl * 2;
 
 const PlayerScreen = ({ route, navigation }) => {
   const { track: initialTrack } = route.params || {};
   const [showCratesModal, setShowCratesModal] = useState(false);
   const [selectedCrates, setSelectedCrates] = useState([]);
   const [isAddingToCrates, setIsAddingToCrates] = useState(false);
-  const [isSeeking, setIsSeeking] = useState(false);
-  const [seekPosition, setSeekPosition] = useState(0);
 
   // Get real playback progress from TrackPlayer
   const { position, duration } = useProgress();
@@ -96,14 +98,8 @@ const PlayerScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleSliderChange = (value) => {
-    setIsSeeking(true);
-    setSeekPosition(value);
-  };
-
-  const handleSliderComplete = async (value) => {
-    await seekTo(value);
-    setIsSeeking(false);
+  const handleWaveformSeek = async (seekPosition) => {
+    await seekTo(seekPosition);
   };
 
   const handlePrevious = () => {
@@ -290,24 +286,28 @@ const PlayerScreen = ({ route, navigation }) => {
         </View>
       </View>
 
-      {/* Progress Bar */}
+      {/* Spectral Waveform Progress */}
       <View style={styles.progressContainer}>
-        <Slider
-          style={styles.slider}
-          minimumValue={0}
-          maximumValue={duration || 1}
-          value={isSeeking ? seekPosition : position}
-          onValueChange={handleSliderChange}
-          onSlidingComplete={handleSliderComplete}
-          minimumTrackTintColor="#8B5CF6"
-          maximumTrackTintColor="rgba(139, 92, 246, 0.3)"
-          thumbTintColor="#EC4899"
+        <SpectralWaveformContainer
+          trackId={track.id}
+          duration={duration || track.duration || 0}
+          onSeek={handleWaveformSeek}
+          width={WAVEFORM_WIDTH}
+          height={60}
         />
         <View style={styles.timeContainer}>
-          <Text style={styles.timeText}>{formatTime(isSeeking ? seekPosition : position)}</Text>
+          <Text style={styles.timeText}>{formatTime(position)}</Text>
           <Text style={styles.timeText}>{formatTime(duration || 0)}</Text>
         </View>
       </View>
+
+      {/* Cue Point Bank */}
+      <CuePointBank
+        trackId={track.id}
+        currentPosition={position}
+        duration={duration || track.duration || 0}
+        onSeek={handleWaveformSeek}
+      />
 
       {/* Playback Controls */}
       <View style={styles.controls}>
@@ -464,8 +464,8 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   artworkShadow: {
-    width: width * 0.75,
-    height: width * 0.75,
+    width: width * 0.60,
+    height: width * 0.60,
     borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: {
@@ -541,14 +541,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     marginBottom: SPACING.md,
   },
-  slider: {
-    width: '100%',
-    height: 40,
-  },
   timeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.xs,
+    marginTop: SPACING.sm,
   },
   timeText: {
     fontSize: FONT_SIZES.sm,

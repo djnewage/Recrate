@@ -15,5 +15,7 @@ export const ENDPOINTS = {
   SEARCH: '/api/search',
   STREAM: '/api/stream',
   ARTWORK: '/api/artwork',
+  WAVEFORM: '/api/waveform',
   AI: '/api/ai',
+  CUEPOINTS: '/api/cuepoints',
 };

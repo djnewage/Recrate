@@ -180,6 +180,36 @@ export const apiService = {
     }
   },
 
+  // Waveform endpoint
+  getWaveform: async (trackId, peakCount = 150) => {
+    try {
+      const response = await api.get(`${ENDPOINTS.WAVEFORM}/${trackId}`, {
+        params: { peakCount },
+        timeout: 30000, // 30 seconds for waveform generation
+      });
+      return response.data;
+    } catch (error) {
+      // Return null on error (waveform is optional)
+      console.warn(`Failed to get waveform for track ${trackId}:`, error.message);
+      return null;
+    }
+  },
+
+  // Spectral waveform endpoint (colored waveform with frequency bands)
+  getSpectralWaveform: async (trackId, sampleCount = 800) => {
+    try {
+      const response = await api.get(`${ENDPOINTS.WAVEFORM}/${trackId}/spectral`, {
+        params: { samples: sampleCount },
+        timeout: 60000, // 60 seconds for spectral analysis
+      });
+      return response.data;
+    } catch (error) {
+      // Return null on error (spectral waveform is optional)
+      console.warn(`Failed to get spectral waveform for track ${trackId}:`, error.message);
+      return null;
+    }
+  },
+
   // AI Crate Builder endpoints
   getAIStatus: async () => {
     const response = await api.get(`${ENDPOINTS.AI}/status`);
@@ -221,6 +251,31 @@ export const apiService = {
     }, {
       timeout: 60000, // 1 minute for save operation
     });
+    return response.data;
+  },
+
+  // Cue Points endpoints
+  getCuePoints: async (trackId) => {
+    const response = await api.get(`${ENDPOINTS.CUEPOINTS}/${trackId}`);
+    return response.data;
+  },
+
+  setCuePoint: async (trackId, bankNumber, position, label = null) => {
+    const response = await api.post(`${ENDPOINTS.CUEPOINTS}/${trackId}`, {
+      bankNumber,
+      position,
+      label,
+    });
+    return response.data;
+  },
+
+  deleteCuePoint: async (trackId, bankNumber) => {
+    const response = await api.delete(`${ENDPOINTS.CUEPOINTS}/${trackId}/${bankNumber}`);
+    return response.data;
+  },
+
+  deleteAllCuePoints: async (trackId) => {
+    const response = await api.delete(`${ENDPOINTS.CUEPOINTS}/${trackId}`);
     return response.data;
   },
 };
