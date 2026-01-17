@@ -60,7 +60,10 @@ function formatDateForFilename(date) {
 
 // ============================================================================
 // Serato Markers_ (v1) Format Support
-// Serato DJ prefers v1 over v2, so we must write BOTH for Serato compatibility
+// IMPORTANT: Serato DJ requires BOTH v1 and v2 formats for full compatibility:
+// - Cues 1-5 (index 0-4): Read from v1 format (Serato Markers_)
+// - Cues 6-8 (index 5-7): Read from v2 format (Serato Markers2) when v1 is present
+// We must write BOTH formats - v1-only or v2-only will not work correctly
 // ============================================================================
 
 /**
@@ -178,11 +181,14 @@ function buildMarkersV1Entry(entry) {
     // Reserved bytes 0x0A-0x0F already zeroed by Buffer.alloc
 
     // Color (RGB to serato32)
-    // Use provided color or default based on index
-    let color = entry.color;
-    if (!color && DEFAULT_CUE_COLORS && entry.index !== undefined) {
-      const hexColor = DEFAULT_CUE_COLORS[entry.index % DEFAULT_CUE_COLORS.length];
-      color = hexToRgb(hexColor);
+    // Check for r,g,b as separate properties (from extractCuePoints) or as color object
+    let color;
+    if (entry.r !== undefined && entry.g !== undefined && entry.b !== undefined) {
+      color = { r: entry.r, g: entry.g, b: entry.b };
+    } else if (entry.color) {
+      color = entry.color;
+    } else if (DEFAULT_CUE_COLORS && entry.index !== undefined) {
+      color = DEFAULT_CUE_COLORS[entry.index] || DEFAULT_CUE_COLORS[0];
     }
     if (!color) {
       color = { r: 204, g: 0, b: 0 };  // Default red
@@ -777,12 +783,13 @@ class SeratoFileWriter {
 
   /**
    * Write markers to ID3 GEOB frames (MP3/AIFF)
-   * Writes BOTH Serato Markers_ (v1) and Serato Markers2 (v2) frames
-   * because Serato DJ reads from v1 preferentially
+   * Writes BOTH Serato Markers_ (v1) and Serato Markers2 (v2) formats for full compatibility:
+   * - v1 format: Required for cues 1-5 (index 0-4) - Serato only reads these from v1
+   * - v2 format: Required for cues 6-8 (index 5-7) - But only when v1 is also present
    *
    * @param {string} filePath - Path to the audio file
    * @param {Buffer} markersBuffer - Encoded v2 markers binary
-   * @param {Array} cuePoints - Array of cue point objects for v1 encoding
+   * @param {Array} cuePoints - Array of cue point objects for v1 format encoding
    * @private
    */
   async _writeMarkersToID3(filePath, markersBuffer, cuePoints = []) {
@@ -807,19 +814,20 @@ class SeratoFileWriter {
     // Step 4: Create the ID3 tag buffer with standard frames (no GEOB yet)
     let id3Buffer = NodeID3.create(tagsToWrite);
 
-    // Step 5: Build BOTH Serato GEOB frames
+    // Step 5: Build Serato Markers_ (v1) GEOB frame
+    // CRITICAL: Serato DJ reads cues 1-5 (index 0-4) ONLY from v1 format
+    // v1 uses raw binary (no base64), unlike v2 which uses 01 01 + base64
+    const v1BinaryData = buildMarkersV1Data(cuePoints);
+    const v1Frame = buildRawGEOBFrame('Serato Markers_', v1BinaryData);
+    logger.info(`[SERATO WRITER] V1 frame size: ${v1Frame.length} bytes (${cuePoints.filter(c => c.index < 5).length} cues for slots 0-4)`);
 
-    // 5a: Build Serato Markers_ (v1) frame - Serato reads this preferentially!
-    const v1Data = buildMarkersV1Data(cuePoints);
-    const v1Frame = buildRawGEOBFrame('Serato Markers_', v1Data);
-    logger.debug(`[SERATO WRITER] V1 frame size: ${v1Frame.length} bytes (data: ${v1Data.length} bytes)`);
-
-    // 5b: Build Serato Markers2 (v2) frame - extended format with base64
+    // Step 6: Build Serato Markers2 (v2) GEOB frame
+    // v2 format supports all 8 cue points but Serato only reads cues 6-8 from it
     const v2Data = encodeMarkersForGEOB(markersBuffer);
     const v2Frame = buildRawGEOBFrame('Serato Markers2', v2Data);
-    logger.debug(`[SERATO WRITER] V2 frame size: ${v2Frame.length} bytes`);
+    logger.info(`[SERATO WRITER] V2 frame size: ${v2Frame.length} bytes`);
 
-    // Step 6: Insert both GEOB frames into the ID3 tag
+    // Step 7: Insert GEOB frames into the ID3 tag
     // ID3 structure: header (10 bytes) + frames
     const id3Header = id3Buffer.slice(0, 10);
     const existingFrames = id3Buffer.slice(10);
@@ -842,16 +850,17 @@ class SeratoFileWriter {
     newHeader[9] = newFramesSize & 0x7F;
 
     // Combine: header + existing frames + v1 frame + v2 frame
+    // NOTE: v1 frame comes first to ensure Serato finds it for cues 1-5
     const newId3Tag = Buffer.concat([newHeader, existingFrames, v1Frame, v2Frame]);
 
-    // Step 7: Remove old ID3 tag from file and prepend new one
+    // Step 8: Remove old ID3 tag from file and prepend new one
     const audioContent = NodeID3.removeTagsFromBuffer(fileContent) || fileContent;
     const newFileContent = Buffer.concat([newId3Tag, audioContent]);
 
-    // Step 8: Write to file
+    // Step 9: Write to file
     await fs.writeFile(filePath, newFileContent);
 
-    logger.info(`[SERATO WRITER] Successfully wrote ID3 tag (${newId3Tag.length} bytes) with both Serato Markers_ (v1) and Serato Markers2 (v2) frames`);
+    logger.info(`[SERATO WRITER] Successfully wrote ID3 tag (${newId3Tag.length} bytes) with both v1 and v2 Serato frames`);
   }
 
   /**
