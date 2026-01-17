@@ -1,6 +1,8 @@
 const express = require('express');
 const db = require('../../utils/db');
 const logger = require('../../utils/logger');
+const { SeratoFileWriter } = require('../../audio/serato-file-writer');
+const { hexToRgb } = require('../../audio/serato-markers');
 
 /**
  * Cue point colors (Serato-inspired, fixed per bank)
@@ -18,26 +20,83 @@ const CUE_COLORS = {
 
 /**
  * Create cue points routes
+ * @param {Object} parser - Serato parser instance for accessing track data
  * @returns {express.Router}
  */
-function createCuePointsRoutes() {
+function createCuePointsRoutes(parser = null) {
   const router = express.Router();
+  const seratoWriter = new SeratoFileWriter();
+
+  /**
+   * GET /api/cuepoints/debug/stats
+   * Get statistics about cue points in the database
+   * Useful for debugging cue point import issues
+   */
+  router.get('/debug/stats', (req, res) => {
+    try {
+      const stats = db.get(`
+        SELECT
+          COUNT(DISTINCT track_id) as tracks_with_cues,
+          COUNT(*) as total_cue_points
+        FROM cue_points
+      `);
+
+      // Get breakdown by bank number
+      const byBank = db.all(`
+        SELECT bank_number, COUNT(*) as count
+        FROM cue_points
+        GROUP BY bank_number
+        ORDER BY bank_number
+      `);
+
+      res.json({
+        tracksWithCues: stats?.tracks_with_cues || 0,
+        totalCuePoints: stats?.total_cue_points || 0,
+        byBank: byBank || [],
+      });
+    } catch (error) {
+      logger.error('[CUE POINTS] Error getting stats:', error);
+      res.status(500).json({ error: 'Failed to get cue point stats' });
+    }
+  });
 
   /**
    * GET /api/cuepoints/:trackId
    * Get all cue points for a track
+   * Performs on-demand extraction from audio file if no cue points exist in DB
    */
-  router.get('/:trackId', (req, res) => {
+  router.get('/:trackId', async (req, res) => {
     try {
       const { trackId } = req.params;
 
-      const cuePoints = db.all(
+      // First check database
+      let cuePoints = db.all(
         `SELECT bank_number, position, color, label, created_at, updated_at
          FROM cue_points
          WHERE track_id = ?
          ORDER BY bank_number`,
         [trackId]
       );
+
+      // If no cue points in DB, try on-demand extraction from audio file
+      if (cuePoints.length === 0 && parser) {
+        const track = await parser.getTrackById(trackId);
+        if (track && track.filePath) {
+          logger.info(`[CUE POINTS] On-demand extraction for track: ${track.title}`);
+          const imported = await parser.importSeratoCuePoints(track);
+          if (imported > 0) {
+            // Re-fetch from database after import
+            cuePoints = db.all(
+              `SELECT bank_number, position, color, label, created_at, updated_at
+               FROM cue_points
+               WHERE track_id = ?
+               ORDER BY bank_number`,
+              [trackId]
+            );
+            logger.info(`[CUE POINTS] On-demand imported ${imported} cue points for: ${track.title}`);
+          }
+        }
+      }
 
       // Convert to object keyed by bank number for easier client-side usage
       const cuePointsMap = {};
@@ -64,12 +123,12 @@ function createCuePointsRoutes() {
   /**
    * POST /api/cuepoints/:trackId
    * Set or update a cue point
-   * Body: { bankNumber: 1-8, position: float (seconds), label?: string }
+   * Body: { bankNumber: 1-8, position: float (seconds), label?: string, syncToSerato?: boolean }
    */
-  router.post('/:trackId', (req, res) => {
+  router.post('/:trackId', async (req, res) => {
     try {
       const { trackId } = req.params;
-      const { bankNumber, position, label } = req.body;
+      const { bankNumber, position, label, syncToSerato = false } = req.body;
 
       // Validate bank number
       if (!bankNumber || bankNumber < 1 || bankNumber > 8) {
@@ -101,14 +160,59 @@ function createCuePointsRoutes() {
 
       logger.info(`[CUE POINTS] Set cue point ${bankNumber} for track ${trackId} at ${position}s`);
 
-      res.json({
+      // Response object
+      const response = {
         success: true,
         trackId,
         bankNumber,
         position,
         color,
         label: label || null,
-      });
+      };
+
+      // Optionally sync to Serato file
+      if (syncToSerato && parser) {
+        try {
+          const track = await parser.getTrackById(trackId);
+          if (track && track.filePath) {
+            // Convert hex color to RGB
+            const rgb = hexToRgb(color) || { r: 0xCC, g: 0x00, b: 0x00 };
+
+            // DEBUG: Log index conversion
+            const index = bankNumber - 1;
+            logger.info(`[DEBUG] [CUEPOINTS API] bankNumber received: ${bankNumber}`);
+            logger.info(`[DEBUG] [CUEPOINTS API] Converted to index: ${index}`);
+            logger.info(`[DEBUG] [CUEPOINTS API] position (seconds): ${position}`);
+            logger.info(`[DEBUG] [CUEPOINTS API] positionMs: ${Math.round(position * 1000)}`);
+
+            // Write cue point to audio file
+            const writeResult = await seratoWriter.writeCuePoints(track.filePath, [{
+              index: index,
+              positionMs: Math.round(position * 1000),
+              r: rgb.r,
+              g: rgb.g,
+              b: rgb.b,
+              label: label || '',
+            }]);
+
+            if (writeResult.success) {
+              logger.info(`[CUE POINTS] Synced cue ${bankNumber} to Serato file: ${track.filePath}`);
+              response.seratoSync = { success: true, backup: writeResult.backup };
+            } else {
+              logger.warn(`[CUE POINTS] Serato sync failed (saved to DB only): ${writeResult.error}`);
+              response.seratoSync = { success: false, error: writeResult.error };
+            }
+          } else {
+            logger.warn(`[CUE POINTS] Cannot sync to Serato: track not found or no file path`);
+            response.seratoSync = { success: false, error: 'Track not found' };
+          }
+        } catch (syncError) {
+          logger.warn(`[CUE POINTS] Serato sync error: ${syncError.message}`);
+          response.seratoSync = { success: false, error: syncError.message };
+        }
+      }
+
+      res.json(response);
     } catch (error) {
       logger.error('[CUE POINTS] Error setting cue point:', error);
       res.status(500).json({ error: 'Failed to set cue point' });
@@ -118,10 +222,12 @@ function createCuePointsRoutes() {
   /**
    * DELETE /api/cuepoints/:trackId/:bankNumber
    * Delete a specific cue point
+   * Query params: ?syncToSerato=true to also remove from audio file
    */
-  router.delete('/:trackId/:bankNumber', (req, res) => {
+  router.delete('/:trackId/:bankNumber', async (req, res) => {
     try {
       const { trackId, bankNumber } = req.params;
+      const syncToSerato = req.query.syncToSerato === 'true';
       const bank = parseInt(bankNumber, 10);
 
       // Validate bank number
@@ -138,11 +244,39 @@ function createCuePointsRoutes() {
 
       logger.info(`[CUE POINTS] Deleted cue point ${bank} for track ${trackId}`);
 
-      res.json({
+      const response = {
         success: true,
         trackId,
         bankNumber: bank,
-      });
+      };
+
+      // Optionally sync deletion to Serato file
+      if (syncToSerato && parser) {
+        try {
+          const track = await parser.getTrackById(trackId);
+          if (track && track.filePath) {
+            const deleteResult = await seratoWriter.deleteCuePoint(
+              track.filePath,
+              bank - 1 // Convert to 0-indexed
+            );
+
+            if (deleteResult.success) {
+              logger.info(`[CUE POINTS] Removed cue ${bank} from Serato file: ${track.filePath}`);
+              response.seratoSync = { success: true, backup: deleteResult.backup };
+            } else {
+              logger.warn(`[CUE POINTS] Serato sync failed: ${deleteResult.error}`);
+              response.seratoSync = { success: false, error: deleteResult.error };
+            }
+          } else {
+            response.seratoSync = { success: false, error: 'Track not found' };
+          }
+        } catch (syncError) {
+          logger.warn(`[CUE POINTS] Serato sync error: ${syncError.message}`);
+          response.seratoSync = { success: false, error: syncError.message };
+        }
+      }
+
+      res.json(response);
     } catch (error) {
       logger.error('[CUE POINTS] Error deleting cue point:', error);
       res.status(500).json({ error: 'Failed to delete cue point' });
