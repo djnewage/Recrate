@@ -69,7 +69,7 @@ class APIServer {
     this.app.use('/api/config', createConfigRoutes(this.parser));
     this.app.use('/api/identify', createIdentifyRoutes());
     this.app.use('/api/ai', createAIRoutes(this.parser, this.writer));
-    this.app.use('/api/cuepoints', createCuePointsRoutes());
+    this.app.use('/api/cuepoints', createCuePointsRoutes(this.parser));
 
     // Waveform routes (optional - requires FFmpeg)
     if (this.waveformGenerator) {

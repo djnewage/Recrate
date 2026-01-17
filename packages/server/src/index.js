@@ -4,6 +4,9 @@ const db = require("./utils/db");
 const { SeratoParser } = require("./serato/parser");
 const { SeratoWriter } = require("./serato/writer");
 const AudioStreamer = require("./audio/streamer");
+const WaveformGenerator = require("./audio/waveform");
+const SpectralAnalyzer = require("./audio/spectral-analyzer");
+const { FileCache } = require("./utils/cache");
 const APIServer = require("./api/server");
 const chokidar = require("chokidar");
 const path = require("path");
@@ -17,6 +20,9 @@ class RecrateService {
     this.parser = null;
     this.writer = null;
     this.streamer = null;
+    this.waveformGenerator = null;
+    this.spectralAnalyzer = null;
+    this.waveformCache = null;
     this.apiServer = null;
     this.watcher = null;
     this.discovery = null;
@@ -58,13 +64,33 @@ class RecrateService {
       this.streamer = new AudioStreamer(this.parser);
       logger.success("Audio streamer initialized");
 
+      // Initialize waveform generator and spectral analyzer
+      logger.info("Initializing waveform generator...");
+      this.waveformCache = new FileCache(config.cache.directory);
+      this.waveformGenerator = new WaveformGenerator(this.parser, this.waveformCache);
+      const ffmpegAvailable = await this.waveformGenerator.checkFFmpeg();
+      if (ffmpegAvailable) {
+        logger.success("Waveform generator initialized (FFmpeg available)");
+
+        // Initialize spectral analyzer (uses same cache)
+        logger.info("Initializing spectral analyzer...");
+        this.spectralAnalyzer = new SpectralAnalyzer(this.parser, this.waveformCache);
+        logger.success("Spectral analyzer initialized");
+      } else {
+        logger.warn("FFmpeg not found - waveform generation will be unavailable");
+        logger.warn("Install FFmpeg with: brew install ffmpeg");
+        this.waveformGenerator = null;
+      }
+
       // Initialize API server
       logger.info("Initializing API server...");
       this.apiServer = new APIServer(
         config,
         this.parser,
         this.writer,
-        this.streamer
+        this.streamer,
+        this.waveformGenerator,
+        this.spectralAnalyzer
       );
       this.apiServer.initialize();
 
@@ -264,6 +290,7 @@ class RecrateService {
     logger.info(`  GET    /api/stream/:id           - Stream audio`);
     logger.info(`  GET    /api/artwork/:id          - Get artwork`);
     logger.info(`  GET    /api/search?q=query       - Search tracks`);
+    logger.info(`  GET    /api/waveform/:id         - Get waveform peaks`);
     logger.info("");
     logger.info("Mode: Read-write (⚠️  Crate modifications will affect Serato library)");
     logger.info("=".repeat(60));

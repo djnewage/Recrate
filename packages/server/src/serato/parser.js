@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const MetadataExtractor = require('../audio/metadata');
 const pathResolver = require('../utils/pathResolver');
 const { toCamelot } = require('../utils/keyConverter');
+const db = require('../utils/db');
 
 /**
  * Custom error classes
@@ -434,6 +435,14 @@ class SeratoParser extends EventEmitter {
 
       const tracks = Array.from(tracksMap.values());
       logger.success(`Total library: ${tracks.length} tracks`);
+
+      // Import Serato cue points from audio files to database
+      this.indexingStatus.progress.message = 'Importing Serato cue points...';
+      this._emitProgress({ message: 'Importing Serato cue points...' });
+      const cueImportResult = await this.importAllSeratoCuePoints(tracks);
+      if (cueImportResult.total > 0) {
+        this._emitProgress({ message: `Imported ${cueImportResult.total} cue points from ${cueImportResult.tracksWithCues} tracks` });
+      }
 
       this.cache.set(cacheKey, tracks);
 
@@ -1276,6 +1285,115 @@ class SeratoParser extends EventEmitter {
       logger.warn(`Could not parse database V2: ${error.message}`);
       return null; // Return null to trigger fallback to directory scanning
     }
+  }
+
+  /**
+   * Import Serato cue points from audio file to database
+   * @param {Object} track - Track object with id and filePath
+   * @returns {number} Number of cue points imported
+   */
+  async importSeratoCuePoints(track) {
+    if (!track || !track.filePath || !track.id) {
+      return 0;
+    }
+
+    // Check if db is initialized
+    if (!db.isInitialized()) {
+      logger.warn('[SERATO CUE] Database not initialized, skipping cue point import');
+      return 0;
+    }
+
+    try {
+      // Extract Serato cue points from the audio file
+      const seratoCues = await this.metadataExtractor.extractSeratoCuePoints(track.filePath);
+
+      if (!seratoCues || seratoCues.length === 0) {
+        return 0;
+      }
+
+      let imported = 0;
+      for (const cue of seratoCues) {
+        try {
+          // bank_number is 1-indexed (1-8), cue.index is 0-indexed (0-7)
+          const bankNumber = cue.index + 1;
+          const position = cue.positionSec;
+          const color = cue.colorHex;
+          const label = cue.label || null;
+
+          // Check if cue point already exists for this track/bank
+          const existing = db.get(
+            `SELECT id FROM cue_points WHERE track_id = ? AND bank_number = ?`,
+            [track.id, bankNumber]
+          );
+
+          // Wrap db.run in try-catch to catch silent failures
+          try {
+            if (existing) {
+              // Update existing cue point
+              db.run(
+                `UPDATE cue_points SET position = ?, color = ?, label = ?, updated_at = datetime('now')
+                 WHERE track_id = ? AND bank_number = ?`,
+                [position, color, label, track.id, bankNumber]
+              );
+            } else {
+              // Insert new cue point
+              db.run(
+                `INSERT INTO cue_points (track_id, bank_number, position, color, label)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [track.id, bankNumber, position, color, label]
+              );
+            }
+            imported++;
+          } catch (dbError) {
+            logger.warn(`[SERATO CUE] DB error for cue ${cue.index}: ${dbError.message}`);
+            // Don't increment imported on failure
+          }
+        } catch (cueError) {
+          logger.warn(`[SERATO CUE] Error importing cue ${cue.index} for track ${track.id}:`, cueError.message);
+        }
+      }
+
+      if (imported > 0) {
+        logger.debug(`[SERATO CUE] Imported ${imported} cue points for: ${track.title}`);
+      }
+
+      return imported;
+    } catch (error) {
+      logger.warn(`[SERATO CUE] Error extracting cue points for ${track.filePath}:`, error.message);
+      return 0;
+    }
+  }
+
+  /**
+   * Import Serato cue points for all tracks in library
+   * @param {Array} tracks - Array of track objects
+   * @returns {Object} { total: number, tracksWithCues: number }
+   */
+  async importAllSeratoCuePoints(tracks) {
+    logger.info(`[SERATO CUE] Starting cue point import for ${tracks.length} tracks...`);
+
+    // Collect results first, then sum - avoids race condition on counter variables
+    const results = await Promise.all(
+      tracks.map(track =>
+        this.fileOpLimit(async () => {
+          try {
+            return await this.importSeratoCuePoints(track);
+          } catch (error) {
+            logger.warn(`[SERATO CUE] Error importing for ${track.id}: ${error.message}`);
+            return 0;
+          }
+        })
+      )
+    );
+
+    // Sum results after all promises complete (no race condition)
+    const totalCues = results.reduce((sum, count) => sum + count, 0);
+    const tracksWithCues = results.filter(count => count > 0).length;
+
+    // Always log the result so we can see what happened
+    logger.info(`[SERATO CUE] Import complete: ${totalCues} cue points from ${tracksWithCues}/${tracks.length} tracks`);
+
+    return { total: totalCues, tracksWithCues };
   }
 
   /**

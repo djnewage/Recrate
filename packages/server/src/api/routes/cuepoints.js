@@ -63,40 +63,34 @@ function createCuePointsRoutes(parser = null) {
   /**
    * GET /api/cuepoints/:trackId
    * Get all cue points for a track
-   * Performs on-demand extraction from audio file if no cue points exist in DB
+   * Always re-extracts from audio file to ensure fresh data (handles external Serato changes)
    */
   router.get('/:trackId', async (req, res) => {
     try {
       const { trackId } = req.params;
 
-      // First check database
-      let cuePoints = db.all(
+      // Always re-extract from audio file for fresh data
+      // This ensures we pick up any changes made in Serato DJ
+      if (parser) {
+        const track = await parser.getTrackById(trackId);
+        if (track && track.filePath) {
+          // Clear old database entries and re-import from audio file
+          db.run('DELETE FROM cue_points WHERE track_id = ?', [trackId]);
+          const imported = await parser.importSeratoCuePoints(track);
+          if (imported > 0) {
+            logger.debug(`[CUE POINTS] Fresh import: ${imported} cue points for: ${track.title}`);
+          }
+        }
+      }
+
+      // Return freshly imported data from database
+      const cuePoints = db.all(
         `SELECT bank_number, position, color, label, created_at, updated_at
          FROM cue_points
          WHERE track_id = ?
          ORDER BY bank_number`,
         [trackId]
       );
-
-      // If no cue points in DB, try on-demand extraction from audio file
-      if (cuePoints.length === 0 && parser) {
-        const track = await parser.getTrackById(trackId);
-        if (track && track.filePath) {
-          logger.info(`[CUE POINTS] On-demand extraction for track: ${track.title}`);
-          const imported = await parser.importSeratoCuePoints(track);
-          if (imported > 0) {
-            // Re-fetch from database after import
-            cuePoints = db.all(
-              `SELECT bank_number, position, color, label, created_at, updated_at
-               FROM cue_points
-               WHERE track_id = ?
-               ORDER BY bank_number`,
-              [trackId]
-            );
-            logger.info(`[CUE POINTS] On-demand imported ${imported} cue points for: ${track.title}`);
-          }
-        }
-      }
 
       // Convert to object keyed by bank number for easier client-side usage
       const cuePointsMap = {};

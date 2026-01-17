@@ -53,6 +53,7 @@ const PlayerScreen = ({ route, navigation }) => {
     toggleShuffle,
     repeatMode,
     shuffleEnabled,
+    cuePointsCache,
   } = useStore();
 
   // Use currentTrack from store if available, otherwise use initial track from params
@@ -294,6 +295,7 @@ const PlayerScreen = ({ route, navigation }) => {
           onSeek={handleWaveformSeek}
           width={WAVEFORM_WIDTH}
           height={60}
+          cuePoints={cuePointsCache[track?.id] || {}}
         />
         <View style={styles.timeContainer}>
           <Text style={styles.timeText}>{formatTime(position)}</Text>
@@ -304,7 +306,7 @@ const PlayerScreen = ({ route, navigation }) => {
       {/* Cue Point Bank */}
       <CuePointBank
         trackId={track.id}
-        currentPosition={position}
+        currentPosition={typeof position === 'number' && !isNaN(position) ? position : 0}
         duration={duration || track.duration || 0}
         onSeek={handleWaveformSeek}
       />

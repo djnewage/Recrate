@@ -265,12 +265,16 @@ export const apiService = {
       bankNumber,
       position,
       label,
+      syncToSerato: true,
     });
     return response.data;
   },
 
   deleteCuePoint: async (trackId, bankNumber) => {
-    const response = await api.delete(`${ENDPOINTS.CUEPOINTS}/${trackId}/${bankNumber}`);
+    const response = await api.delete(
+      `${ENDPOINTS.CUEPOINTS}/${trackId}/${bankNumber}`,
+      { params: { syncToSerato: 'true' } }
+    );
     return response.data;
   },
 
