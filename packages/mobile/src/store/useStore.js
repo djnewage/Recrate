@@ -1264,22 +1264,23 @@ const useStore = create(
   },
 
   // Cue points actions
-  loadCuePoints: async (trackId) => {
+  loadCuePoints: async (trackId, forceRefresh = false) => {
     const { cuePointsCache } = get();
+    const cachedData = cuePointsCache[trackId];
 
-    // Check if already cached
-    if (cuePointsCache[trackId]) {
-      return cuePointsCache[trackId];
+    // If not forcing refresh and cache exists, return cache
+    if (!forceRefresh && cachedData) {
+      return cachedData;
     }
 
-    // Set loading state
+    // Try to fetch fresh from server
     set({ isLoadingCuePoints: true });
 
     try {
       const data = await apiService.getCuePoints(trackId);
 
       if (data && data.cuePoints) {
-        // Add to cache
+        // Update cache with fresh data
         const { cuePointsCache: currentCache } = get();
         set({
           cuePointsCache: {
@@ -1291,16 +1292,27 @@ const useStore = create(
         return data.cuePoints;
       } else {
         set({ isLoadingCuePoints: false });
-        return {};
+        return cachedData || {};
       }
     } catch (error) {
-      console.warn(`Failed to load cue points for ${trackId}:`, error);
+      // OFFLINE FALLBACK: Return cached data if server unreachable
       set({ isLoadingCuePoints: false });
+      if (cachedData) {
+        console.log('[CUE POINTS] Offline - using cached data');
+        return cachedData;
+      }
+      console.warn(`Failed to load cue points for ${trackId}:`, error);
       return {};
     }
   },
 
   setCuePoint: async (trackId, bankNumber, position) => {
+    // Validate position before API call
+    if (typeof position !== 'number' || isNaN(position) || position < 0) {
+      console.warn(`[CUE] Invalid position rejected: ${position}`);
+      return false;
+    }
+
     try {
       const result = await apiService.setCuePoint(trackId, bankNumber, position);
 
@@ -1337,17 +1349,12 @@ const useStore = create(
       const result = await apiService.deleteCuePoint(trackId, bankNumber);
 
       if (result.success) {
-        // Update cache - remove the cue point
+        // IMPORTANT: Clear the entire cache for this track to force re-fetch
+        // This ensures we get fresh data from server/file on next access
+        // (Previously only removed the specific bank, which left stale data)
         const { cuePointsCache } = get();
-        const trackCuePoints = { ...(cuePointsCache[trackId] || {}) };
-        delete trackCuePoints[bankNumber];
-
-        set({
-          cuePointsCache: {
-            ...cuePointsCache,
-            [trackId]: trackCuePoints,
-          },
-        });
+        const { [trackId]: removed, ...rest } = cuePointsCache;
+        set({ cuePointsCache: rest });
 
         return true;
       }

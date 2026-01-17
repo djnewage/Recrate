@@ -6,7 +6,9 @@ import {
   StyleSheet,
   Dimensions,
   Animated,
+  Alert,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 
@@ -50,7 +52,8 @@ const formatTime = (seconds) => {
  * Individual cue button component
  */
 const CueButton = ({ bankNumber, cuePoint, onTap, onLongPress, isLoading }) => {
-  const color = CUE_COLORS[bankNumber];
+  // Use Serato color from cue point if available, fallback to default
+  const color = cuePoint?.color || CUE_COLORS[bankNumber];
   const isSet = cuePoint !== undefined && cuePoint !== null;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pressTimer = useRef(null);
@@ -164,6 +167,18 @@ const CuePointBank = ({
     }
   }, [trackId, loadCuePoints]);
 
+  // Refresh cue points when screen gains focus (catches external changes in Serato)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (trackId) {
+        // Try to refresh, but silently fall back to cache if offline
+        loadCuePoints(trackId, true).catch(() => {
+          // Offline - cache already returned by loadCuePoints
+        });
+      }
+    }, [trackId, loadCuePoints])
+  );
+
   const handleTap = useCallback(async (bankNumber, isSet) => {
     if (isSet) {
       // Seek to cue point position
@@ -172,14 +187,29 @@ const CuePointBank = ({
         onSeek(cuePoint.position);
       }
     } else {
-      // Set cue at current position
-      await setCuePoint(trackId, bankNumber, currentPosition);
+      // Validate position before setting cue
+      const validPosition = typeof currentPosition === 'number' && !isNaN(currentPosition)
+        ? currentPosition
+        : 0;
+      const success = await setCuePoint(trackId, bankNumber, validPosition);
+      if (!success) {
+        Alert.alert(
+          'Cue Point Error',
+          'Failed to set cue point. Please check your connection.'
+        );
+      }
     }
   }, [trackId, cuePoints, currentPosition, onSeek, setCuePoint]);
 
   const handleLongPress = useCallback(async (bankNumber) => {
     // Delete the cue point
-    await deleteCuePoint(trackId, bankNumber);
+    const success = await deleteCuePoint(trackId, bankNumber);
+    if (!success) {
+      Alert.alert(
+        'Cue Point Error',
+        'Failed to delete cue point. Please check your connection.'
+      );
+    }
   }, [trackId, deleteCuePoint]);
 
   // Render 8 buttons in 2 rows of 4
