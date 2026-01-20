@@ -3,6 +3,7 @@ const db = require('../../utils/db');
 const logger = require('../../utils/logger');
 const { SeratoFileWriter } = require('../../audio/serato-file-writer');
 const { hexToRgb } = require('../../audio/serato-markers');
+const { dumpSeratoFrames, formatDiagnosticResult } = require('../../audio/serato-debug');
 
 /**
  * Cue point colors (Serato-inspired, fixed per bank)
@@ -57,6 +58,77 @@ function createCuePointsRoutes(parser = null) {
     } catch (error) {
       logger.error('[CUE POINTS] Error getting stats:', error);
       res.status(500).json({ error: 'Failed to get cue point stats' });
+    }
+  });
+
+  /**
+   * POST /api/cuepoints/debug/file
+   * Debug endpoint to dump Serato marker frames from any audio file path
+   * Body: { filePath: string }
+   * Query: ?format=text for plain text output
+   */
+  router.post('/debug/file', async (req, res) => {
+    try {
+      const { filePath } = req.body;
+      const format = req.query.format || 'json';
+
+      if (!filePath) {
+        return res.status(400).json({ error: 'filePath is required' });
+      }
+
+      logger.info(`[CUE POINTS DEBUG] Dumping Serato frames for file: ${filePath}`);
+
+      const result = await dumpSeratoFrames(filePath);
+
+      if (format === 'text') {
+        res.type('text/plain');
+        res.send(formatDiagnosticResult(result));
+      } else {
+        res.json(result);
+      }
+    } catch (error) {
+      logger.error('[CUE POINTS DEBUG] Error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * GET /api/cuepoints/:trackId/debug
+   * Debug endpoint to dump Serato marker frames from audio file
+   * Returns hex dumps and parsed data for both V1 and V2 formats
+   */
+  router.get('/:trackId/debug', async (req, res) => {
+    try {
+      const { trackId } = req.params;
+      const format = req.query.format || 'json'; // 'json' or 'text'
+
+      if (!parser) {
+        return res.status(500).json({ error: 'Parser not available' });
+      }
+
+      const track = await parser.getTrackById(trackId);
+      if (!track || !track.filePath) {
+        return res.status(404).json({ error: 'Track not found or no file path' });
+      }
+
+      logger.info(`[CUE POINTS DEBUG] Dumping Serato frames for: ${track.filePath}`);
+
+      const result = await dumpSeratoFrames(track.filePath);
+
+      if (format === 'text') {
+        res.type('text/plain');
+        res.send(formatDiagnosticResult(result));
+      } else {
+        res.json({
+          trackId,
+          trackTitle: track.title,
+          filePath: track.filePath,
+          ...result,
+        });
+      }
+    } catch (error) {
+      logger.error('[CUE POINTS DEBUG] Error:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 

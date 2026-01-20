@@ -407,8 +407,8 @@ class SeratoMarkersParser {
 
     // Entries
     for (const entry of entries) {
-      // Entry marker
-      buffers.push(Buffer.from([0x00]));
+      // NOTE: No entry marker byte - Serato's native format doesn't use them
+      // (Previously we added 0x00 here which broke cues 6-8)
 
       // Type (null-terminated)
       buffers.push(Buffer.from(entry.type + '\x00', 'utf8'));

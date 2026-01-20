@@ -90,8 +90,7 @@ This explains why apps that only write v2 format don't work with Serato - the v1
     01 01            - Version bytes (inside base64)
 
   [Entries: variable]
-    00               - Entry marker
-    "CUE\0"          - Type string (null-terminated)
+    "CUE\0"          - Type string (null-terminated) - NO entry marker byte!
     XX XX XX XX      - Payload length (4 bytes, big-endian)
     [payload]        - Type-specific data
 ```
@@ -270,6 +269,7 @@ Read back and confirm all cue points were written correctly.
 |------|---------|
 | `src/audio/serato-file-writer.js` | Main writer class, handles backups, v1 encoding, file I/O |
 | `src/audio/serato-markers.js` | V2 binary parser/encoder (`SeratoMarkersParser` class) |
+| `src/audio/serato-debug.js` | Hex dump diagnostics for comparing Serato frame formats |
 
 ### Key Functions
 
@@ -286,6 +286,12 @@ Read back and confirm all cue points were written correctly.
 - `SeratoMarkersParser.encode()` - Creates v2 binary
 - `SeratoMarkersParser.extractCuePoints()` - Gets cue points from entries
 - `SeratoMarkersParser.mergeEntries()` - Merges new cues with existing
+
+**serato-debug.js:**
+- `dumpSeratoFrames()` - Extracts and hex dumps both V1 and V2 frames from audio file
+- `formatDiagnosticResult()` - Formats diagnostic output as readable text
+- `hexDump()` - Creates hex dump with ASCII column
+- `parseV1Data()` / `parseV2Data()` - Parse respective frame formats for diagnostics
 
 ---
 
@@ -326,6 +332,45 @@ const syncsafe = [
 ];
 ```
 
+### 8. V2 Format Has NO Entry Markers (Critical Bug Fix - January 2026)
+
+**The Problem:**
+Cue points 6-8 were not appearing in Serato DJ, even though V2 was being written and cues 1-5 worked correctly.
+
+**Root Cause:**
+Our V2 encoder was adding `00` entry marker bytes before each entry. However, **Serato's native format has NO entry markers** - entries start directly with the type string.
+
+**How We Found It:**
+By hex-dumping app-generated files vs Serato-native files:
+
+```
+Serato-native (WORKS):     01 01 43 4f 4c 4f 52 00 ...  ("COLOR" starts immediately)
+App-generated (BROKEN):    01 01 00 43 4f 4c 4f 52 ...  (extra 00 before "COLOR")
+                                 ^^ BUG: unwanted entry marker
+```
+
+**The Fix:**
+Removed the entry marker byte from `SeratoMarkersParser.encode()` in `serato-markers.js`:
+
+```javascript
+// BEFORE (broken):
+for (const entry of entries) {
+  buffers.push(Buffer.from([0x00]));  // <-- BUG: This adds unwanted 00 bytes
+  buffers.push(Buffer.from(entry.type + '\x00', 'utf8'));
+  // ...
+}
+
+// AFTER (fixed):
+for (const entry of entries) {
+  // NOTE: No entry marker - Serato's native format doesn't use them
+  buffers.push(Buffer.from(entry.type + '\x00', 'utf8'));
+  // ...
+}
+```
+
+**Key Insight:**
+Some online documentation (and early implementations) incorrectly showed `00` as an "entry marker" byte. This appears to be a misinterpretation of null terminators in parsed data. The actual Serato format has entries starting directly with the type string, no preceding marker byte.
+
 ---
 
 ## Default Cue Colors
@@ -352,6 +397,31 @@ Serato's default color palette (used when no color is specified):
 2. Open the track in Serato DJ
 3. Verify all 8 cue points appear with correct positions
 4. Verify colors match
+
+### Debug Endpoints
+
+Use these endpoints to diagnose Serato marker issues:
+
+**Dump frames by track ID:**
+```bash
+# JSON format (default)
+curl "http://localhost:3000/api/cuepoints/TRACK_ID/debug"
+
+# Plain text format (easier to read)
+curl "http://localhost:3000/api/cuepoints/TRACK_ID/debug?format=text"
+```
+
+**Dump frames by file path (for comparing with Serato-native files):**
+```bash
+curl -X POST "http://localhost:3000/api/cuepoints/debug/file" \
+  -H "Content-Type: application/json" \
+  -d '{"filePath": "/path/to/audio.mp3"}'
+```
+
+The debug output includes:
+- V1 and V2 hex dumps (first 128 bytes)
+- Parsed cue point data
+- Format comparison between app-generated and Serato-native files
 
 ### Debug Logging
 Enable debug logging to see frame-by-frame details:
