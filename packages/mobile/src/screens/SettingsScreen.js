@@ -13,8 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
+import { useSubscriptionStore } from '../store/subscriptionStore';
+import { SUBSCRIPTION_TIERS, TIER_FEATURES } from '../constants/subscription';
 import ACRCloudService from '../services/ACRCloudService';
 import AIKeyService from '../services/AIKeyService';
+import TrialCountdownBadge, { TierBadge, UsageIndicator } from '../components/TrialCountdownBadge';
+import SubscriptionService from '../services/SubscriptionService';
 
 const SettingsScreen = ({ navigation }) => {
   const [installations, setInstallations] = useState([]);
@@ -37,7 +41,40 @@ const SettingsScreen = ({ navigation }) => {
   const [showAIKeyInput, setShowAIKeyInput] = useState(false);
   const [isSavingAIKey, setIsSavingAIKey] = useState(false);
 
-  const { resetLibrary, loadLibrary, aiUsageCount, getRemainingFreeUses } = useStore();
+  const { resetLibrary, loadLibrary } = useStore();
+
+  // Debug state
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(null);
+
+  // Subscription state
+  const {
+    currentTier,
+    aiCrateBuildCount,
+    trackIdentificationCount,
+    getTrialDaysRemaining,
+    getRemainingCrateBuilds,
+    getRemainingTrackIds,
+    restorePurchases,
+    refreshSubscription,
+    hasAIAccess,
+    isLoading: isSubscriptionLoading,
+  } = useSubscriptionStore();
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  const tierFeatures = TIER_FEATURES[currentTier] || TIER_FEATURES[SUBSCRIPTION_TIERS.EXPIRED];
+
+  const handleRestorePurchases = async () => {
+    setIsRestoring(true);
+    const result = await restorePurchases();
+    setIsRestoring(false);
+
+    if (result.success) {
+      Alert.alert('Restored!', 'Your purchases have been restored.');
+    } else {
+      Alert.alert('Restore Failed', result.error || 'No purchases found to restore.');
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -434,100 +471,181 @@ const SettingsScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Recrate Builder Settings */}
+        {/* Subscription Settings */}
         <View style={styles.section}>
-          <View style={styles.acrStatusSection}>
-            <View style={styles.acrToggleRow}>
-              <View style={styles.acrToggleLeft}>
-                <Ionicons name="sparkles" size={20} color={COLORS.primary} />
-                <Text style={styles.advancedToggleText}>Recrate Builder</Text>
+          <View style={styles.subscriptionSection}>
+            <View style={styles.subscriptionHeader}>
+              <View style={styles.subscriptionTitleRow}>
+                <Ionicons name="diamond" size={20} color={COLORS.primary} />
+                <Text style={styles.advancedToggleText}>Subscription</Text>
               </View>
-              {hasAIKey ? (
-                <View style={styles.configuredBadge}>
-                  <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
-                  <Text style={styles.configuredText}>API Key Set</Text>
-                </View>
-              ) : (
-                <View style={styles.freeTierBadge}>
-                  <Ionicons name="gift" size={14} color={COLORS.primary} />
-                  <Text style={styles.freeTierText}>{getRemainingFreeUses()} free left</Text>
-                </View>
-              )}
+              <TierBadge tier={currentTier} />
             </View>
 
-            {!hasAIKey && (
-              <Text style={styles.acrHint}>
-                You have {getRemainingFreeUses()} free AI curations remaining.
-                Add your own Anthropic API key for unlimited use.
-              </Text>
+            {/* Trial countdown if applicable */}
+            {currentTier === SUBSCRIPTION_TIERS.TRIAL && (
+              <TrialCountdownBadge
+                onPress={() => navigation.navigate('Paywall')}
+                style={styles.trialBadge}
+              />
             )}
 
-            {hasAIKey ? (
-              <View style={styles.aiKeyActions}>
-                <Text style={styles.acrHint}>
-                  Your Anthropic API key is configured. AI curations will use your key.
+            {/* Expired notice */}
+            {currentTier === SUBSCRIPTION_TIERS.EXPIRED && (
+              <View style={styles.expiredNotice}>
+                <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+                <Text style={styles.expiredText}>
+                  Your trial has ended. Subscribe to continue using AI features.
                 </Text>
-                <TouchableOpacity
-                  style={styles.removeKeyButton}
-                  onPress={removeAIKey}
-                >
-                  <Ionicons name="trash-outline" size={16} color={COLORS.error} />
-                  <Text style={styles.removeKeyButtonText}>Remove API Key</Text>
-                </TouchableOpacity>
               </View>
-            ) : (
-              <View style={styles.aiKeySection}>
-                {!showAIKeyInput ? (
+            )}
+
+            {/* Usage stats for trial/pro */}
+            {hasAIAccess() && (
+              <View style={styles.usageSection}>
+                <UsageIndicator
+                  label="AI Crate Builds"
+                  used={aiCrateBuildCount}
+                  total={tierFeatures.aiCrateBuilds}
+                  style={styles.usageIndicator}
+                />
+                <UsageIndicator
+                  label="Track Identifications"
+                  used={trackIdentificationCount}
+                  total={tierFeatures.trackIdentifications}
+                  style={styles.usageIndicator}
+                />
+              </View>
+            )}
+
+            {/* Upgrade/Manage button */}
+            <TouchableOpacity
+              style={styles.upgradeButton}
+              onPress={() => navigation.navigate('Paywall')}
+            >
+              <Text style={styles.upgradeButtonText}>
+                {currentTier === SUBSCRIPTION_TIERS.PRO ? 'Manage Subscription' : 'Upgrade Plan'}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+
+            {/* Restore purchases */}
+            <TouchableOpacity
+              style={styles.restoreButton}
+              onPress={handleRestorePurchases}
+              disabled={isRestoring}
+            >
+              {isRestoring ? (
+                <ActivityIndicator size="small" color={COLORS.textSecondary} />
+              ) : (
+                <Text style={styles.restoreButtonText}>Restore Purchases</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Debug Section (DEV ONLY) */}
+        {__DEV__ && (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.advancedToggle}
+              onPress={() => setShowDebug(!showDebug)}
+            >
+              <Text style={styles.advancedToggleText}>
+                {showDebug ? '▼' : '▶'} Debug: Trial Testing
+              </Text>
+            </TouchableOpacity>
+
+            {showDebug && (
+              <View style={styles.debugContent}>
+                <Text style={styles.debugHint}>
+                  Simulate different trial states for testing
+                </Text>
+
+                <View style={styles.debugButtonGrid}>
                   <TouchableOpacity
-                    style={styles.addKeyButton}
-                    onPress={() => setShowAIKeyInput(true)}
+                    style={styles.debugButton}
+                    onPress={async () => {
+                      await SubscriptionService.simulateTrialDaysRemaining(3);
+                      await refreshSubscription();
+                      Alert.alert('Done', '3 days remaining');
+                    }}
                   >
-                    <Ionicons name="key" size={16} color={COLORS.primary} />
-                    <Text style={styles.addKeyButtonText}>Add API Key</Text>
+                    <Text style={styles.debugButtonText}>3 Days</Text>
                   </TouchableOpacity>
-                ) : (
-                  <View style={styles.aiKeyInputContainer}>
-                    <TextInput
-                      style={styles.aiKeyInput}
-                      value={aiKeyInput}
-                      onChangeText={setAIKeyInput}
-                      placeholder="sk-ant-..."
-                      placeholderTextColor={COLORS.textSecondary}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      secureTextEntry
-                    />
-                    <View style={styles.aiKeyButtonRow}>
-                      <TouchableOpacity
-                        style={styles.aiKeyCancelButton}
-                        onPress={() => {
-                          setShowAIKeyInput(false);
-                          setAIKeyInput('');
-                        }}
-                      >
-                        <Text style={styles.aiKeyCancelButtonText}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.aiKeySaveButton, isSavingAIKey && styles.saveButtonDisabled]}
-                        onPress={saveAIKey}
-                        disabled={isSavingAIKey}
-                      >
-                        {isSavingAIKey ? (
-                          <ActivityIndicator size="small" color={COLORS.text} />
-                        ) : (
-                          <Text style={styles.aiKeySaveButtonText}>Save Key</Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={styles.aiKeyHelp}>
-                      Get your API key from console.anthropic.com
+
+                  <TouchableOpacity
+                    style={styles.debugButton}
+                    onPress={async () => {
+                      await SubscriptionService.simulateTrialDaysRemaining(1);
+                      await refreshSubscription();
+                      Alert.alert('Done', '1 day remaining');
+                    }}
+                  >
+                    <Text style={styles.debugButtonText}>1 Day</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.debugButton}
+                    onPress={async () => {
+                      await SubscriptionService.simulateTrialDaysRemaining(0);
+                      await refreshSubscription();
+                      Alert.alert('Done', 'Last day of trial');
+                    }}
+                  >
+                    <Text style={styles.debugButtonText}>Last Day</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.debugButton, styles.debugButtonDanger]}
+                    onPress={async () => {
+                      await SubscriptionService.simulateExpiredTrial();
+                      await refreshSubscription();
+                      Alert.alert('Done', 'Trial expired');
+                    }}
+                  >
+                    <Text style={styles.debugButtonText}>Expired</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.debugResetButton}
+                  onPress={async () => {
+                    await SubscriptionService.clearAllData();
+                    await refreshSubscription();
+                    Alert.alert('Reset', 'All subscription data cleared. Restart the app to see trial screen.');
+                  }}
+                >
+                  <Ionicons name="refresh" size={16} color={COLORS.warning} />
+                  <Text style={styles.debugResetButtonText}>Reset All Data</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.debugInfoButton}
+                  onPress={async () => {
+                    const info = await SubscriptionService.getDebugInfo();
+                    setDebugInfo(info);
+                  }}
+                >
+                  <Ionicons name="information-circle" size={16} color={COLORS.primary} />
+                  <Text style={styles.debugInfoButtonText}>Show Debug Info</Text>
+                </TouchableOpacity>
+
+                {debugInfo && (
+                  <View style={styles.debugInfoBox}>
+                    <Text style={styles.debugInfoText}>
+                      Tier: {debugInfo.currentTier}{'\n'}
+                      Trial Active: {debugInfo.isTrialActive ? 'Yes' : 'No'}{'\n'}
+                      Days Remaining: {debugInfo.daysRemaining}{'\n'}
+                      Start: {debugInfo.trialStartDate || 'N/A'}{'\n'}
+                      End: {debugInfo.trialEndDate || 'N/A'}
                     </Text>
                   </View>
                 )}
               </View>
             )}
           </View>
-        </View>
+        )}
 
         {/* Info Box */}
         <View style={styles.infoBox}>
@@ -931,6 +1049,144 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: SPACING.sm,
     textAlign: 'center',
+  },
+  // Subscription section styles
+  subscriptionSection: {
+    paddingVertical: SPACING.md,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  subscriptionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  trialBadge: {
+    marginBottom: SPACING.md,
+  },
+  expiredNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.md,
+  },
+  expiredText: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.error,
+  },
+  usageSection: {
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  usageIndicator: {
+    // Inherits from component
+  },
+  upgradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.sm,
+  },
+  upgradeButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  restoreButton: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  restoreButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  // Debug section styles
+  debugContent: {
+    marginTop: SPACING.md,
+  },
+  debugHint: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  debugButtonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  debugButton: {
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  debugButtonDanger: {
+    borderColor: COLORS.error,
+  },
+  debugButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  debugResetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderRadius: BORDER_RADIUS.md,
+    alignSelf: 'flex-start',
+    marginBottom: SPACING.sm,
+  },
+  debugResetButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.warning,
+    fontWeight: '600',
+  },
+  debugInfoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    borderRadius: BORDER_RADIUS.md,
+    alignSelf: 'flex-start',
+    marginBottom: SPACING.sm,
+  },
+  debugInfoButtonText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  debugInfoBox: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  debugInfoText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    fontFamily: 'monospace',
+    lineHeight: 18,
   },
 });
 
