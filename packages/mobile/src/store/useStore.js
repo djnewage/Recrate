@@ -93,6 +93,18 @@ const useStore = create(
   // Track identification state
   isIdentifyModalVisible: false,
 
+  // Waveform state
+  waveformCache: {}, // { [trackId]: { peaks, duration, fetchedAt } }
+  isLoadingWaveform: false,
+
+  // Spectral waveform state (for colored waveforms)
+  spectralWaveformCache: {}, // { [trackId]: { bands, peaks, duration, fetchedAt } }
+  isLoadingSpectralWaveform: false,
+
+  // Cue points state
+  cuePointsCache: {}, // { [trackId]: { 1: {position, color}, 2: {...}, ... } }
+  isLoadingCuePoints: false,
+
   // Disclaimer actions
   acceptDisclaimer: () => set({ hasAcceptedDisclaimer: true }),
 
@@ -1142,6 +1154,234 @@ const useStore = create(
   // Track identification actions
   showIdentifyModal: () => set({ isIdentifyModalVisible: true }),
   hideIdentifyModal: () => set({ isIdentifyModalVisible: false }),
+
+  // Waveform actions
+  loadWaveform: async (trackId) => {
+    const { waveformCache } = get();
+
+    // Check if already cached
+    if (waveformCache[trackId]) {
+      return waveformCache[trackId];
+    }
+
+    // Set loading state
+    set({ isLoadingWaveform: true });
+
+    try {
+      const waveformData = await apiService.getWaveform(trackId);
+
+      if (waveformData) {
+        // Add to cache
+        const { waveformCache: currentCache } = get();
+        set({
+          waveformCache: {
+            ...currentCache,
+            [trackId]: {
+              peaks: waveformData.peaks,
+              duration: waveformData.duration,
+              fetchedAt: Date.now(),
+            },
+          },
+          isLoadingWaveform: false,
+        });
+        return waveformData;
+      } else {
+        set({ isLoadingWaveform: false });
+        return null;
+      }
+    } catch (error) {
+      console.warn(`Failed to load waveform for ${trackId}:`, error);
+      set({ isLoadingWaveform: false });
+      return null;
+    }
+  },
+
+  clearWaveformCache: (trackId = null) => {
+    if (trackId) {
+      // Clear specific track
+      const { waveformCache } = get();
+      const { [trackId]: removed, ...rest } = waveformCache;
+      set({ waveformCache: rest });
+    } else {
+      // Clear all
+      set({ waveformCache: {} });
+    }
+  },
+
+  // Spectral waveform actions (colored waveforms with frequency bands)
+  loadSpectralWaveform: async (trackId, sampleCount = 800) => {
+    const { spectralWaveformCache } = get();
+
+    // Check if already cached
+    if (spectralWaveformCache[trackId]) {
+      return spectralWaveformCache[trackId];
+    }
+
+    // Set loading state
+    set({ isLoadingSpectralWaveform: true });
+
+    try {
+      const spectralData = await apiService.getSpectralWaveform(trackId, sampleCount);
+
+      if (spectralData) {
+        // Add to cache
+        const { spectralWaveformCache: currentCache } = get();
+        set({
+          spectralWaveformCache: {
+            ...currentCache,
+            [trackId]: {
+              bands: spectralData.bands,
+              peaks: spectralData.peaks,
+              duration: spectralData.duration,
+              sampleCount: spectralData.sampleCount,
+              fetchedAt: Date.now(),
+            },
+          },
+          isLoadingSpectralWaveform: false,
+        });
+        return spectralData;
+      } else {
+        set({ isLoadingSpectralWaveform: false });
+        return null;
+      }
+    } catch (error) {
+      console.warn(`Failed to load spectral waveform for ${trackId}:`, error);
+      set({ isLoadingSpectralWaveform: false });
+      return null;
+    }
+  },
+
+  clearSpectralWaveformCache: (trackId = null) => {
+    if (trackId) {
+      // Clear specific track
+      const { spectralWaveformCache } = get();
+      const { [trackId]: removed, ...rest } = spectralWaveformCache;
+      set({ spectralWaveformCache: rest });
+    } else {
+      // Clear all
+      set({ spectralWaveformCache: {} });
+    }
+  },
+
+  // Cue points actions
+  loadCuePoints: async (trackId, forceRefresh = false) => {
+    const { cuePointsCache } = get();
+    const cachedData = cuePointsCache[trackId];
+
+    // If not forcing refresh and cache exists, return cache
+    if (!forceRefresh && cachedData) {
+      return cachedData;
+    }
+
+    // Try to fetch fresh from server
+    set({ isLoadingCuePoints: true });
+
+    try {
+      const data = await apiService.getCuePoints(trackId);
+
+      if (data && data.cuePoints) {
+        // Update cache with fresh data
+        const { cuePointsCache: currentCache } = get();
+        set({
+          cuePointsCache: {
+            ...currentCache,
+            [trackId]: data.cuePoints,
+          },
+          isLoadingCuePoints: false,
+        });
+        return data.cuePoints;
+      } else {
+        set({ isLoadingCuePoints: false });
+        return cachedData || {};
+      }
+    } catch (error) {
+      // OFFLINE FALLBACK: Return cached data if server unreachable
+      set({ isLoadingCuePoints: false });
+      if (cachedData) {
+        console.log('[CUE POINTS] Offline - using cached data');
+        return cachedData;
+      }
+      console.warn(`Failed to load cue points for ${trackId}:`, error);
+      return {};
+    }
+  },
+
+  setCuePoint: async (trackId, bankNumber, position) => {
+    // Validate position before API call
+    if (typeof position !== 'number' || isNaN(position) || position < 0) {
+      console.warn(`[CUE] Invalid position rejected: ${position}`);
+      return false;
+    }
+
+    try {
+      const result = await apiService.setCuePoint(trackId, bankNumber, position);
+
+      if (result.success) {
+        // Update cache optimistically
+        const { cuePointsCache } = get();
+        const trackCuePoints = cuePointsCache[trackId] || {};
+
+        set({
+          cuePointsCache: {
+            ...cuePointsCache,
+            [trackId]: {
+              ...trackCuePoints,
+              [bankNumber]: {
+                position: result.position,
+                color: result.color,
+                label: result.label,
+              },
+            },
+          },
+        });
+
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.warn(`Failed to set cue point for ${trackId}:`, error);
+      return false;
+    }
+  },
+
+  deleteCuePoint: async (trackId, bankNumber) => {
+    try {
+      const result = await apiService.deleteCuePoint(trackId, bankNumber);
+
+      if (result.success) {
+        // Remove only the deleted cue point from cache, keeping others intact
+        const { cuePointsCache } = get();
+        const trackCuePoints = cuePointsCache[trackId];
+        if (trackCuePoints) {
+          const { [bankNumber]: removed, ...remainingCuePoints } = trackCuePoints;
+          set({
+            cuePointsCache: {
+              ...cuePointsCache,
+              [trackId]: remainingCuePoints,
+            },
+          });
+        }
+
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.warn(`Failed to delete cue point for ${trackId}:`, error);
+      return false;
+    }
+  },
+
+  clearCuePointsCache: (trackId = null) => {
+    if (trackId) {
+      // Clear specific track
+      const { cuePointsCache } = get();
+      const { [trackId]: removed, ...rest } = cuePointsCache;
+      set({ cuePointsCache: rest });
+    } else {
+      // Clear all
+      set({ cuePointsCache: {} });
+    }
+  },
 
   // Find track in all crates (loads each crate to check)
   findTrackInAllCrates: async (trackId) => {

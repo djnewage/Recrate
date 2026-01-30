@@ -136,6 +136,22 @@ async function initialize() {
     )
   `);
 
+  // Cue points table for storing track cue points (Q points)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS cue_points (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      track_id TEXT NOT NULL,
+      bank_number INTEGER NOT NULL CHECK (bank_number BETWEEN 1 AND 8),
+      position REAL NOT NULL CHECK (position >= 0),
+      color TEXT,
+      label TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(track_id, bank_number)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_cue_points_track ON cue_points(track_id)`);
+
   // Save initial schema
   saveDatabase();
 

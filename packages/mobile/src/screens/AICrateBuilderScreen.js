@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -58,6 +58,9 @@ const AICrateBuilderScreen = ({ navigation }) => {
   // Save mode state
   const [saveMode, setSaveMode] = useState('new'); // 'new' or 'existing'
   const [selectedCrateId, setSelectedCrateId] = useState(null);
+
+  // Track selection state (for preview)
+  const [selectedTrackIds, setSelectedTrackIds] = useState([]);
 
   // AI status
   const [aiConfigured, setAiConfigured] = useState(null);
@@ -186,6 +189,8 @@ const AICrateBuilderScreen = ({ navigation }) => {
       }
 
       setCuration(result.curation);
+      // Initialize all tracks as selected
+      setSelectedTrackIds(result.curation.tracks.map(t => t.id));
       // Generate default crate name from prompt
       const defaultName = prompt.trim().slice(0, 30) + (prompt.length > 30 ? '...' : '');
       setCrateName(defaultName);
@@ -211,7 +216,17 @@ const AICrateBuilderScreen = ({ navigation }) => {
     setIsSaving(true);
 
     try {
-      const trackIds = curation.suggestedOrder || curation.tracks.map(t => t.id);
+      // Maintain order if suggestedOrder exists, but only include selected tracks
+      const trackIds = curation.suggestedOrder
+        ? curation.suggestedOrder.filter(id => selectedTrackIds.includes(id))
+        : selectedTrackIds;
+
+      // Validate that at least one track is selected
+      if (trackIds.length === 0) {
+        Alert.alert('No Tracks Selected', 'Please select at least one track to save.');
+        setIsSaving(false);
+        return;
+      }
 
       if (saveMode === 'new') {
         await apiService.saveAICrate(crateName.trim(), trackIds);
@@ -243,10 +258,36 @@ const AICrateBuilderScreen = ({ navigation }) => {
   const handleBack = () => {
     setState('builder');
     setCuration(null);
+    setSelectedTrackIds([]);
   };
 
   const handleClose = () => {
     navigation.goBack();
+  };
+
+  // Toggle individual track selection
+  const toggleTrackSelection = (trackId) => {
+    setSelectedTrackIds(prev =>
+      prev.includes(trackId)
+        ? prev.filter(id => id !== trackId)
+        : [...prev, trackId]
+    );
+  };
+
+  // Check if all tracks are selected
+  const allTracksSelected = useMemo(() => {
+    const tracks = curation?.tracks || [];
+    return tracks.length > 0 && selectedTrackIds.length === tracks.length;
+  }, [curation?.tracks, selectedTrackIds]);
+
+  // Toggle all tracks
+  const handleToggleSelectAll = () => {
+    const tracks = curation?.tracks || [];
+    if (allTracksSelected) {
+      setSelectedTrackIds([]);
+    } else {
+      setSelectedTrackIds(tracks.map(t => t.id));
+    }
   };
 
   const handlePlayTrack = (track) => {
@@ -422,6 +463,14 @@ const AICrateBuilderScreen = ({ navigation }) => {
     const metadata = curation?.metadata || {};
     const tracks = curation?.tracks || [];
 
+    // Compute stats for selected tracks
+    const selectedTracks = tracks.filter(t => selectedTrackIds.includes(t.id));
+    const selectedCount = selectedTracks.length;
+    const selectedTotalDuration = selectedTracks.reduce((sum, t) => sum + (t.duration || 0), 0);
+    const selectedAvgBpm = selectedTracks.length > 0
+      ? Math.round(selectedTracks.reduce((sum, t) => sum + (t.bpm || 0), 0) / selectedTracks.length)
+      : 0;
+
     return (
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
@@ -509,19 +558,19 @@ const AICrateBuilderScreen = ({ navigation }) => {
             )}
             <View style={styles.summaryStats}>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{tracks.length}</Text>
-                <Text style={styles.statLabel}>tracks</Text>
+                <Text style={styles.statValue}>{selectedCount}/{tracks.length}</Text>
+                <Text style={styles.statLabel}>selected</Text>
               </View>
-              {metadata.avgBpm && (
+              {selectedAvgBpm > 0 && (
                 <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{metadata.avgBpm}</Text>
+                  <Text style={styles.statValue}>{selectedAvgBpm}</Text>
                   <Text style={styles.statLabel}>avg BPM</Text>
                 </View>
               )}
-              {metadata.totalDuration && (
+              {selectedTotalDuration > 0 && (
                 <View style={styles.statItem}>
                   <Text style={styles.statValue}>
-                    {Math.floor(metadata.totalDuration / 60)}m
+                    {Math.floor(selectedTotalDuration / 60)}m
                   </Text>
                   <Text style={styles.statLabel}>duration</Text>
                 </View>
@@ -542,16 +591,36 @@ const AICrateBuilderScreen = ({ navigation }) => {
 
           {/* Track List */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>CURATED TRACKS</Text>
+            <View style={styles.selectionHeader}>
+              <Text style={styles.sectionTitle}>CURATED TRACKS</Text>
+              <TouchableOpacity onPress={handleToggleSelectAll} style={styles.selectAllButton}>
+                <Ionicons
+                  name={allTracksSelected ? "checkbox" : "square-outline"}
+                  size={20}
+                  color={COLORS.primary}
+                />
+                <Text style={styles.selectAllText}>
+                  {allTracksSelected ? 'Deselect All' : 'Select All'}
+                </Text>
+              </TouchableOpacity>
+            </View>
             {tracks.map((track, idx) => (
               <View key={track.id} style={styles.trackItem}>
-                <View style={styles.trackNumber}>
-                  <Text style={styles.trackNumberText}>{idx + 1}</Text>
-                </View>
+                <TouchableOpacity
+                  style={styles.trackCheckbox}
+                  onPress={() => toggleTrackSelection(track.id)}
+                >
+                  <Ionicons
+                    name={selectedTrackIds.includes(track.id) ? "checkmark-circle" : "ellipse-outline"}
+                    size={26}
+                    color={selectedTrackIds.includes(track.id) ? COLORS.primary : COLORS.textSecondary}
+                  />
+                </TouchableOpacity>
                 <View style={styles.trackInfo}>
                   <TrackRow
                     track={track}
-                    onPress={handlePlayTrack}
+                    onPress={() => toggleTrackSelection(track.id)}
+                    isSelected={selectedTrackIds.includes(track.id)}
                     showIndex={false}
                   />
                   {track.reason && (
@@ -899,8 +968,37 @@ const styles = StyleSheet.create({
   },
   reasoningText: { flex: 1, fontSize: FONT_SIZES.sm, color: COLORS.text, lineHeight: 20 },
 
+  // Selection header
+  selectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+  },
+  selectAllText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
+
   // Track list
   trackItem: { flexDirection: 'row', marginBottom: SPACING.xs },
+  trackCheckbox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
   trackNumber: {
     width: 28,
     height: 28,

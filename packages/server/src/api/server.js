@@ -11,21 +11,25 @@ const { initSentry, captureError } = require('../utils/sentry');
 const createLibraryRoutes = require('./routes/library');
 const createCrateRoutes = require('./routes/crates');
 const { createStreamingRoutes, createArtworkRoutes } = require('./routes/streaming');
+const { createWaveformRoutes } = require('./routes/waveform');
 const createSearchRoutes = require('./routes/search');
 const createConfigRoutes = require('./routes/config');
 const createIdentifyRoutes = require('./routes/identify');
 const createAIRoutes = require('./routes/ai');
+const createCuePointsRoutes = require('./routes/cuepoints');
 const AudioWebSocketServer = require('./websocket-server');
 
 /**
  * API Server - Express server with WebSocket support
  */
 class APIServer {
-  constructor(config, parser, writer, streamer) {
+  constructor(config, parser, writer, streamer, waveformGenerator = null, spectralAnalyzer = null) {
     this.config = config;
     this.parser = parser;
     this.writer = writer;
     this.streamer = streamer;
+    this.waveformGenerator = waveformGenerator;
+    this.spectralAnalyzer = spectralAnalyzer;
 
     this.app = express();
     this.httpServer = null;
@@ -65,6 +69,16 @@ class APIServer {
     this.app.use('/api/config', createConfigRoutes(this.parser));
     this.app.use('/api/identify', createIdentifyRoutes());
     this.app.use('/api/ai', createAIRoutes(this.parser, this.writer));
+    this.app.use('/api/cuepoints', createCuePointsRoutes(this.parser));
+
+    // Waveform routes (optional - requires FFmpeg)
+    if (this.waveformGenerator) {
+      this.app.use('/api/waveform', createWaveformRoutes(this.waveformGenerator, this.spectralAnalyzer));
+      logger.info('Waveform API enabled');
+      if (this.spectralAnalyzer) {
+        logger.info('Spectral analysis API enabled');
+      }
+    }
 
     // 404 handler
     this.app.use((req, res) => {
