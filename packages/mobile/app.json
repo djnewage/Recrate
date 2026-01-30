@@ -16,11 +16,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.recrate.app",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "infoPlist": {
         "NSCameraUsageDescription": "Recrate needs camera access to scan QR codes for connecting to your server.",
         "NSLocalNetworkUsageDescription": "Recrate needs local network access to connect to your music server on your home network.",
         "NSMicrophoneUsageDescription": "Recrate uses the microphone to identify songs playing around you by capturing a short audio sample.",
+        "NSLocationWhenInUseUsageDescription": "Recrate may use your location to improve service quality and analytics.",
         "NSBonjourServices": [
           "_http._tcp"
         ],
