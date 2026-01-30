@@ -1349,12 +1349,18 @@ const useStore = create(
       const result = await apiService.deleteCuePoint(trackId, bankNumber);
 
       if (result.success) {
-        // IMPORTANT: Clear the entire cache for this track to force re-fetch
-        // This ensures we get fresh data from server/file on next access
-        // (Previously only removed the specific bank, which left stale data)
+        // Remove only the deleted cue point from cache, keeping others intact
         const { cuePointsCache } = get();
-        const { [trackId]: removed, ...rest } = cuePointsCache;
-        set({ cuePointsCache: rest });
+        const trackCuePoints = cuePointsCache[trackId];
+        if (trackCuePoints) {
+          const { [bankNumber]: removed, ...remainingCuePoints } = trackCuePoints;
+          set({
+            cuePointsCache: {
+              ...cuePointsCache,
+              [trackId]: remainingCuePoints,
+            },
+          });
+        }
 
         return true;
       }
