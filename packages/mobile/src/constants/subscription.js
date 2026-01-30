@@ -5,19 +5,16 @@ export const REVENUECAT_API_KEY_ANDROID = 'goog_XXXXXXXX'; // TODO: Replace with
 // RevenueCat Entitlement IDs
 export const ENTITLEMENTS = {
   PRO: 'pro_access',
-  BASIC: 'basic_access',
 };
 
 // RevenueCat Product IDs
 export const PRODUCT_IDS = {
-  BASIC_MONTHLY: 'recrate_basic_monthly',
   PRO_MONTHLY: 'recrate_pro_monthly',
 };
 
 // Subscription tier identifiers
 export const SUBSCRIPTION_TIERS = {
   TRIAL: 'trial',
-  BASIC: 'basic',
   PRO: 'pro',
   EXPIRED: 'expired',
 };
@@ -43,31 +40,18 @@ export const TIER_FEATURES = {
       'Track Identification (5 IDs)',
     ],
   },
-  [SUBSCRIPTION_TIERS.BASIC]: {
-    name: 'Basic',
-    aiCrateBuilds: 0,
-    trackIdentifications: 0,
-    hasAIAccess: false,
-    price: '$4.99/mo',
-    priceValue: 4.99,
-    description: 'Library & crate management',
-    features: [
-      'Full library sync',
-      'Crate management',
-      'Audio streaming',
-      'Search & filtering',
-    ],
-  },
   [SUBSCRIPTION_TIERS.PRO]: {
     name: 'Pro',
     aiCrateBuilds: 10,
     trackIdentifications: 50,
     hasAIAccess: true,
-    price: '$9.99/mo',
+    price: '$9.99/month',
     priceValue: 9.99,
-    description: 'Full AI access',
+    description: 'Full access with AI features',
     features: [
-      'Everything in Basic',
+      'Full library sync',
+      'Crate management',
+      'Audio streaming',
       'AI Crate Builder (10/month)',
       'Track Identification (50/month)',
       'Priority support',

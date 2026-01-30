@@ -148,16 +148,7 @@ const AICrateBuilderScreen = ({ navigation }) => {
 
     // Check subscription-based access
     if (!canUseCrateBuilder()) {
-      if (currentTier === SUBSCRIPTION_TIERS.BASIC) {
-        Alert.alert(
-          'Pro Feature',
-          'AI Crate Builder requires a Pro subscription.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Upgrade', onPress: () => navigation.navigate('Paywall') },
-          ]
-        );
-      } else if (currentTier === SUBSCRIPTION_TIERS.EXPIRED) {
+      if (currentTier === SUBSCRIPTION_TIERS.EXPIRED) {
         Alert.alert(
           'Trial Ended',
           'Your free trial has ended. Subscribe to continue using AI features.',
@@ -677,8 +668,8 @@ const AICrateBuilderScreen = ({ navigation }) => {
     );
   };
 
-  // Show upgrade prompt for basic/expired users
-  if (currentTier === SUBSCRIPTION_TIERS.BASIC || currentTier === SUBSCRIPTION_TIERS.EXPIRED) {
+  // Show upgrade prompt for expired users
+  if (currentTier === SUBSCRIPTION_TIERS.EXPIRED) {
     return (
       <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
         <View style={styles.header}>
@@ -690,23 +681,16 @@ const AICrateBuilderScreen = ({ navigation }) => {
         </View>
         <View style={styles.centerContent}>
           <Ionicons name="sparkles" size={64} color={COLORS.primary} />
-          <Text style={styles.mainText}>
-            {currentTier === SUBSCRIPTION_TIERS.EXPIRED ? 'Trial Ended' : 'Pro Feature'}
-          </Text>
+          <Text style={styles.mainText}>Trial Ended</Text>
           <Text style={styles.subText}>
-            {currentTier === SUBSCRIPTION_TIERS.EXPIRED
-              ? 'Your free trial has ended. Subscribe to continue using the AI Crate Builder.'
-              : 'AI Crate Builder is available with a Pro subscription. Upgrade to create intelligent crates powered by AI.'
-            }
+            Your free trial has ended. Subscribe to continue using the AI Crate Builder.
           </Text>
           <TouchableOpacity
             style={styles.settingsButton}
             onPress={() => navigation.navigate('Paywall')}
           >
             <Ionicons name="diamond" size={20} color="#fff" />
-            <Text style={styles.settingsButtonText}>
-              {currentTier === SUBSCRIPTION_TIERS.EXPIRED ? 'Subscribe' : 'Upgrade to Pro'}
-            </Text>
+            <Text style={styles.settingsButtonText}>Subscribe</Text>
           </TouchableOpacity>
         </View>
       </View>

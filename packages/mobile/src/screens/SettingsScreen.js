@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
@@ -540,6 +541,29 @@ const SettingsScreen = ({ navigation }) => {
               ) : (
                 <Text style={styles.restoreButtonText}>Restore Purchases</Text>
               )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Legal Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Legal</Text>
+          <View style={styles.legalCard}>
+            <TouchableOpacity
+              style={styles.legalRow}
+              onPress={() => Linking.openURL('https://recrate.app/privacy')}
+            >
+              <Ionicons name="shield-checkmark" size={20} color={COLORS.textSecondary} />
+              <Text style={styles.legalRowText}>Privacy Policy</Text>
+              <Ionicons name="open-outline" size={16} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.legalRow, styles.legalRowLast]}
+              onPress={() => Linking.openURL('https://recrate.app/terms')}
+            >
+              <Ionicons name="document-text" size={20} color={COLORS.textSecondary} />
+              <Text style={styles.legalRowText}>Terms of Service</Text>
+              <Ionicons name="open-outline" size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1187,6 +1211,29 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontFamily: 'monospace',
     lineHeight: 18,
+  },
+  // Legal section styles
+  legalCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+  },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  legalRowLast: {
+    borderBottomWidth: 0,
+  },
+  legalRowText: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
   },
 });
 

@@ -97,16 +97,7 @@ const IdentifyTrackScreen = ({ navigation }) => {
   const startRecording = async () => {
     // Check subscription-based access
     if (!canUseTrackIdentification()) {
-      if (currentTier === SUBSCRIPTION_TIERS.BASIC) {
-        Alert.alert(
-          'Pro Feature',
-          'Track identification requires a Pro subscription.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Upgrade', onPress: () => navigation.navigate('Paywall') },
-          ]
-        );
-      } else if (currentTier === SUBSCRIPTION_TIERS.EXPIRED) {
+      if (currentTier === SUBSCRIPTION_TIERS.EXPIRED) {
         Alert.alert(
           'Trial Ended',
           'Your free trial has ended. Subscribe to continue using track identification.',

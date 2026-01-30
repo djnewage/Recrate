@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -170,6 +171,17 @@ const TrialStartScreen = ({ navigation }) => {
           No payment required. Trial includes full Pro features.{'\n'}
           Subscribe anytime to continue after trial ends.
         </Text>
+
+        {/* Legal Links */}
+        <View style={styles.legalLinks}>
+          <TouchableOpacity onPress={() => Linking.openURL('https://recrate.app/terms')}>
+            <Text style={styles.legalLinkText}>Terms of Service</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalSeparator}>•</Text>
+          <TouchableOpacity onPress={() => Linking.openURL('https://recrate.app/privacy')}>
+            <Text style={styles.legalLinkText}>Privacy Policy</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -288,7 +300,23 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
+    marginBottom: SPACING.sm,
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.sm,
     marginBottom: SPACING.lg,
+  },
+  legalLinkText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.primary,
+    textDecorationLine: 'underline',
+  },
+  legalSeparator: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
   },
 });
 

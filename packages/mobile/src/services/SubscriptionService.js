@@ -172,10 +172,6 @@ const SubscriptionService = {
         return SUBSCRIPTION_TIERS.PRO;
       }
 
-      if (customerInfo?.entitlements?.active?.[ENTITLEMENTS.BASIC]) {
-        return SUBSCRIPTION_TIERS.BASIC;
-      }
-
       // Check if trial has been started but expired
       const hasStartedTrial = await SubscriptionService.hasStartedTrial();
       if (hasStartedTrial) {

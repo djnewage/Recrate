@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,7 +22,6 @@ import { useSubscriptionStore } from '../store/subscriptionStore';
 
 const PaywallScreen = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
-  const [selectedPlan, setSelectedPlan] = useState('pro');
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
@@ -37,33 +37,32 @@ const PaywallScreen = ({ navigation, route }) => {
   const trialDaysRemaining = getTrialDaysRemaining();
   const showTrialBanner = currentTier === SUBSCRIPTION_TIERS.TRIAL && trialDaysRemaining > 0;
   const isExpired = currentTier === SUBSCRIPTION_TIERS.EXPIRED;
+  const isPro = currentTier === SUBSCRIPTION_TIERS.PRO;
 
-  // Get packages from offerings
-  const basicPackage = offerings?.current?.availablePackages?.find(
-    (pkg) => pkg.product.identifier === PRODUCT_IDS.BASIC_MONTHLY
-  );
+  // Get Pro package from offerings
   const proPackage = offerings?.current?.availablePackages?.find(
     (pkg) => pkg.product.identifier === PRODUCT_IDS.PRO_MONTHLY
   );
 
-  const handlePurchase = async () => {
-    const packageToPurchase = selectedPlan === 'pro' ? proPackage : basicPackage;
+  const proFeatures = TIER_FEATURES[SUBSCRIPTION_TIERS.PRO];
+  const displayPrice = proPackage?.product?.priceString || proFeatures.price;
 
-    if (!packageToPurchase) {
+  const handlePurchase = async () => {
+    if (!proPackage) {
       Alert.alert('Error', 'Unable to load subscription options. Please try again later.');
       return;
     }
 
     setIsPurchasing(true);
 
-    const result = await purchasePackage(packageToPurchase);
+    const result = await purchasePackage(proPackage);
 
     setIsPurchasing(false);
 
     if (result.success) {
       Alert.alert(
         'Success!',
-        `You're now subscribed to ${selectedPlan === 'pro' ? 'Pro' : 'Basic'}!`,
+        "You're now subscribed to Recrate Pro!",
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } else if (!result.cancelled && result.error) {
@@ -87,31 +86,6 @@ const PaywallScreen = ({ navigation, route }) => {
     }
   };
 
-  const basicFeatures = TIER_FEATURES[SUBSCRIPTION_TIERS.BASIC];
-  const proFeatures = TIER_FEATURES[SUBSCRIPTION_TIERS.PRO];
-
-  const plans = [
-    {
-      id: 'basic',
-      name: 'Basic',
-      price: basicPackage?.product?.priceString || basicFeatures.price,
-      period: '/month',
-      features: basicFeatures.features,
-      hasAI: false,
-      isCurrent: currentTier === SUBSCRIPTION_TIERS.BASIC,
-    },
-    {
-      id: 'pro',
-      name: 'Pro',
-      price: proPackage?.product?.priceString || proFeatures.price,
-      period: '/month',
-      features: proFeatures.features,
-      hasAI: true,
-      recommended: true,
-      isCurrent: currentTier === SUBSCRIPTION_TIERS.PRO,
-    },
-  ];
-
   return (
     <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
       {/* Header */}
@@ -122,7 +96,7 @@ const PaywallScreen = ({ navigation, route }) => {
         >
           <Ionicons name="close" size={24} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Choose Your Plan</Text>
+        <Text style={styles.headerTitle}>Subscribe</Text>
         <View style={styles.closeButton} />
       </View>
 
@@ -150,64 +124,44 @@ const PaywallScreen = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* Plan Cards */}
+        {/* Pro Plan Card */}
         <View style={styles.plansContainer}>
-          {plans.map((plan) => (
-            <TouchableOpacity
-              key={plan.id}
-              style={[
-                styles.planCard,
-                selectedPlan === plan.id && styles.planCardSelected,
-                plan.isCurrent && styles.planCardCurrent,
-              ]}
-              onPress={() => !plan.isCurrent && setSelectedPlan(plan.id)}
-              disabled={plan.isCurrent}
-              activeOpacity={0.8}
-            >
-              {plan.recommended && !plan.isCurrent && (
-                <View style={styles.recommendedBadge}>
-                  <Text style={styles.recommendedText}>RECOMMENDED</Text>
-                </View>
-              )}
-
-              {plan.isCurrent && (
-                <View style={styles.currentBadge}>
-                  <Text style={styles.currentText}>CURRENT PLAN</Text>
-                </View>
-              )}
-
-              <View style={styles.planHeader}>
-                <Text style={styles.planName}>{plan.name}</Text>
-                <View style={styles.priceContainer}>
-                  <Text style={styles.planPrice}>{plan.price}</Text>
-                  <Text style={styles.planPeriod}>{plan.period}</Text>
-                </View>
+          <View style={[styles.planCard, styles.planCardSelected, isPro && styles.planCardCurrent]}>
+            {isPro && (
+              <View style={styles.currentBadge}>
+                <Text style={styles.currentText}>CURRENT PLAN</Text>
               </View>
+            )}
 
-              <View style={styles.planFeatures}>
-                {plan.features.map((feature, index) => (
-                  <View key={index} style={styles.featureRow}>
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={18}
-                      color={plan.hasAI ? COLORS.primary : COLORS.success}
-                    />
-                    <Text style={styles.featureText}>{feature}</Text>
-                  </View>
-                ))}
+            <View style={styles.planHeader}>
+              <View style={styles.planTitleRow}>
+                <Ionicons name="diamond" size={24} color={COLORS.primary} />
+                <Text style={styles.planName}>Recrate Pro</Text>
               </View>
+              <View style={styles.priceContainer}>
+                <Text style={styles.planPrice}>{displayPrice}</Text>
+              </View>
+            </View>
 
-              {selectedPlan === plan.id && !plan.isCurrent && (
-                <View style={styles.selectedIndicator}>
-                  <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+            <Text style={styles.planDescription}>{proFeatures.description}</Text>
+
+            <View style={styles.planFeatures}>
+              {proFeatures.features.map((feature, index) => (
+                <View key={index} style={styles.featureRow}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color={COLORS.primary}
+                  />
+                  <Text style={styles.featureText}>{feature}</Text>
                 </View>
-              )}
-            </TouchableOpacity>
-          ))}
+              ))}
+            </View>
+          </View>
         </View>
 
         {/* Purchase Button */}
-        {currentTier !== SUBSCRIPTION_TIERS.PRO && currentTier !== SUBSCRIPTION_TIERS.BASIC && (
+        {!isPro && (
           <TouchableOpacity
             style={styles.purchaseButton}
             onPress={handlePurchase}
@@ -224,34 +178,19 @@ const PaywallScreen = ({ navigation, route }) => {
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <Text style={styles.purchaseText}>
-                  Subscribe to {selectedPlan === 'pro' ? 'Pro' : 'Basic'}
+                  Subscribe - {displayPrice}
                 </Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
         )}
 
-        {/* Upgrade button for Basic users */}
-        {currentTier === SUBSCRIPTION_TIERS.BASIC && (
-          <TouchableOpacity
-            style={styles.purchaseButton}
-            onPress={handlePurchase}
-            disabled={isPurchasing || selectedPlan !== 'pro'}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.secondary]}
-              style={styles.purchaseGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              {isPurchasing ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.purchaseText}>Upgrade to Pro</Text>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
+        {/* Already subscribed message */}
+        {isPro && (
+          <View style={styles.subscribedMessage}>
+            <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+            <Text style={styles.subscribedText}>You're subscribed to Pro!</Text>
+          </View>
         )}
 
         {/* Restore Purchases */}
@@ -267,10 +206,22 @@ const PaywallScreen = ({ navigation, route }) => {
           )}
         </TouchableOpacity>
 
+        {/* Legal Links */}
+        <View style={styles.legalLinks}>
+          <TouchableOpacity onPress={() => Linking.openURL('https://recrate.app/privacy')}>
+            <Text style={styles.legalLinkText}>Privacy Policy</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalSeparator}>•</Text>
+          <TouchableOpacity onPress={() => Linking.openURL('https://recrate.app/terms')}>
+            <Text style={styles.legalLinkText}>Terms of Service</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Terms */}
         <Text style={styles.termsText}>
+          Payment will be charged to your Apple ID account at confirmation of purchase.
           Subscriptions automatically renew unless cancelled at least 24 hours before the end of the current period.
-          Manage subscriptions in your App Store settings.
+          Manage subscriptions in Settings {'>'} Apple ID {'>'} Subscriptions.
         </Text>
       </ScrollView>
     </View>
@@ -330,7 +281,6 @@ const styles = StyleSheet.create({
     color: COLORS.error,
   },
   plansContainer: {
-    gap: SPACING.md,
     marginBottom: SPACING.lg,
   },
   planCard: {
@@ -346,22 +296,6 @@ const styles = StyleSheet.create({
   },
   planCardCurrent: {
     borderColor: COLORS.success,
-    opacity: 0.7,
-  },
-  recommendedBadge: {
-    position: 'absolute',
-    top: -10,
-    right: SPACING.md,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  recommendedText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
   },
   currentBadge: {
     position: 'absolute',
@@ -381,11 +315,21 @@ const styles = StyleSheet.create({
   planHeader: {
     marginBottom: SPACING.md,
   },
+  planTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
   planName: {
     fontSize: FONT_SIZES.xl,
     fontWeight: '700',
     color: COLORS.text,
-    marginBottom: SPACING.xs,
+  },
+  planDescription: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
   },
   priceContainer: {
     flexDirection: 'row',
@@ -395,11 +339,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xxl,
     fontWeight: '700',
     color: COLORS.primary,
-  },
-  planPeriod: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginLeft: 2,
   },
   planFeatures: {
     gap: SPACING.sm,
@@ -413,11 +352,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.text,
     flex: 1,
-  },
-  selectedIndicator: {
-    position: 'absolute',
-    top: SPACING.md,
-    right: SPACING.md,
   },
   purchaseButton: {
     marginBottom: SPACING.md,
@@ -433,11 +367,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  subscribedMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  subscribedText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.success,
+  },
   restoreButton: {
     alignItems: 'center',
     paddingVertical: SPACING.md,
   },
   restoreText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.lg,
+  },
+  legalLinkText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    textDecorationLine: 'underline',
+  },
+  legalSeparator: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
   },

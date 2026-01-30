@@ -85,12 +85,6 @@ export const TierBadge = ({ tier, style }) => {
           colors: [COLORS.primary, COLORS.secondary],
           icon: 'time',
         };
-      case SUBSCRIPTION_TIERS.BASIC:
-        return {
-          label: 'Basic',
-          colors: [COLORS.textSecondary, '#6B7280'],
-          icon: 'person',
-        };
       case SUBSCRIPTION_TIERS.PRO:
         return {
           label: 'Pro',
