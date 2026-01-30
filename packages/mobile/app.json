@@ -2,7 +2,7 @@
   "expo": {
     "name": "Recrate",
     "slug": "recrate",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "orientation": "portrait",
     "icon": "./assets/officialLogo.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.recrate.app",
-      "buildNumber": "3",
+      "buildNumber": "6",
       "infoPlist": {
         "NSCameraUsageDescription": "Recrate needs camera access to scan QR codes for connecting to your server.",
         "NSLocalNetworkUsageDescription": "Recrate needs local network access to connect to your music server on your home network.",

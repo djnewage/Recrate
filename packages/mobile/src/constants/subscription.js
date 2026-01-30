@@ -1,5 +1,5 @@
-// RevenueCat API Keys - Replace with your actual keys from RevenueCat dashboard
-export const REVENUECAT_API_KEY_IOS = 'appl_XXXXXXXX'; // TODO: Replace with actual iOS key
+// RevenueCat API Keys
+export const REVENUECAT_API_KEY_IOS = 'appl_HdOtnIWFgTxNgZoccSSKxSaBjbA';
 export const REVENUECAT_API_KEY_ANDROID = 'goog_XXXXXXXX'; // TODO: Replace with actual Android key
 
 // RevenueCat Entitlement IDs
