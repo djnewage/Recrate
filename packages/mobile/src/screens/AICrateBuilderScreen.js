@@ -17,8 +17,9 @@ import Slider from '@react-native-community/slider';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
+import { useSubscriptionStore } from '../store/subscriptionStore';
+import { SUBSCRIPTION_TIERS } from '../constants/subscription';
 import TrackRow from '../components/TrackRow';
-import AIKeyService from '../services/AIKeyService';
 
 // Available musical keys (Camelot notation - standard for DJs)
 const MUSICAL_KEYS = [
@@ -29,10 +30,16 @@ const MUSICAL_KEYS = [
 
 const AICrateBuilderScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { loadCrates, crates, incrementAIUsage, getRemainingFreeUses } = useStore();
+  const { loadCrates, crates } = useStore();
 
-  // BYOK (Bring Your Own Key) state
-  const [hasUserApiKey, setHasUserApiKey] = useState(false);
+  // Subscription state
+  const {
+    currentTier,
+    canUseCrateBuilder,
+    getRemainingCrateBuilds,
+    incrementCrateBuildUsage,
+    hasAIAccess,
+  } = useSubscriptionStore();
 
   // State
   const [state, setState] = useState('builder'); // 'builder', 'loading', 'preview'
@@ -65,18 +72,12 @@ const AICrateBuilderScreen = ({ navigation }) => {
   // AI status
   const [aiConfigured, setAiConfigured] = useState(null);
 
-  // Check AI status and user API key on mount
+  // Check AI status on mount
   useEffect(() => {
     checkAIStatus();
     loadFilterOptions();
     loadCrates(); // Load crates for "Add to existing" option
-    checkUserApiKey();
   }, []);
-
-  const checkUserApiKey = async () => {
-    const hasKey = await AIKeyService.hasApiKey();
-    setHasUserApiKey(hasKey);
-  };
 
   const checkAIStatus = async () => {
     try {
@@ -145,20 +146,28 @@ const AICrateBuilderScreen = ({ navigation }) => {
       return;
     }
 
-    // Check if user can use AI (has their own key OR has free uses remaining)
-    const remainingFreeUses = getRemainingFreeUses();
-    if (!hasUserApiKey && remainingFreeUses <= 0) {
-      Alert.alert(
-        'Free Trial Ended',
-        'You\'ve used all 5 free AI curations. Add your own Anthropic API key in Settings to continue using this feature.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Go to Settings',
-            onPress: () => navigation.navigate('Settings'),
-          },
-        ]
-      );
+    // Check subscription-based access
+    if (!canUseCrateBuilder()) {
+      if (currentTier === SUBSCRIPTION_TIERS.EXPIRED) {
+        Alert.alert(
+          'Trial Ended',
+          'Your free trial has ended. Subscribe to continue using AI features.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Subscribe', onPress: () => navigation.navigate('Paywall') },
+          ]
+        );
+      } else {
+        // Trial or Pro but out of quota
+        Alert.alert(
+          'Quota Reached',
+          `You've used all your AI crate builds for this period. ${currentTier === SUBSCRIPTION_TIERS.TRIAL ? 'Subscribe for more builds.' : 'Your quota resets next month.'}`,
+          [
+            { text: 'OK', style: 'cancel' },
+            currentTier === SUBSCRIPTION_TIERS.TRIAL && { text: 'Subscribe', onPress: () => navigation.navigate('Paywall') },
+          ].filter(Boolean)
+        );
+      }
       return;
     }
 
@@ -183,10 +192,9 @@ const AICrateBuilderScreen = ({ navigation }) => {
         return;
       }
 
-      // Increment usage count only if using free tier (no user API key)
-      if (!hasUserApiKey) {
-        incrementAIUsage();
-      }
+      // Increment usage count
+      incrementCrateBuildUsage();
+      console.log('[AI] Incremented crate build usage');
 
       setCuration(result.curation);
       // Initialize all tracks as selected
@@ -423,12 +431,13 @@ const AICrateBuilderScreen = ({ navigation }) => {
             </View>
           )}
 
-          {/* Usage indicator for free tier */}
-          {!hasUserApiKey && (
+          {/* Usage indicator */}
+          {hasAIAccess() && (
             <View style={styles.usageIndicator}>
-              <Ionicons name="gift" size={16} color={COLORS.primary} />
+              <Ionicons name={currentTier === SUBSCRIPTION_TIERS.TRIAL ? 'time' : 'sparkles'} size={16} color={COLORS.primary} />
               <Text style={styles.usageIndicatorText}>
-                {getRemainingFreeUses()} free {getRemainingFreeUses() === 1 ? 'use' : 'uses'} remaining
+                {getRemainingCrateBuilds()} {getRemainingCrateBuilds() === 1 ? 'build' : 'builds'} remaining
+                {currentTier === SUBSCRIPTION_TIERS.TRIAL && ' in trial'}
               </Text>
             </View>
           )}
@@ -659,11 +668,10 @@ const AICrateBuilderScreen = ({ navigation }) => {
     );
   };
 
-  // Not configured state - only show if server AND user have no API key
-  if (aiConfigured === false && !hasUserApiKey) {
-    const remainingFreeUses = getRemainingFreeUses();
+  // Show upgrade prompt for expired users
+  if (currentTier === SUBSCRIPTION_TIERS.EXPIRED) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 30 : insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleClose}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
@@ -672,28 +680,47 @@ const AICrateBuilderScreen = ({ navigation }) => {
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.centerContent}>
-          <Ionicons name="key" size={64} color={COLORS.textSecondary} />
-          <Text style={styles.mainText}>API Key Required</Text>
+          <Ionicons name="sparkles" size={64} color={COLORS.primary} />
+          <Text style={styles.mainText}>Trial Ended</Text>
           <Text style={styles.subText}>
-            {remainingFreeUses > 0
-              ? `You have ${remainingFreeUses} free uses remaining. Add your Anthropic API key in Settings to get started.`
-              : 'Add your Anthropic API key in Settings to use Recrate Builder.'
-            }
+            Your free trial has ended. Subscribe to continue using the AI Crate Builder.
           </Text>
           <TouchableOpacity
             style={styles.settingsButton}
-            onPress={() => navigation.navigate('Settings')}
+            onPress={() => navigation.navigate('Paywall')}
           >
-            <Ionicons name="settings" size={20} color="#fff" />
-            <Text style={styles.settingsButtonText}>Go to Settings</Text>
+            <Ionicons name="diamond" size={20} color="#fff" />
+            <Text style={styles.settingsButtonText}>Subscribe</Text>
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
+  // Show API not configured state (server issue)
+  if (aiConfigured === false) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={handleClose}>
+            <Ionicons name="chevron-back" size={28} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Recrate Builder</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.centerContent}>
+          <Ionicons name="warning" size={64} color={COLORS.warning} />
+          <Text style={styles.mainText}>Service Unavailable</Text>
+          <Text style={styles.subText}>
+            The AI service is temporarily unavailable. Please try again later.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 30 : insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={state === 'preview' ? handleBack : handleClose}>

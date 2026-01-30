@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Animated,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +16,8 @@ import AudioRecordingService from '../services/AudioRecordingService';
 import ACRCloudService from '../services/ACRCloudService';
 import TrackMatchingService from '../services/TrackMatchingService';
 import useStore from '../store/useStore';
+import { useSubscriptionStore } from '../store/subscriptionStore';
+import { SUBSCRIPTION_TIERS } from '../constants/subscription';
 import apiService from '../services/api';
 import TrackRow from '../components/TrackRow';
 
@@ -38,6 +41,15 @@ const IdentifyTrackScreen = ({ navigation }) => {
   const ringAnim3 = useRef(new Animated.Value(0)).current;
 
   const { tracks, crates, crateTree, loadCrates } = useStore();
+
+  // Subscription state
+  const {
+    currentTier,
+    canUseTrackIdentification,
+    getRemainingTrackIds,
+    incrementTrackIdUsage,
+    hasAIAccess,
+  } = useSubscriptionStore();
 
   // Cleanup on mount
   useEffect(() => {
@@ -83,6 +95,31 @@ const IdentifyTrackScreen = ({ navigation }) => {
   }, [state]);
 
   const startRecording = async () => {
+    // Check subscription-based access
+    if (!canUseTrackIdentification()) {
+      if (currentTier === SUBSCRIPTION_TIERS.EXPIRED) {
+        Alert.alert(
+          'Trial Ended',
+          'Your free trial has ended. Subscribe to continue using track identification.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Subscribe', onPress: () => navigation.navigate('Paywall') },
+          ]
+        );
+      } else {
+        // Trial or Pro but out of quota
+        Alert.alert(
+          'Quota Reached',
+          `You've used all your track identifications for this period. ${currentTier === SUBSCRIPTION_TIERS.TRIAL ? 'Subscribe for more.' : 'Your quota resets next month.'}`,
+          [
+            { text: 'OK', style: 'cancel' },
+            currentTier === SUBSCRIPTION_TIERS.TRIAL && { text: 'Subscribe', onPress: () => navigation.navigate('Paywall') },
+          ].filter(Boolean)
+        );
+      }
+      return;
+    }
+
     try {
       setError(null);
       isRecordingRef.current = true;
@@ -125,6 +162,10 @@ const IdentifyTrackScreen = ({ navigation }) => {
       }
 
       setRecognizedTrack(result.track);
+
+      // Increment usage count for successful identification
+      incrementTrackIdUsage();
+      console.log('[Identify] Incremented track ID usage');
 
       // Find matches
       const libraryMatches = TrackMatchingService.findMatches(result.track, tracks);
@@ -240,6 +281,15 @@ const IdentifyTrackScreen = ({ navigation }) => {
       </TouchableOpacity>
       <Text style={styles.mainText}>Tap to identify</Text>
       <Text style={styles.subText}>Make sure the music is playing clearly</Text>
+      {hasAIAccess() && (
+        <View style={styles.usageIndicator}>
+          <Ionicons name={currentTier === SUBSCRIPTION_TIERS.TRIAL ? 'time' : 'sparkles'} size={14} color={COLORS.primary} />
+          <Text style={styles.usageIndicatorText}>
+            {getRemainingTrackIds()} {getRemainingTrackIds() === 1 ? 'ID' : 'IDs'} remaining
+            {currentTier === SUBSCRIPTION_TIERS.TRIAL && ' in trial'}
+          </Text>
+        </View>
+      )}
     </View>
   );
 
@@ -431,7 +481,7 @@ const IdentifyTrackScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleClose}>
@@ -666,6 +716,22 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: '#fff',
     textAlign: 'center',
+  },
+  usageIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.lg,
+    gap: SPACING.xs,
+  },
+  usageIndicatorText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '500',
   },
 });
 

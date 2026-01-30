@@ -130,6 +130,17 @@ export const ACRCloudService = {
         60000 // 60 second timeout for identification
       );
 
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Server returned non-JSON response:', text.substring(0, 200));
+        return {
+          success: false,
+          error: `Server error (${response.status}): Expected JSON but got ${contentType || 'unknown content type'}`
+        };
+      }
+
       const result = await response.json();
 
       if (!response.ok) {

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConnectionStore, CONNECTION_TYPES } from '../store/connectionStore';
 import useStore from '../store/useStore';
+import { useSubscriptionStore } from '../store/subscriptionStore';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import QRScanner from '../components/QRScanner';
 
@@ -47,11 +48,16 @@ const ConnectionScreen = ({ navigation }) => {
     }
   }, []);
 
-  // Navigate to main app when connected
+  // Navigate to main app when connected (or to trial screen if first time)
   useEffect(() => {
     if (isConnected) {
       setTimeout(() => {
-        navigation.replace('Main');
+        const { hasSeenTrialStartScreen } = useSubscriptionStore.getState();
+        if (!hasSeenTrialStartScreen) {
+          navigation.replace('TrialStart');
+        } else {
+          navigation.replace('Main');
+        }
       }, 1000);
     }
   }, [isConnected, navigation]);
@@ -104,7 +110,7 @@ const ConnectionScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 40 }]}>
+    <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
       {/* Logo */}
       <Image
         source={require('../../assets/icon.png')}
