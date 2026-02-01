@@ -22,6 +22,8 @@ export default function Layout({ children }: LayoutProps) {
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-gray-300 hover:text-white transition-colors">Features</a>
               <a href="#demo" className="text-gray-300 hover:text-white transition-colors">Demo</a>
+              <a href="#how-to-use" className="text-gray-300 hover:text-white transition-colors">How to Use</a>
+              <a href="#faq" className="text-gray-300 hover:text-white transition-colors">FAQ</a>
               <a href="#download" className="text-gray-300 hover:text-white transition-colors">Download</a>
               <a href="#contact" className="text-gray-300 hover:text-white transition-colors">Contact</a>
             </div>

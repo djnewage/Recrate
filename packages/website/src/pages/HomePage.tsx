@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Mail } from 'lucide-react'
+import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Mail, Smartphone, Download, ChevronDown, HelpCircle } from 'lucide-react'
 
 const GITHUB_REPO = 'djnewage/Recrate'
 
@@ -97,6 +97,9 @@ export default function HomePage() {
   // Waitlist form state
   const [waitlistEmail, setWaitlistEmail] = useState('')
   const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
+
+  // FAQ accordion state
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null)
 
   // Detect chip type on mount
   useEffect(() => {
@@ -299,7 +302,7 @@ export default function HomePage() {
             {/* Mobile App Waitlist */}
             <div className="w-full max-w-md">
               <p className="text-gray-400 text-sm mb-3 text-center">
-                Get notified when the mobile app launches
+                Launching soon — be the first to know
               </p>
               {waitlistStatus === 'success' ? (
                 <motion.div
@@ -399,7 +402,7 @@ export default function HomePage() {
               {
                 icon: Play,
                 title: 'Full Playback',
-                description: 'Preview any track with complete playback controls. Scrub, shuffle, repeat, and see BPM and key at a glance.',
+                description: 'Preview any track with waveform display and cue points. Set and jump to cue points, scrub through tracks, and see BPM and key at a glance.',
                 screenshot: '/screenshots/player.png',
               },
               {
@@ -417,7 +420,7 @@ export default function HomePage() {
               {
                 icon: Wifi,
                 title: 'Instant Connection',
-                description: 'Auto-discover your library over WiFi. No cloud uploads, no setup — just connect and browse.',
+                description: 'Connect locally over WiFi or remotely via mobile data/5G. No cloud uploads — your music streams directly from your desktop.',
                 screenshot: '/screenshots/connect.png',
               },
               {
@@ -517,6 +520,168 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* How to Use Section */}
+      <section id="how-to-use" className="py-24 px-6 bg-gradient-to-b from-zinc-900 to-zinc-900">
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">
+              How to <span className="gradient-text">Use</span>
+            </h2>
+            <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+              Get started in four simple steps
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              {
+                icon: Download,
+                step: 1,
+                title: 'Download the Desktop App',
+                description: 'Get Recrate for macOS or Windows',
+              },
+              {
+                icon: Smartphone,
+                step: 2,
+                title: 'Install the Mobile App',
+                description: 'Available on iOS and Android',
+              },
+              {
+                icon: Wifi,
+                step: 3,
+                title: 'Connect Your Devices',
+                description: 'Connect via WiFi on the same network OR use mobile data/5G from anywhere',
+              },
+              {
+                icon: Music,
+                step: 4,
+                title: 'Browse & Play',
+                description: 'Access your full Serato library from your phone',
+              },
+            ].map((item, index) => (
+              <motion.div
+                key={item.step}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: index * 0.15 }}
+                className="relative p-6 rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10 hover:border-purple-500/50 transition-all group text-center"
+              >
+                {/* Step number */}
+                <div className="absolute -top-3 -left-3 w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-sm font-bold shadow-lg">
+                  {item.step}
+                </div>
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <item.icon size={32} className="text-purple-400" />
+                </div>
+                <h3 className="text-lg font-bold mb-2">{item.title}</h3>
+                <p className="text-gray-400 text-sm">{item.description}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section id="faq" className="py-24 px-6 bg-zinc-900">
+        <div className="max-w-3xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-16"
+          >
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-6">
+              <HelpCircle size={32} className="text-purple-400" />
+            </div>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">
+              Frequently Asked <span className="gradient-text">Questions</span>
+            </h2>
+            <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+              Everything you need to know about Recrate
+            </p>
+          </motion.div>
+
+          <div className="space-y-4">
+            {[
+              {
+                question: 'Is my music uploaded to the cloud?',
+                answer: 'No. Your music stays on your computer. Recrate streams directly from your desktop to your phone — nothing is uploaded anywhere.',
+              },
+              {
+                question: 'Do I need to be on the same WiFi network?',
+                answer: "Not necessarily! You can connect locally via WiFi, or use mobile data/5G to access your library from anywhere (requires the desktop server to be online).",
+              },
+              {
+                question: 'What devices are supported?',
+                answer: 'Desktop: macOS 12+ and Windows 10/11. Mobile: iOS and Android.',
+              },
+              {
+                question: 'Is Recrate free?',
+                answer: 'Recrate offers a free 3-day trial with full access to all features. After the trial, a subscription is required to continue using the app.',
+              },
+              {
+                question: 'Does it work with Serato DJ Pro?',
+                answer: "Yes! Recrate reads your Serato library and crates. Changes you make (like creating crates) sync back to Serato. Note: If Serato is open while you make changes in Recrate, you'll need to restart Serato for the changes to take effect.",
+              },
+              {
+                question: 'Does the desktop server need to be running?',
+                answer: "For streaming music, yes — the desktop app must be online. However, Recrate also has an offline mode where you can browse your cached library and make changes (like organizing crates). Streaming won't be available until you reconnect, but any changes you make while offline will automatically sync once the server comes back online.",
+              },
+              {
+                question: 'What audio formats are supported?',
+                answer: 'MP3, WAV, FLAC, AAC, and other common formats that Serato supports.',
+              },
+            ].map((faq, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="rounded-2xl bg-gradient-to-br from-white/5 to-white/0 border border-white/10 overflow-hidden"
+              >
+                <button
+                  onClick={() => setOpenFaqIndex(openFaqIndex === index ? null : index)}
+                  className="w-full px-6 py-5 flex items-center justify-between text-left hover:bg-white/5 transition-colors"
+                >
+                  <span className="font-semibold text-lg pr-4">{faq.question}</span>
+                  <motion.div
+                    animate={{ rotate: openFaqIndex === index ? 180 : 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="flex-shrink-0"
+                  >
+                    <ChevronDown size={20} className="text-purple-400" />
+                  </motion.div>
+                </button>
+                <AnimatePresence>
+                  {openFaqIndex === index && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-6 pb-5 text-gray-400 leading-relaxed">
+                        {faq.answer}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Download Section */}
       <section id="download" className="py-24 px-6 bg-gradient-to-b from-zinc-900 to-zinc-900">
         <div className="max-w-4xl mx-auto text-center">
@@ -530,7 +695,7 @@ export default function HomePage() {
               Download <span className="gradient-text">Recrate</span>
             </h2>
             <p className="text-xl text-gray-400 mb-12">
-              Available for macOS and Windows. Free to use.
+              Available for macOS and Windows. Free 3-day trial included.
             </p>
           </motion.div>
 
