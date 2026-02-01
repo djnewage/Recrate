@@ -314,7 +314,7 @@ const PlayerScreen = ({ route, navigation }) => {
       />
 
       {/* Playback Controls */}
-      <View style={styles.controls}>
+      <View style={[styles.controls, { paddingBottom: insets.bottom }]}>
         <TouchableOpacity
           style={styles.controlButton}
           onPress={toggleShuffle}

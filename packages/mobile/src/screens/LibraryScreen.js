@@ -457,6 +457,7 @@ const LibraryScreen = ({ navigation }) => {
                 onLongPress={handleTrackLongPress}
                 onMenuPress={handleTrackMenu}
                 isSelected={selectedTracks.includes(item.id)}
+                isEditMode={isEditMode}
               />
             )}
             ItemSeparatorComponent={() => <View style={styles.separator} />}

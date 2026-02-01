@@ -208,69 +208,66 @@ export function setupEventHandlers(store) {
   });
 
   // Track changed (next/previous)
-  TrackPlayer.addEventListener(Event.PlaybackTrackChanged, async (event) => {
-    if (event.nextTrack !== undefined && event.nextTrack !== null) {
-      const track = await TrackPlayer.getTrack(event.nextTrack);
+  // NOTE: In v5, PlaybackTrackChanged was replaced with PlaybackActiveTrackChanged
+  // The event structure changed: { track, index } instead of { nextTrack, track }
+  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async (event) => {
+    const track = event.track;
+    const trackIndex = event.index;
 
-      if (track) {
-        // Get the queue from store to find the full track object
-        const { queue } = store.getState();
-        const fullTrack = queue.find(t => t.id === track.id);
+    if (track) {
+      // Get the queue from store to find the full track object
+      const { queue } = store.getState();
+      const fullTrack = queue.find(t => t.id === track.id);
 
-        if (fullTrack) {
-          // Find the actual index in the full queue (not TrackPlayer's index)
-          const actualQueueIndex = queue.findIndex(t => t.id === track.id);
+      if (fullTrack) {
+        // Find the actual index in the full queue (not TrackPlayer's index)
+        const actualQueueIndex = queue.findIndex(t => t.id === track.id);
 
-          // Use the full track object from queue
-          store.setState({
-            currentTrack: fullTrack,
-            currentQueueIndex: actualQueueIndex >= 0 ? actualQueueIndex : event.nextTrack,
-          });
+        // Use the full track object from queue
+        store.setState({
+          currentTrack: fullTrack,
+          currentQueueIndex: actualQueueIndex >= 0 ? actualQueueIndex : trackIndex,
+        });
 
-          // Check if we need to replenish TrackPlayer queue (for large libraries)
-          const tpQueue = await TrackPlayer.getQueue();
-          const REPLENISH_THRESHOLD = 20;
-          const TRACKS_TO_ADD = 100;
-          const remainingInTP = tpQueue.length - event.nextTrack - 1;
+        // Check if we need to replenish TrackPlayer queue (for large libraries)
+        const tpQueue = await TrackPlayer.getQueue();
+        const REPLENISH_THRESHOLD = 20;
+        const TRACKS_TO_ADD = 100;
+        const currentIndex = trackIndex ?? 0;
+        const remainingInTP = tpQueue.length - currentIndex - 1;
 
-          if (remainingInTP < REPLENISH_THRESHOLD) {
-            // Find which tracks from the full queue are already in TrackPlayer
-            const tpTrackIds = new Set(tpQueue.map(t => t.id));
+        if (remainingInTP < REPLENISH_THRESHOLD) {
+          // Find which tracks from the full queue are already in TrackPlayer
+          const tpTrackIds = new Set(tpQueue.map(t => t.id));
 
-            // Find next tracks in queue that aren't in TrackPlayer yet
-            const tracksToAdd = [];
-            for (let i = actualQueueIndex + 1; i < queue.length && tracksToAdd.length < TRACKS_TO_ADD; i++) {
-              if (!tpTrackIds.has(queue[i].id)) {
-                tracksToAdd.push(queue[i]);
-              }
-            }
-
-            if (tracksToAdd.length > 0) {
-              const formattedTracks = tracksToAdd.map(t => formatTrackForPlayer(t));
-              await TrackPlayer.add(formattedTracks);
+          // Find next tracks in queue that aren't in TrackPlayer yet
+          const tracksToAdd = [];
+          for (let i = actualQueueIndex + 1; i < queue.length && tracksToAdd.length < TRACKS_TO_ADD; i++) {
+            if (!tpTrackIds.has(queue[i].id)) {
+              tracksToAdd.push(queue[i]);
             }
           }
 
-          // NOTE: Removed preloadTrack() call here - it was causing race conditions
-          // during rapid skip operations. The fire-and-forget HTTP fetch requests
-          // competed with iOS's audio loading, causing SwiftAudioEx.PlaybackError error 1
-          // and HTTP 429 (Too Many Requests) responses from the server.
-        } else {
-          // Fallback: convert from TrackPlayer format
-          store.setState({
-            currentTrack: {
-              id: track.id,
-              title: track.title,
-              artist: track.artist,
-              bpm: track.bpm,
-              key: track.key,
-              album: track.album,
-              duration: track.duration,
-              hasArtwork: !!track.artwork,
-            },
-            currentQueueIndex: event.nextTrack,
-          });
+          if (tracksToAdd.length > 0) {
+            const formattedTracks = tracksToAdd.map(t => formatTrackForPlayer(t));
+            await TrackPlayer.add(formattedTracks);
+          }
         }
+      } else {
+        // Fallback: convert from TrackPlayer format
+        store.setState({
+          currentTrack: {
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            bpm: track.bpm,
+            key: track.key,
+            album: track.album,
+            duration: track.duration,
+            hasArtwork: !!track.artwork,
+          },
+          currentQueueIndex: trackIndex,
+        });
       }
     }
   });
