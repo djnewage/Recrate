@@ -9,6 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import TrackPlayer from 'react-native-track-player';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 
@@ -187,9 +188,20 @@ const CuePointBank = ({
         onSeek(cuePoint.position);
       }
     } else {
+      // Get fresh position directly from TrackPlayer to avoid stale position
+      // This is more accurate than using the currentPosition prop which can be up to 200ms old
+      let positionToSet;
+      try {
+        const progress = await TrackPlayer.getProgress();
+        positionToSet = progress.position;
+      } catch (e) {
+        // Fallback to prop if TrackPlayer call fails
+        positionToSet = currentPosition;
+      }
+
       // Validate position before setting cue
-      const validPosition = typeof currentPosition === 'number' && !isNaN(currentPosition)
-        ? currentPosition
+      const validPosition = typeof positionToSet === 'number' && !isNaN(positionToSet)
+        ? positionToSet
         : 0;
       const success = await setCuePoint(trackId, bankNumber, validPosition);
       if (!success) {
