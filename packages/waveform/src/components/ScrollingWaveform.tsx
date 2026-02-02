@@ -160,6 +160,11 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
   const scrubStartPosition = useSharedValue(0);
   const pinchStartSecondsValue = useSharedValue(visibleSeconds);
   const currentPixelsPerSecond = useSharedValue(pixelsPerSecond);
+  const currentDuration = useSharedValue(duration);
+  const currentPlayheadX = useSharedValue(playheadX);
+  const currentVisibleSeconds = useSharedValue(visibleSeconds);
+  const currentMaxVisibleSeconds = useSharedValue(maxVisibleSeconds);
+  const currentMinVisibleSeconds = useSharedValue(minVisibleSeconds);
 
   // Keep shared values in sync with props
   useEffect(() => {
@@ -169,6 +174,26 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
   useEffect(() => {
     currentPixelsPerSecond.value = pixelsPerSecond;
   }, [pixelsPerSecond]);
+
+  useEffect(() => {
+    currentDuration.value = duration;
+  }, [duration]);
+
+  useEffect(() => {
+    currentPlayheadX.value = playheadX;
+  }, [playheadX]);
+
+  useEffect(() => {
+    currentVisibleSeconds.value = visibleSeconds;
+  }, [visibleSeconds]);
+
+  useEffect(() => {
+    currentMaxVisibleSeconds.value = maxVisibleSeconds;
+  }, [maxVisibleSeconds]);
+
+  useEffect(() => {
+    currentMinVisibleSeconds.value = minVisibleSeconds;
+  }, [minVisibleSeconds]);
 
   // Memoize transform to avoid object recreation
   const scrollTransform = useMemo(
@@ -215,10 +240,10 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     .enabled(interactive)
     .onEnd((event) => {
       'worklet';
-      const pixelDelta = event.x - playheadX;
+      const pixelDelta = event.x - currentPlayheadX.value;
       const secondsDelta = pixelDelta / currentPixelsPerSecond.value;
       const newPos = currentPosition.value + secondsDelta;
-      const clamped = Math.max(0, Math.min(duration, newPos));
+      const clamped = Math.max(0, Math.min(currentDuration.value, newPos));
       runOnJS(handleSeek)(clamped);
     });
 
@@ -238,7 +263,7 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
       const pixelDelta = -event.translationX;
       const secondsDelta = pixelDelta / currentPixelsPerSecond.value;
       const newPos = scrubStartPosition.value + secondsDelta;
-      const clamped = Math.max(0, Math.min(duration, newPos));
+      const clamped = Math.max(0, Math.min(currentDuration.value, newPos));
       runOnJS(handleSeek)(clamped);
     })
     .onEnd(() => {
@@ -253,7 +278,7 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     .enabled(interactive && !!onVisibleSecondsChange)
     .onStart(() => {
       'worklet';
-      pinchStartSecondsValue.value = visibleSeconds;
+      pinchStartSecondsValue.value = currentVisibleSeconds.value;
     })
     .onUpdate((event) => {
       'worklet';
@@ -261,8 +286,11 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
       // Pinch out (scale < 1) = zoom out = more visible seconds
       const newSeconds = pinchStartSecondsValue.value / event.scale;
       // Allow zooming out to see the entire track (max of prop value or duration)
-      const effectiveMax = duration > 0 ? Math.max(maxVisibleSeconds, duration) : maxVisibleSeconds;
-      const clamped = Math.max(minVisibleSeconds, Math.min(effectiveMax, newSeconds));
+      const dur = currentDuration.value;
+      const maxSec = currentMaxVisibleSeconds.value;
+      const minSec = currentMinVisibleSeconds.value;
+      const effectiveMax = dur > 0 ? Math.max(maxSec, dur) : maxSec;
+      const clamped = Math.max(minSec, Math.min(effectiveMax, newSeconds));
       if (onVisibleSecondsChange) {
         runOnJS(onVisibleSecondsChange)(clamped);
       }
