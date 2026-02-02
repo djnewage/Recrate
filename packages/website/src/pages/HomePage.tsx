@@ -251,7 +251,7 @@ export default function HomePage() {
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/30 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-500/30 rounded-full blur-3xl animate-pulse delay-1000" />
 
-        <div className="relative z-10 text-center px-6 max-w-5xl mx-auto">
+        <div className="relative z-10 text-center px-6 max-w-5xl mx-auto pt-20">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -347,6 +347,22 @@ export default function HomePage() {
                 </motion.p>
               )}
             </div>
+
+            {/* Pricing highlight */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.8 }}
+              className="mt-6 mb-16 text-center text-sm text-gray-400"
+            >
+              <p className="flex items-center justify-center gap-2">
+                <Check size={16} className="text-green-400" />
+                Free 7-day trial
+              </p>
+              <p className="mt-1">
+                Available on Mac, Windows, iOS & Android
+              </p>
+            </motion.div>
           </motion.div>
         </div>
 
@@ -625,7 +641,7 @@ export default function HomePage() {
               },
               {
                 question: 'Is Recrate free?',
-                answer: 'Recrate offers a free 3-day trial with full access to all features. After the trial, a subscription is required to continue using the app.',
+                answer: 'Recrate offers a free 7-day trial with full access to all features. After the trial, a subscription is required to continue using the app.',
               },
               {
                 question: 'Does it work with Serato DJ Pro?',
@@ -695,7 +711,7 @@ export default function HomePage() {
               Download <span className="gradient-text">Recrate</span>
             </h2>
             <p className="text-xl text-gray-400 mb-12">
-              Available for macOS and Windows. Free 3-day trial included.
+              Available for macOS and Windows. Free 7-day trial included.
             </p>
           </motion.div>
 
