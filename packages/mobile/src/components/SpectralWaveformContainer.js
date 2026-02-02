@@ -1,7 +1,7 @@
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useProgress } from 'react-native-track-player';
-import { SpectralWaveform } from '@recrate/waveform';
+import { ScrollingWaveform } from '@recrate/waveform';
 import useStore from '../store/useStore';
 import { COLORS } from '../constants/theme';
 
@@ -9,11 +9,12 @@ import { COLORS } from '../constants/theme';
  * SpectralWaveformContainer Component
  *
  * Handles spectral waveform data fetching, caching, and progress synchronization.
- * Displays a Serato-style colored waveform with frequency bands:
+ * Displays a Serato-style scrolling waveform with frequency bands:
  * - Bass (red)
- * - Mids (green)
- * - Highs (blue)
+ * - Mids (purple)
+ * - Highs (cyan)
  *
+ * The waveform scrolls past a fixed playhead (1/3 from left) as the track plays.
  * Falls back to a simple progress bar if spectral data is unavailable.
  */
 const SpectralWaveformContainer = ({
@@ -23,8 +24,16 @@ const SpectralWaveformContainer = ({
   width = 300,
   height = 60,
   cuePoints = {},
+  visibleSeconds: initialVisibleSeconds = 20,
 }) => {
-  const { position } = useProgress(200); // Update every 200ms for smooth animation
+  // Local state for pinch-to-zoom
+  const [visibleSeconds, setVisibleSeconds] = useState(initialVisibleSeconds);
+
+  // Fast updates (50ms = ~20fps) for smooth scrolling animation
+  const { position } = useProgress(50);
+
+  // Get isPlaying state from store for animation sync
+  const isPlaying = useStore((state) => state.isPlaying);
 
   // Get spectral waveform state and actions from store
   const spectralWaveformCache = useStore((state) => state.spectralWaveformCache);
@@ -41,10 +50,10 @@ const SpectralWaveformContainer = ({
     }
   }, [trackId, spectralData, isLoadingSpectralWaveform, loadSpectralWaveform]);
 
-  // Calculate progress (0-1)
+  // Calculate progress (0-1) for fallback progress bar
   const progress = duration > 0 ? position / duration : 0;
 
-  // Transform cue points object to array for SpectralWaveform
+  // Transform cue points object to array for ScrollingWaveform
   // Input: { 1: {position, color, label}, 2: {...} }
   // Output: [{id, position, color, label, type}, ...]
   const cuePointsArray = useMemo(() => {
@@ -106,13 +115,19 @@ const SpectralWaveformContainer = ({
 
   return (
     <View style={[styles.container, { width, height }]}>
-      <SpectralWaveform
+      <ScrollingWaveform
         data={waveformData}
-        progress={progress}
+        position={position}
         duration={duration}
+        isPlaying={isPlaying}
         onSeek={handleSeek}
         width={width}
         height={height}
+        visibleSeconds={visibleSeconds}
+        onVisibleSecondsChange={setVisibleSeconds}
+        minVisibleSeconds={5}
+        maxVisibleSeconds={60}
+        playheadPosition={0.33}
         interactive={true}
         showPlayhead={true}
         mirror={true}

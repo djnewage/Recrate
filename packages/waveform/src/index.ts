@@ -1,9 +1,11 @@
 // Components
-export { SpectralWaveform } from './components';
+export { SpectralWaveform, ScrollingWaveform } from './components';
 export { default as SpectralWaveformDefault } from './components';
+export type { ScrollingWaveformProps } from './components';
 
 // Hooks
-export { useSpectralWaveform } from './hooks';
+export { useSpectralWaveform, useScrollingAnimation } from './hooks';
+export type { UseScrollingAnimationParams, UseScrollingAnimationResult } from './hooks';
 
 // Types
 export type {

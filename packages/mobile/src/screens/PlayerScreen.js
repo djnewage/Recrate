@@ -33,8 +33,8 @@ const PlayerScreen = ({ route, navigation }) => {
   const [selectedCrates, setSelectedCrates] = useState([]);
   const [isAddingToCrates, setIsAddingToCrates] = useState(false);
 
-  // Get real playback progress from TrackPlayer
-  const { position, duration } = useProgress();
+  // Get real playback progress from TrackPlayer (50ms updates for smooth UI)
+  const { position, duration } = useProgress(50);
 
   const {
     crates,
