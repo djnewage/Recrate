@@ -1,6 +1,7 @@
 const config = require("./utils/config");
 const logger = require("./utils/logger");
 const db = require("./utils/db");
+const { initializeFirebase } = require("./utils/firebase");
 const { SeratoParser } = require("./serato/parser");
 const { SeratoWriter } = require("./serato/writer");
 const AudioStreamer = require("./audio/streamer");
@@ -37,6 +38,10 @@ class RecrateService {
     logger.info(`Serato path: ${config.serato.path}`);
 
     try {
+      // Initialize Firebase Admin SDK for token verification
+      logger.info("Initializing Firebase Admin SDK...");
+      initializeFirebase();
+
       // Initialize database for usage tracking and auth
       logger.info("Initializing database...");
       await db.initialize();

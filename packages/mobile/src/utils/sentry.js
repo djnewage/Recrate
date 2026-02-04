@@ -92,14 +92,35 @@ export function captureError(error, context = {}) {
 
 /**
  * Set user context for Sentry
- * @param {Object} user - User info (id, deviceId, etc.)
+ * @param {Object|null} user - User info (id, email, username, deviceId, etc.) or null to clear
  */
 export function setUser(user) {
   if (!initialized) return;
-  Sentry.setUser({
-    id: user.deviceId,
-    ...user,
-  });
+
+  if (user === null) {
+    // Clear user context
+    Sentry.setUser(null);
+    return;
+  }
+
+  // Build user context with Firebase UID as primary identifier
+  const userContext = {
+    id: user.id || user.uid || user.deviceId,
+  };
+
+  // Add optional fields if provided
+  if (user.email) {
+    userContext.email = user.email;
+  }
+  if (user.username || user.displayName) {
+    userContext.username = user.username || user.displayName;
+  }
+  if (user.deviceId) {
+    // Store device ID as additional data
+    userContext.deviceId = user.deviceId;
+  }
+
+  Sentry.setUser(userContext);
 }
 
 /**

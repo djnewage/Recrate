@@ -26,7 +26,8 @@ export const useConnectionStore = create((set, get) => ({
   isSearching: false,
   lastSuccessfulIP: null,
   networkState: null, // Full NetInfo state object for offline detection
-  deviceId: null, // Unique device identifier for auth
+  deviceId: null, // Unique device identifier for API requests
+  userId: null, // Firebase UID for user tracking
 
   // Actions
   setConnectionType: (type) => set({ connectionType: type }),
@@ -34,6 +35,7 @@ export const useConnectionStore = create((set, get) => ({
   setConnected: (connected) => set({ isConnected: connected }),
   setSearching: (searching) => set({ isSearching: searching }),
   setNetworkState: (state) => set({ networkState: state }),
+  setUserId: (uid) => set({ userId: uid }),
 
   // Initialize device ID (call on app start)
   initializeDeviceId: async () => {
@@ -55,6 +57,9 @@ export const useConnectionStore = create((set, get) => ({
 
   // Get device ID synchronously (for use in headers)
   getDeviceId: () => get().deviceId,
+
+  // Get user ID synchronously (for use in headers)
+  getUserId: () => get().userId,
 
   // Check if device has network connectivity (regardless of server connection)
   hasNetworkConnectivity: () => {

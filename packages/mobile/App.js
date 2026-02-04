@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { StatusBar, StyleSheet, View, TouchableOpacity } from 'react-native';
+import { StatusBar, StyleSheet, View, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
@@ -14,6 +14,7 @@ import { useConnectionStore } from './src/store/connectionStore';
 import useStore from './src/store/useStore';
 import useOfflineStore from './src/store/offlineStore';
 import { useSubscriptionStore } from './src/store/subscriptionStore';
+import { useAuthStore } from './src/store/authStore';
 import * as TrackPlayerService from './src/services/TrackPlayerService';
 import { syncQueue } from './src/services/SyncService';
 import { initSentry, setUser } from './src/utils/sentry';
@@ -33,6 +34,7 @@ import IdentifyTrackScreen from './src/screens/IdentifyTrackScreen';
 import AICrateBuilderScreen from './src/screens/AICrateBuilderScreen';
 import TrialStartScreen from './src/screens/TrialStartScreen';
 import PaywallScreen from './src/screens/PaywallScreen';
+import AuthScreen from './src/screens/AuthScreen';
 
 // Components
 import MiniPlayer from './src/components/MiniPlayer';
@@ -138,76 +140,95 @@ function TabNavigator({ navigation }) {
   );
 }
 
-// Root navigator with connection screen
+// Root navigator with auth and connection screens
 function RootNavigator() {
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
+
+  // Show loading screen while checking auth state
+  if (authLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
   return (
     <RootStack.Navigator
       screenOptions={{
         headerShown: false,
       }}
     >
-      <RootStack.Screen name="Connection" component={ConnectionScreen} />
-      <RootStack.Screen name="Main" component={TabNavigator} />
-      <RootStack.Screen
-        name="Player"
-        component={PlayerScreen}
-        options={{
-          presentation: 'modal',
-        }}
-      />
-      <RootStack.Screen
-        name="IdentifyTrack"
-        component={IdentifyTrackScreen}
-        options={{
-          presentation: 'card',
-        }}
-      />
-      <RootStack.Screen
-        name="AICrateBuilder"
-        component={AICrateBuilderScreen}
-        options={{
-          presentation: 'card',
-        }}
-      />
-      <RootStack.Screen
-        name="TrialStart"
-        component={TrialStartScreen}
-        options={{
-          presentation: 'fullScreenModal',
-          gestureEnabled: false,
-        }}
-      />
-      <RootStack.Screen
-        name="Paywall"
-        component={PaywallScreen}
-        options={{
-          presentation: 'modal',
-        }}
-      />
-      <RootStack.Screen
-        name="CrateDetailFromIdentify"
-        component={CrateDetailScreen}
-        options={({ navigation }) => ({
-          headerShown: true,
-          title: '',
-          headerBackTitle: '',
-          headerBackTitleVisible: false,
-          headerTintColor: COLORS.text,
-          gestureEnabled: true,
-          headerStyle: {
-            backgroundColor: COLORS.background,
-          },
-          headerShadowVisible: false,
-          headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={{ paddingHorizontal: 8, paddingVertical: 4 }}
-            >
-              <Ionicons name="chevron-back" size={28} color={COLORS.text} />
-            </TouchableOpacity>
-          ),
-        })}
-      />
+      {!isAuthenticated ? (
+        // Auth flow - show login screen
+        <RootStack.Screen name="Auth" component={AuthScreen} />
+      ) : (
+        // Main app flow - user is authenticated
+        <>
+          <RootStack.Screen name="Connection" component={ConnectionScreen} />
+          <RootStack.Screen name="Main" component={TabNavigator} />
+          <RootStack.Screen
+            name="Player"
+            component={PlayerScreen}
+            options={{
+              presentation: 'modal',
+            }}
+          />
+          <RootStack.Screen
+            name="IdentifyTrack"
+            component={IdentifyTrackScreen}
+            options={{
+              presentation: 'card',
+            }}
+          />
+          <RootStack.Screen
+            name="AICrateBuilder"
+            component={AICrateBuilderScreen}
+            options={{
+              presentation: 'card',
+            }}
+          />
+          <RootStack.Screen
+            name="TrialStart"
+            component={TrialStartScreen}
+            options={{
+              presentation: 'fullScreenModal',
+              gestureEnabled: false,
+            }}
+          />
+          <RootStack.Screen
+            name="Paywall"
+            component={PaywallScreen}
+            options={{
+              presentation: 'modal',
+            }}
+          />
+          <RootStack.Screen
+            name="CrateDetailFromIdentify"
+            component={CrateDetailScreen}
+            options={({ navigation }) => ({
+              headerShown: true,
+              title: '',
+              headerBackTitle: '',
+              headerBackTitleVisible: false,
+              headerTintColor: COLORS.text,
+              gestureEnabled: true,
+              headerStyle: {
+                backgroundColor: COLORS.background,
+              },
+              headerShadowVisible: false,
+              headerLeft: () => (
+                <TouchableOpacity
+                  onPress={() => navigation.goBack()}
+                  style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                >
+                  <Ionicons name="chevron-back" size={28} color={COLORS.text} />
+                </TouchableOpacity>
+              ),
+            })}
+          />
+        </>
+      )}
     </RootStack.Navigator>
   );
 }
@@ -228,6 +249,7 @@ export default function App() {
     prefixes: ['recrate://'],
     config: {
       screens: {
+        Auth: 'auth',
         Connection: {
           path: 'connect',
           parse: {
@@ -240,15 +262,24 @@ export default function App() {
     },
   };
 
-  // Initialize device ID on app mount (for authentication)
+  // Initialize Firebase Auth on app mount
+  useEffect(() => {
+    // Initialize auth store and set up listener
+    const unsubscribeAuth = useAuthStore.getState().initialize();
+
+    return () => {
+      if (unsubscribeAuth) {
+        unsubscribeAuth();
+      }
+    };
+  }, []);
+
+  // Initialize device ID on app mount (for API requests)
   useEffect(() => {
     const initDeviceId = async () => {
       await useConnectionStore.getState().initializeDeviceId();
-      // Set Sentry user context with device ID
-      const deviceId = useConnectionStore.getState().deviceId;
-      if (deviceId) {
-        setUser({ deviceId });
-      }
+      // Device ID is still used for API requests
+      // Firebase UID is used for user tracking (set in authStore)
     };
     initDeviceId();
   }, []);
@@ -358,5 +389,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

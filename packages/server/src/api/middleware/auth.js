@@ -2,74 +2,168 @@ const db = require('../../utils/db');
 const logger = require('../../utils/logger');
 const usageTracker = require('../../utils/usageTracker');
 const { getTier, isByokAllowed } = require('../../config/tiers');
+const { verifyIdToken } = require('../../utils/firebase');
 
 /**
- * Require authentication - extracts user from token/session
- * For now, uses X-Device-Id as pseudo-auth until full auth is implemented
+ * Require authentication - extracts user from Firebase ID token, Firebase UID header, or device ID
+ *
+ * Authentication priority:
+ * 1. Authorization Bearer token (Firebase ID token - most secure, server-verified)
+ * 2. X-Firebase-UID header (less secure, for migration period)
+ * 3. X-User-Id header (alias for Firebase UID, for mobile compatibility)
+ * 4. X-Device-Id header (backwards compatibility)
+ *
+ * Server is the source of truth for subscription/trial state.
  */
-function requireAuth(req, res, next) {
-  const deviceId = req.headers['x-device-id'];
-  const authHeader = req.headers.authorization;
+async function requireAuth(req, res, next) {
+  try {
+    let firebaseUid = null;
+    let verifiedByToken = false;
 
-  // TODO: Replace with proper JWT/session validation
-  // For now, use device ID as user identifier
-  if (!deviceId && !authHeader) {
-    return res.status(401).json({
+    // Priority 1: Verify Authorization Bearer token (most secure)
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      const idToken = authHeader.substring(7);
+      const decodedToken = await verifyIdToken(idToken);
+      if (decodedToken) {
+        firebaseUid = decodedToken.uid;
+        verifiedByToken = true;
+        // Store decoded token info for potential use
+        req.decodedToken = decodedToken;
+      }
+    }
+
+    // Priority 2: Fall back to header-based auth (less secure, for migration)
+    if (!firebaseUid) {
+      firebaseUid = req.headers['x-firebase-uid'] || req.headers['x-user-id'];
+    }
+
+    // Priority 3: Device ID fallback
+    const deviceId = req.headers['x-device-id'];
+
+    // Require at least one form of identification
+    if (!firebaseUid && !deviceId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required. Provide Authorization Bearer token or X-Device-Id header.',
+      });
+    }
+
+    // Check if database is initialized
+    if (!db.isInitialized()) {
+      // Allow requests without DB for development/testing
+      logger.warn('[Auth] Database not initialized, using default trial user');
+      req.user = {
+        id: firebaseUid || deviceId || 'anonymous',
+        tier: 'trial',
+        byokKeyHash: null,
+        verifiedByToken,
+      };
+      return next();
+    }
+
+    // Look up user by Firebase UID first (preferred)
+    let user = null;
+
+    if (firebaseUid) {
+      user = db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid]);
+
+      // If not found by firebase_uid, check if there's a device user to migrate
+      if (!user && deviceId) {
+        const deviceUser = db.get(
+          'SELECT * FROM users WHERE (device_id = ? OR id = ?) AND firebase_uid IS NULL',
+          [deviceId, deviceId]
+        );
+
+        if (deviceUser) {
+          // Migrate device user to Firebase UID
+          db.run(
+            `UPDATE users SET firebase_uid = ?, updated_at = datetime('now') WHERE id = ?`,
+            [firebaseUid, deviceUser.id]
+          );
+          user = db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid]);
+          logger.info(`[Auth] Migrated device user ${deviceUser.id} to Firebase UID ${firebaseUid}`);
+        }
+      }
+    }
+
+    // Fall back to device ID lookup for backwards compatibility
+    if (!user && deviceId) {
+      user = db.get('SELECT * FROM users WHERE device_id = ?', [deviceId]);
+
+      if (!user) {
+        // Legacy lookup by id column
+        user = db.get('SELECT * FROM users WHERE id = ? AND firebase_uid IS NULL', [deviceId]);
+      }
+    }
+
+    // Create new user if not found
+    if (!user) {
+      const id = firebaseUid || deviceId || `user-${Date.now()}`;
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + 3);
+
+      db.run(
+        `INSERT INTO users (id, firebase_uid, device_id, tier, trial_started_at, trial_ends_at, created_at, updated_at)
+         VALUES (?, ?, ?, 'trial', datetime('now'), ?, datetime('now'), datetime('now'))`,
+        [id, firebaseUid || null, deviceId || null, trialEnd.toISOString()]
+      );
+
+      user = firebaseUid
+        ? db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid])
+        : db.get('SELECT * FROM users WHERE id = ?', [id]);
+
+      logger.info(`[Auth] Created new trial user: ${id} (Firebase: ${!!firebaseUid}, Verified: ${verifiedByToken})`);
+    }
+
+    // Check subscription expiration (server is source of truth)
+    if (user.tier === 'pro' && user.subscription_expires_at) {
+      if (new Date(user.subscription_expires_at) < new Date()) {
+        // Subscription expired - downgrade
+        db.run(
+          `UPDATE users SET tier = 'expired', updated_at = datetime('now') WHERE id = ?`,
+          [user.id]
+        );
+        user.tier = 'expired';
+        logger.info(`[Auth] Subscription expired for user: ${user.firebase_uid || user.id}`);
+      }
+    }
+
+    // Check trial expiration
+    if (user.tier === 'trial' && user.trial_ends_at) {
+      if (new Date(user.trial_ends_at) < new Date()) {
+        // Trial expired - downgrade to expired (no AI access)
+        db.run(
+          `UPDATE users SET tier = 'expired', updated_at = datetime('now') WHERE id = ?`,
+          [user.id]
+        );
+        user.tier = 'expired';
+        logger.info(`[Auth] Trial expired for user: ${user.firebase_uid || user.id}`);
+      }
+    }
+
+    // Set user on request - use firebase_uid as canonical ID if available
+    req.user = {
+      id: user.firebase_uid || user.id,
+      internalId: user.id,
+      firebaseUid: user.firebase_uid,
+      deviceId: user.device_id,
+      tier: user.tier,
+      byokKeyHash: user.byok_key_hash,
+      trialEndsAt: user.trial_ends_at,
+      subscriptionExpiresAt: user.subscription_expires_at,
+      subscriptionWillRenew: !!user.subscription_will_renew,
+      verifiedByToken, // Indicates if auth was verified by Firebase token
+    };
+
+    next();
+  } catch (error) {
+    logger.error('[Auth] Error in requireAuth:', error);
+    return res.status(500).json({
       success: false,
-      error: 'Authentication required. Provide X-Device-Id header.',
+      error: 'Authentication error',
     });
   }
-
-  const userId = deviceId || 'anonymous';
-
-  // Check if database is initialized
-  if (!db.isInitialized()) {
-    // Allow requests without DB for development/testing
-    logger.warn('[Auth] Database not initialized, using default trial user');
-    req.user = {
-      id: userId,
-      tier: 'trial',
-      byokKeyHash: null,
-    };
-    return next();
-  }
-
-  // Look up or create user by device ID
-  let user = db.get('SELECT * FROM users WHERE id = ?', [userId]);
-
-  if (!user) {
-    // Create trial user (3 day trial)
-    const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate() + 3);
-
-    db.run(
-      `INSERT INTO users (id, tier, trial_started_at, trial_ends_at)
-       VALUES (?, 'trial', datetime('now'), ?)`,
-      [userId, trialEnd.toISOString()]
-    );
-
-    user = db.get('SELECT * FROM users WHERE id = ?', [userId]);
-    logger.info(`[Auth] Created new trial user: ${userId}`);
-  }
-
-  // Check if trial expired
-  if (user.tier === 'trial' && user.trial_ends_at) {
-    if (new Date(user.trial_ends_at) < new Date()) {
-      // Trial expired - downgrade to basic (no AI access)
-      db.run(`UPDATE users SET tier = 'basic', updated_at = datetime('now') WHERE id = ?`, [userId]);
-      user.tier = 'basic';
-      logger.info(`[Auth] Trial expired for user: ${userId}`);
-    }
-  }
-
-  req.user = {
-    id: user.id,
-    tier: user.tier,
-    byokKeyHash: user.byok_key_hash,
-    trialEndsAt: user.trial_ends_at,
-  };
-
-  next();
 }
 
 /**
@@ -152,21 +246,28 @@ function requireQuota(feature) {
  * Optional auth - extracts user if present but doesn't require it
  * Useful for endpoints that behave differently for authenticated users
  */
-function optionalAuth(req, res, next) {
+async function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const firebaseUid = req.headers['x-firebase-uid'] || req.headers['x-user-id'];
   const deviceId = req.headers['x-device-id'];
 
-  if (!deviceId) {
+  if (!authHeader && !firebaseUid && !deviceId) {
     req.user = null;
     return next();
   }
 
   // Delegate to requireAuth logic but don't fail
-  requireAuth(req, res, (err) => {
-    if (err) {
-      req.user = null;
-    }
+  try {
+    await requireAuth(req, res, (err) => {
+      if (err) {
+        req.user = null;
+      }
+      next();
+    });
+  } catch {
+    req.user = null;
     next();
-  });
+  }
 }
 
 module.exports = {
