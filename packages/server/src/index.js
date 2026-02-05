@@ -11,6 +11,7 @@ const { FileCache } = require("./utils/cache");
 const APIServer = require("./api/server");
 const chokidar = require("chokidar");
 const path = require("path");
+const fs = require("fs");
 const { initSentry, captureError, flush: flushSentry } = require("./utils/sentry");
 
 /**
@@ -71,6 +72,7 @@ class RecrateService {
 
       // Initialize waveform generator and spectral analyzer
       logger.info("Initializing waveform generator...");
+      this._ensureFFmpegInPath();
       this.waveformCache = new FileCache(config.cache.directory);
       this.waveformGenerator = new WaveformGenerator(this.parser, this.waveformCache);
       const ffmpegAvailable = await this.waveformGenerator.checkFFmpeg();
@@ -83,7 +85,11 @@ class RecrateService {
         logger.success("Spectral analyzer initialized");
       } else {
         logger.warn("FFmpeg not found - waveform generation will be unavailable");
-        logger.warn("Install FFmpeg with: brew install ffmpeg");
+        logger.warn(
+          process.platform === "win32"
+            ? "Install FFmpeg with: winget install FFmpeg"
+            : "Install FFmpeg with: brew install ffmpeg"
+        );
         this.waveformGenerator = null;
       }
 
@@ -212,6 +218,92 @@ class RecrateService {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
+  }
+
+  /**
+   * Search common Windows install locations for ffmpeg.exe and add to PATH if found.
+   * No-op on non-Windows platforms.
+   */
+  _ensureFFmpegInPath() {
+    if (process.platform !== "win32") return;
+
+    // Quick check: if ffmpeg is already reachable, nothing to do
+    const pathDirs = (process.env.PATH || "").split(path.delimiter);
+    for (const dir of pathDirs) {
+      if (dir && fs.existsSync(path.join(dir, "ffmpeg.exe"))) return;
+    }
+
+    logger.info("FFmpeg not on PATH – searching common Windows install locations...");
+
+    const candidates = [];
+
+    // 1. WinGet packages (most common modern install)
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      const wingetPkgs = path.join(localAppData, "Microsoft", "WinGet", "Packages");
+      if (fs.existsSync(wingetPkgs)) {
+        try {
+          const pkgDirs = fs.readdirSync(wingetPkgs);
+          for (const pkg of pkgDirs) {
+            if (!pkg.toLowerCase().includes("ffmpeg")) continue;
+            // Walk one level of subdirs to find the bin folder
+            const pkgPath = path.join(wingetPkgs, pkg);
+            this._findFFmpegBin(pkgPath, candidates, 3);
+          }
+        } catch (e) {
+          logger.debug(`Could not scan WinGet packages: ${e.message}`);
+        }
+      }
+    }
+
+    // 2. Common manual-install paths
+    const staticPaths = [
+      "C:\\ffmpeg\\bin",
+      "C:\\Program Files\\ffmpeg\\bin",
+      "C:\\Program Files (x86)\\ffmpeg\\bin",
+    ];
+    for (const p of staticPaths) {
+      if (fs.existsSync(path.join(p, "ffmpeg.exe"))) {
+        candidates.push(p);
+      }
+    }
+
+    // 3. Chocolatey
+    const chocoPath = "C:\\ProgramData\\chocolatey\\bin";
+    if (fs.existsSync(path.join(chocoPath, "ffmpeg.exe"))) {
+      candidates.push(chocoPath);
+    }
+
+    if (candidates.length > 0) {
+      const ffmpegDir = candidates[0];
+      process.env.PATH = ffmpegDir + path.delimiter + process.env.PATH;
+      logger.success(`Found FFmpeg at: ${ffmpegDir} (added to PATH)`);
+    } else {
+      logger.debug("FFmpeg not found in any common Windows location");
+    }
+  }
+
+  /**
+   * Recursively search a directory for a bin folder containing ffmpeg.exe.
+   */
+  _findFFmpegBin(dir, results, maxDepth) {
+    if (maxDepth <= 0) return;
+    try {
+      const ffmpegPath = path.join(dir, "ffmpeg.exe");
+      if (fs.existsSync(ffmpegPath)) {
+        results.push(dir);
+        return;
+      }
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          this._findFFmpegBin(path.join(dir, entry.name), results, maxDepth - 1);
+          if (results.length > 0) return; // stop after first match
+        }
+      }
+    } catch (e) {
+      // Permission errors, etc. – skip silently
+    }
   }
 
   /**
