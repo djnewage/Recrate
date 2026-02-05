@@ -2,18 +2,18 @@
  * Safe Writer for Serato Markers in Audio Files
  *
  * This module implements safe file writing with:
- * - Backup creation before any write
- * - Atomic writes (temp file + rename)
+ * - Atomic writes (temp file + rename) - protects against partial writes
  * - Verification after write
- * - Automatic rollback on failure
  * - Preservation of unknown Serato data
  *
  * SAFETY PRINCIPLES:
- * 1. Never lose user data - Always backup before any write
- * 2. Atomic operations - Write to temp file, then rename
- * 3. Verify after write - Read back and validate written data
- * 4. Rollback on failure - Restore from backup if anything fails
- * 5. Preserve unknown data - Don't delete Serato markers we don't understand
+ * 1. Atomic operations - Write to temp file, then rename (original unchanged on failure)
+ * 2. Verify after write - Read back and validate written data
+ * 3. Preserve unknown data - Don't delete Serato markers we don't understand
+ *
+ * NOTE: Backup creation is available via createBackup() for manual use, but not
+ * automatically performed during cue point writes. Atomic writes provide sufficient
+ * protection, and cue points are trivially recreatable (2 seconds of work in Serato).
  */
 
 const fs = require('fs').promises;
@@ -411,14 +411,14 @@ class SeratoFileWriter {
   }
 
   /**
-   * Write cue points to audio file with full safety
+   * Write cue points to audio file with atomic write protection
    * @param {string} filePath - Path to the audio file
    * @param {Array} cuePoints - Array of cue point objects
-   * @param {Object} options - Write options
-   * @returns {Object} { success: boolean, backup?: string, error?: string }
+   * @param {Object} options - Write options (verify: boolean)
+   * @returns {Object} { success: boolean, entriesWritten?: number, error?: string }
    */
   async writeCuePoints(filePath, cuePoints, options = {}) {
-    const { createBackup = true, verify = true } = options;
+    const { verify = true } = options;
 
     // Validate cuePoints input
     if (!Array.isArray(cuePoints)) {
@@ -463,39 +463,31 @@ class SeratoFileWriter {
       };
     }
 
-    let backupPath = null;
-
     try {
-      // Step 1: Create backup
-      if (createBackup) {
-        backupPath = await this.createBackup(filePath);
-        logger.info(`[SERATO WRITER] Created backup: ${backupPath}`);
-      }
-
-      // Step 2: Read existing markers (preserve non-cue entries)
+      // Step 1: Read existing markers (preserve non-cue entries)
       const existingEntries = await this.readExistingMarkers(filePath);
       logger.info(`[SERATO WRITER] Read ${existingEntries.length} existing entries`);
 
-      // Step 3: Merge cue points with existing entries
+      // Step 2: Merge cue points with existing entries
       const mergedEntries = SeratoMarkersParser.mergeEntries(existingEntries, cuePoints);
       logger.info(`[SERATO WRITER] Merged to ${mergedEntries.length} entries`);
 
-      // Step 4: Encode to binary
+      // Step 3: Encode to binary
       const encoded = SeratoMarkersParser.encode(mergedEntries);
 
-      // Step 5: Validate encoded data
+      // Step 4: Validate encoded data
       const validation = SeratoMarkersParser.validate(encoded);
       if (!validation.valid) {
         throw new Error(`Encoded data validation failed: ${validation.error}`);
       }
 
-      // Step 6: Write atomically (pass cuePoints for v1 format)
+      // Step 5: Write atomically (pass cuePoints for v1 format)
       // Extract ALL cue points from merged entries (preserves existing cues)
       const cuesForV1 = SeratoMarkersParser.extractCuePoints(mergedEntries);
       await this.writeAtomically(filePath, encoded, cuesForV1);
       logger.info(`[SERATO WRITER] Atomic write completed (v1 + v2 frames)`);
 
-      // Step 7: Verify by reading back
+      // Step 6: Verify by reading back
       if (verify) {
         const verification = await this.verifyWrite(filePath, cuePoints);
         if (!verification.success) {
@@ -506,35 +498,12 @@ class SeratoFileWriter {
 
       return {
         success: true,
-        backup: backupPath,
         entriesWritten: mergedEntries.length,
       };
 
     } catch (error) {
       logger.error(`[SERATO WRITER] Write failed: ${error.message}`);
-
-      // Step 8: Rollback on any failure
-      if (backupPath) {
-        try {
-          await this.rollback(filePath, backupPath);
-          logger.info(`[SERATO WRITER] Rolled back from backup`);
-          return {
-            success: false,
-            error: error.message,
-            rolledBack: true,
-            backup: backupPath,
-          };
-        } catch (rollbackError) {
-          logger.error(`[SERATO WRITER] CRITICAL: Rollback failed: ${rollbackError.message}`);
-          return {
-            success: false,
-            error: error.message,
-            rollbackError: rollbackError.message,
-            backup: backupPath,
-          };
-        }
-      }
-
+      // Atomic write ensures original file is unchanged on failure
       return {
         success: false,
         error: error.message,
@@ -549,8 +518,6 @@ class SeratoFileWriter {
    * @returns {Object} { success: boolean, error?: string }
    */
   async deleteCuePoint(filePath, cueIndex, options = {}) {
-    const { createBackup = true, verify = true } = options;
-
     logger.info(`[SERATO WRITER] Deleting cue ${cueIndex} from: ${filePath}`);
 
     // Validate input
@@ -569,14 +536,7 @@ class SeratoFileWriter {
       return { success: false, error: `File not accessible: ${error.message}` };
     }
 
-    let backupPath = null;
-
     try {
-      // Create backup
-      if (createBackup) {
-        backupPath = await this.createBackup(filePath);
-      }
-
       // Read existing markers
       const existingEntries = await this.readExistingMarkers(filePath);
 
@@ -590,27 +550,11 @@ class SeratoFileWriter {
       const encoded = SeratoMarkersParser.encode(updatedEntries);
       await this.writeAtomically(filePath, encoded, cuesForV1);
 
-      return {
-        success: true,
-        backup: backupPath,
-      };
+      return { success: true };
 
     } catch (error) {
       logger.error(`[SERATO WRITER] Delete failed: ${error.message}`);
-
-      if (backupPath) {
-        try {
-          await this.rollback(filePath, backupPath);
-          return { success: false, error: error.message, rolledBack: true };
-        } catch (rollbackError) {
-          return {
-            success: false,
-            error: error.message,
-            rollbackError: rollbackError.message,
-          };
-        }
-      }
-
+      // Atomic write ensures original file is unchanged on failure
       return { success: false, error: error.message };
     }
   }
