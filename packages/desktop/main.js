@@ -3,7 +3,9 @@ require('dotenv').config();
 
 const { app, BrowserWindow, Tray, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
-const { execSync, spawn } = require('child_process');
+const { exec, spawn } = require('child_process');
+const util = require('util');
+const execAsync = util.promisify(exec);
 const Store = require('electron-store');
 const log = require('electron-log');
 const os = require('os');
@@ -281,21 +283,21 @@ function disconnectFromProxy() {
 }
 
 /**
- * Kill any process using the specified port
+ * Kill any process using the specified port (async to avoid blocking UI)
  * Prevents "EADDRINUSE" errors from stale processes
  */
-function killProcessOnPort(port) {
+async function killProcessOnPort(port) {
   try {
     if (process.platform === 'win32') {
       // Windows: find and kill process on port
-      const result = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
-      const lines = result.trim().split('\n');
+      const { stdout } = await execAsync(`netstat -ano | findstr :${port}`);
+      const lines = stdout.trim().split('\n');
       for (const line of lines) {
         const parts = line.trim().split(/\s+/);
         const pid = parts[parts.length - 1];
         if (pid && !isNaN(pid)) {
           try {
-            execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' });
+            await execAsync(`taskkill /PID ${pid} /F`);
             log.info(`Killed process ${pid} on port ${port}`);
           } catch (e) {
             // Process may have already exited
@@ -304,11 +306,11 @@ function killProcessOnPort(port) {
       }
     } else {
       // macOS/Linux: use lsof to find and kill process
-      const result = execSync(`lsof -ti :${port}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
-      const pids = result.trim().split('\n').filter(p => p);
+      const { stdout } = await execAsync(`lsof -ti :${port}`);
+      const pids = stdout.trim().split('\n').filter(p => p);
       for (const pid of pids) {
         try {
-          execSync(`kill -9 ${pid}`, { stdio: 'ignore' });
+          await execAsync(`kill -9 ${pid}`);
           log.info(`Killed process ${pid} on port ${port}`);
         } catch (e) {
           // Process may have already exited
@@ -338,7 +340,7 @@ async function startServer() {
 
   // Kill any stale process on the port before starting
   log.info('Checking for stale processes on port', serverPort);
-  killProcessOnPort(serverPort);
+  await killProcessOnPort(serverPort);
 
   log.info('Starting server with config:', userConfig);
   log.info('App is packaged:', app.isPackaged);
@@ -488,7 +490,7 @@ async function stopServer() {
     // Force kill any lingering process on the port to ensure clean restart
     if (serverPort) {
       log.info(`Cleaning up port ${serverPort}...`);
-      killProcessOnPort(serverPort);
+      await killProcessOnPort(serverPort);
     }
 
     serverStatus = 'stopped';
@@ -520,11 +522,16 @@ ipcMain.handle('get-setup-complete', () => {
   return true;
 });
 
-// Path validation handler
-ipcMain.handle('validate-path', (event, pathToCheck) => {
-  const exists = fs.existsSync(pathToCheck);
-  log.info(`Validating path: ${pathToCheck} - exists: ${exists}`);
-  return exists;
+// Path validation handler (async to avoid blocking UI)
+ipcMain.handle('validate-path', async (event, pathToCheck) => {
+  try {
+    await fs.promises.access(pathToCheck);
+    log.info(`Validating path: ${pathToCheck} - exists: true`);
+    return true;
+  } catch {
+    log.info(`Validating path: ${pathToCheck} - exists: false`);
+    return false;
+  }
 });
 
 ipcMain.handle('set-setup-complete', () => {

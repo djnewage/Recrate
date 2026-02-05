@@ -119,6 +119,10 @@ class WaveformGenerator {
     return new Promise((resolve, reject) => {
       const chunks = [];
 
+      // Normalize path for FFmpeg (use forward slashes on all platforms)
+      // Windows backslashes are interpreted as escape sequences by FFmpeg
+      const normalizedPath = filePath.replace(/\\/g, '/');
+
       // FFmpeg command to extract raw PCM data
       // -i: input file
       // -ac 1: mono
@@ -127,7 +131,7 @@ class WaveformGenerator {
       // -acodec pcm_s16le: PCM codec
       // pipe:1: output to stdout
       const ffmpeg = spawn('ffmpeg', [
-        '-i', filePath,
+        '-i', normalizedPath,
         '-ac', '1',
         '-ar', String(this.sampleRate),
         '-f', 's16le',

@@ -148,8 +148,12 @@ class SpectralAnalyzer {
     return new Promise((resolve, reject) => {
       const chunks = [];
 
+      // Normalize path for FFmpeg (use forward slashes on all platforms)
+      // Windows backslashes are interpreted as escape sequences by FFmpeg
+      const normalizedPath = filePath.replace(/\\/g, '/');
+
       const ffmpeg = spawn('ffmpeg', [
-        '-i', filePath,
+        '-i', normalizedPath,
         '-ac', '1', // Mono
         '-ar', String(this.sampleRate), // 44.1kHz for frequency accuracy
         '-f', 's16le',
