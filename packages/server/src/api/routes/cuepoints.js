@@ -263,7 +263,7 @@ function createCuePointsRoutes(parser = null) {
 
             if (writeResult.success) {
               logger.info(`[CUE POINTS] Synced cue ${bankNumber} to Serato file: ${track.filePath}`);
-              response.seratoSync = { success: true, backup: writeResult.backup };
+              response.seratoSync = { success: true };
             } else {
               logger.warn(`[CUE POINTS] Serato sync failed (saved to DB only): ${writeResult.error}`);
               response.seratoSync = { success: false, error: writeResult.error };
@@ -328,7 +328,7 @@ function createCuePointsRoutes(parser = null) {
 
             if (deleteResult.success) {
               logger.info(`[CUE POINTS] Removed cue ${bank} from Serato file: ${track.filePath}`);
-              response.seratoSync = { success: true, backup: deleteResult.backup };
+              response.seratoSync = { success: true };
             } else {
               logger.warn(`[CUE POINTS] Serato sync failed: ${deleteResult.error}`);
               response.seratoSync = { success: false, error: deleteResult.error };
