@@ -245,29 +245,100 @@ function requireQuota(feature) {
 /**
  * Optional auth - extracts user if present but doesn't require it
  * Useful for endpoints that behave differently for authenticated users
+ *
+ * Unlike requireAuth, this will NOT return 401 if auth fails - it just sets req.user = null
  */
 async function optionalAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   const firebaseUid = req.headers['x-firebase-uid'] || req.headers['x-user-id'];
   const deviceId = req.headers['x-device-id'];
 
+  // No auth headers present - continue without user
   if (!authHeader && !firebaseUid && !deviceId) {
     req.user = null;
     return next();
   }
 
-  // Delegate to requireAuth logic but don't fail
+  // Try to authenticate, but don't fail if it doesn't work
   try {
-    await requireAuth(req, res, (err) => {
-      if (err) {
-        req.user = null;
+    let verifiedUser = null;
+    let verifiedByToken = false;
+
+    // Try Bearer token verification
+    if (authHeader?.startsWith('Bearer ')) {
+      const idToken = authHeader.substring(7);
+      const decodedToken = await verifyIdToken(idToken);
+      if (decodedToken) {
+        verifiedUser = decodedToken.uid;
+        verifiedByToken = true;
       }
-      next();
-    });
-  } catch {
+    }
+
+    // Fall back to header-based auth
+    if (!verifiedUser) {
+      verifiedUser = firebaseUid;
+    }
+
+    // Look up or create user if we have identification
+    if (verifiedUser || deviceId) {
+      // Check if database is initialized
+      if (db.isInitialized()) {
+        // Look up user by Firebase UID first
+        let user = null;
+        if (verifiedUser) {
+          user = db.get('SELECT * FROM users WHERE firebase_uid = ?', [verifiedUser]);
+        }
+        // Fall back to device ID lookup
+        if (!user && deviceId) {
+          user = db.get('SELECT * FROM users WHERE device_id = ?', [deviceId]);
+          if (!user) {
+            user = db.get('SELECT * FROM users WHERE id = ? AND firebase_uid IS NULL', [deviceId]);
+          }
+        }
+
+        if (user) {
+          req.user = {
+            id: user.firebase_uid || user.id,
+            internalId: user.id,
+            firebaseUid: user.firebase_uid,
+            deviceId: user.device_id,
+            tier: user.tier,
+            byokKeyHash: user.byok_key_hash,
+            trialEndsAt: user.trial_ends_at,
+            subscriptionExpiresAt: user.subscription_expires_at,
+            subscriptionWillRenew: !!user.subscription_will_renew,
+            verifiedByToken,
+          };
+        } else {
+          // User not found in DB - set basic info without creating
+          req.user = {
+            id: verifiedUser || deviceId,
+            firebaseUid: verifiedUser,
+            deviceId: deviceId,
+            tier: 'trial',
+            verifiedByToken,
+          };
+        }
+      } else {
+        // DB not initialized - set basic user info
+        req.user = {
+          id: verifiedUser || deviceId,
+          firebaseUid: verifiedUser,
+          deviceId: deviceId,
+          tier: 'trial',
+          verifiedByToken,
+        };
+      }
+    } else {
+      req.user = null;
+    }
+  } catch (error) {
+    // Auth failed - continue without user (it's optional)
+    logger.debug('[Auth] optionalAuth failed, continuing without user:', error.message);
     req.user = null;
-    next();
   }
+
+  next();
 }
 
 module.exports = {

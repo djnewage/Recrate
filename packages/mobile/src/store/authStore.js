@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthService from '../services/AuthService';
-import { setFirebaseUser, logEvent } from '../config/firebase';
+import { setFirebaseUser } from '../config/firebase';
 import { setUser as setSentryUser } from '../utils/sentry';
 import { useConnectionStore } from './connectionStore';
 import { useSubscriptionStore } from './subscriptionStore';
@@ -144,12 +144,7 @@ export const useAuthStore = create(
         const result = await AuthService.signInWithApple();
 
         if (result.success) {
-          // Log analytics event
-          await logEvent('login', { method: 'apple' });
-
-          if (result.isNewUser) {
-            await logEvent('sign_up', { method: 'apple' });
-          }
+          // Auth state listener will handle state update
         } else if (!result.cancelled) {
           set({ error: result.error, isLoading: false });
         } else {
@@ -168,12 +163,7 @@ export const useAuthStore = create(
         const result = await AuthService.signInWithGoogle();
 
         if (result.success) {
-          // Log analytics event
-          await logEvent('login', { method: 'google' });
-
-          if (result.isNewUser) {
-            await logEvent('sign_up', { method: 'google' });
-          }
+          // Auth state listener will handle state update
         } else if (!result.cancelled) {
           set({ error: result.error, isLoading: false });
         } else {
@@ -192,8 +182,7 @@ export const useAuthStore = create(
         const result = await AuthService.signInWithEmail(email, password);
 
         if (result.success) {
-          // Log analytics event
-          await logEvent('login', { method: 'email' });
+          // Auth state listener will handle state update
         } else {
           set({ error: result.error, isLoading: false });
         }
@@ -210,8 +199,7 @@ export const useAuthStore = create(
         const result = await AuthService.signUp(email, password, displayName);
 
         if (result.success) {
-          // Log analytics event
-          await logEvent('sign_up', { method: 'email' });
+          // Auth state listener will handle state update
         } else {
           set({ error: result.error, isLoading: false });
         }
@@ -247,9 +235,6 @@ export const useAuthStore = create(
         if (!result.success) {
           set({ error: result.error, isLoading: false });
         }
-
-        // Log analytics event
-        await logEvent('logout');
 
         return result;
       },
