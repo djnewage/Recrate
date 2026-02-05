@@ -88,22 +88,39 @@ async function initialize() {
     logger.info('[DB] Created new database');
   }
 
-  // Users table (minimal - auth handled externally)
+  // Users table - keyed by Firebase UID for cross-device identity
+  // Supports both firebase_uid (primary) and legacy device_id (migration)
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
+      firebase_uid TEXT UNIQUE,
+      device_id TEXT,
       email TEXT,
       tier TEXT NOT NULL DEFAULT 'trial',
       trial_started_at TEXT,
       trial_ends_at TEXT,
+      revenuecat_app_user_id TEXT,
+      subscription_id TEXT,
+      subscription_product_id TEXT,
       subscription_started_at TEXT,
-      subscription_ends_at TEXT,
+      subscription_expires_at TEXT,
+      subscription_will_renew INTEGER DEFAULT 0,
+      subscription_cancelled_at TEXT,
       byok_key_hash TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  // Run migrations FIRST for existing databases (adds columns like firebase_uid)
+  // This must happen before creating indexes on those columns
+  runMigrations();
+
+  // Now create indexes on users table (all columns exist after migrations)
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_device_id ON users(device_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_revenuecat ON users(revenuecat_app_user_id)`);
 
   // AI Usage tracking
   db.run(`
@@ -159,6 +176,63 @@ async function initialize() {
   startAutoSave();
 
   logger.success('[DB] Database initialized');
+}
+
+/**
+ * Run database migrations for schema changes
+ */
+function runMigrations() {
+  logger.info('[DB] Checking for migrations...');
+
+  // Get existing columns in users table
+  const tableInfo = db.exec("PRAGMA table_info(users)");
+  const existingColumns = tableInfo[0]?.values?.map(row => row[1]) || [];
+
+  // Migration: Add firebase_uid column if missing
+  if (!existingColumns.includes('firebase_uid')) {
+    logger.info('[DB] Migration: Adding firebase_uid column');
+    db.run('ALTER TABLE users ADD COLUMN firebase_uid TEXT');
+    db.run('CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid)');
+  }
+
+  // Migration: Add device_id column if missing (for backwards compatibility tracking)
+  if (!existingColumns.includes('device_id')) {
+    logger.info('[DB] Migration: Adding device_id column');
+    db.run('ALTER TABLE users ADD COLUMN device_id TEXT');
+    db.run('CREATE INDEX IF NOT EXISTS idx_users_device_id ON users(device_id)');
+
+    // Copy existing id (which was device_id) to device_id column
+    db.run('UPDATE users SET device_id = id WHERE device_id IS NULL');
+  }
+
+  // Migration: Add RevenueCat columns if missing
+  if (!existingColumns.includes('revenuecat_app_user_id')) {
+    logger.info('[DB] Migration: Adding RevenueCat columns');
+    db.run('ALTER TABLE users ADD COLUMN revenuecat_app_user_id TEXT');
+    db.run('CREATE INDEX IF NOT EXISTS idx_users_revenuecat ON users(revenuecat_app_user_id)');
+  }
+
+  if (!existingColumns.includes('subscription_id')) {
+    db.run('ALTER TABLE users ADD COLUMN subscription_id TEXT');
+  }
+
+  if (!existingColumns.includes('subscription_product_id')) {
+    db.run('ALTER TABLE users ADD COLUMN subscription_product_id TEXT');
+  }
+
+  if (!existingColumns.includes('subscription_expires_at')) {
+    db.run('ALTER TABLE users ADD COLUMN subscription_expires_at TEXT');
+  }
+
+  if (!existingColumns.includes('subscription_will_renew')) {
+    db.run('ALTER TABLE users ADD COLUMN subscription_will_renew INTEGER DEFAULT 0');
+  }
+
+  if (!existingColumns.includes('subscription_cancelled_at')) {
+    db.run('ALTER TABLE users ADD COLUMN subscription_cancelled_at TEXT');
+  }
+
+  logger.info('[DB] Migrations complete');
 }
 
 /**

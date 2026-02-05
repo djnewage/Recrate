@@ -17,6 +17,8 @@ const createConfigRoutes = require('./routes/config');
 const createIdentifyRoutes = require('./routes/identify');
 const createAIRoutes = require('./routes/ai');
 const createCuePointsRoutes = require('./routes/cuepoints');
+const createWebhookRoutes = require('./routes/webhooks');
+const createSubscriptionRoutes = require('./routes/subscription');
 const AudioWebSocketServer = require('./websocket-server');
 
 /**
@@ -49,6 +51,11 @@ class APIServer {
     // Sentry request handler must be first middleware
     Sentry.setupExpressErrorHandler(this.app);
 
+    // Webhook routes MUST be registered before body parsers
+    // Webhooks need raw body for signature verification
+    this.app.use('/api/webhooks', createWebhookRoutes());
+    logger.info('Webhook routes registered (before body parsing)');
+
     // Middleware
     this.app.use(cors());
     this.app.use(express.json({ limit: '50mb' })); // Increased for base64 audio uploads
@@ -70,6 +77,7 @@ class APIServer {
     this.app.use('/api/identify', createIdentifyRoutes());
     this.app.use('/api/ai', createAIRoutes(this.parser, this.writer));
     this.app.use('/api/cuepoints', createCuePointsRoutes(this.parser));
+    this.app.use('/api/subscription', createSubscriptionRoutes());
 
     // Waveform routes (optional - requires FFmpeg)
     if (this.waveformGenerator) {

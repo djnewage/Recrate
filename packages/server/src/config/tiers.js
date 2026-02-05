@@ -63,6 +63,22 @@ const TIERS = {
     },
     byokAllowed: true,
   },
+  expired: {
+    name: 'Expired',
+    price: 0,
+    features: {
+      crateManagement: true,  // Allow basic browsing
+      audioStreaming: false,
+      remoteAccess: false,
+      aiCrateBuilder: false,
+      trackIdentification: false,
+    },
+    aiQuotas: {
+      crate_builder: 0,
+      track_identification: 0,
+    },
+    byokAllowed: false,
+  },
 };
 
 /**

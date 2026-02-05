@@ -243,8 +243,13 @@ describe('SeratoMarkersParser', () => {
       expect(buffer[0]).toBe(0x01);
       expect(buffer[1]).toBe(0x01);
 
-      // Verify entry marker
-      expect(buffer[2]).toBe(0x00);
+      // Verify entry type starts immediately after header (no entry marker byte)
+      // Entry format: type (null-terminated) + length (4 bytes) + payload
+      // "CUE\x00" = [0x43, 0x55, 0x45, 0x00]
+      expect(buffer[2]).toBe(0x43); // 'C'
+      expect(buffer[3]).toBe(0x55); // 'U'
+      expect(buffer[4]).toBe(0x45); // 'E'
+      expect(buffer[5]).toBe(0x00); // null terminator
     });
   });
 

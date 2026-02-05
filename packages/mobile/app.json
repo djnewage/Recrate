@@ -7,7 +7,10 @@
     "icon": "./assets/officialLogo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "scheme": "recrate",
+    "scheme": [
+      "recrate",
+      "com.googleusercontent.apps.666443636006-v6gcsq168r0lpkmlehq0tmg6hfdfv4cd"
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -41,8 +44,10 @@
           "app-proxy-provider",
           "packet-tunnel-provider"
         ],
-        "com.apple.developer.networking.multipath": true
-      }
+        "com.apple.developer.networking.multipath": true,
+        "com.apple.developer.applesignin": ["Default"]
+      },
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "adaptiveIcon": {
@@ -55,7 +60,8 @@
         "WAKE_LOCK"
       ],
       "edgeToEdgeEnabled": true,
-      "package": "com.recrate.app"
+      "package": "com.recrate.app",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -74,7 +80,24 @@
           "organization": "recrate-llc",
           "project": "recrate-mobile"
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      "@react-native-firebase/app",
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.666443636006-v6gcsq168r0lpkmlehq0tmg6hfdfv4cd"
+        }
+      ],
+      "./plugins/withFirebaseFix"
     ],
     "hooks": {
       "postPublish": [

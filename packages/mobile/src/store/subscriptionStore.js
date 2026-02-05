@@ -30,15 +30,25 @@ export const useSubscriptionStore = create(
       offerings: null,
       customerInfo: null,
 
+      // Server-side subscription data (source of truth)
+      serverQuotas: null,
+      serverTierInfo: null,
+
       // Initialize subscription state
-      initializeSubscription: async () => {
+      initializeSubscription: async (firebaseUid = null) => {
         set({ isLoading: true, error: null });
 
         try {
           // Initialize RevenueCat
           await SubscriptionService.initialize();
 
-          // Get current tier
+          // Link RevenueCat to Firebase UID if provided
+          if (firebaseUid) {
+            await SubscriptionService.setUserId(firebaseUid);
+            console.log('[SubscriptionStore] Linked RevenueCat to Firebase UID:', firebaseUid);
+          }
+
+          // Get current tier from RevenueCat (local)
           const tier = await SubscriptionService.getCurrentTier();
 
           // Get trial dates if applicable
@@ -67,6 +77,7 @@ export const useSubscriptionStore = create(
           // Load offerings
           const offerings = await SubscriptionService.getOfferings();
 
+          // Set initial state from local/RevenueCat
           set({
             currentTier: tier,
             trialStartDate: trialStartDate?.toISOString() || null,
@@ -77,6 +88,13 @@ export const useSubscriptionStore = create(
             usageResetDate,
             offerings,
             isLoading: false,
+          });
+
+          // Sync with server (source of truth) in background
+          // This updates quotas and ensures trial/subscription state is accurate
+          // Don't await - let it happen in background to not block UI
+          get().syncWithServer().catch((err) => {
+            console.warn('[SubscriptionStore] Background server sync failed:', err.message);
           });
 
           return tier;
@@ -110,6 +128,141 @@ export const useSubscriptionStore = create(
         } catch (error) {
           set({ isLoading: false, error: error.message });
           return get().currentTier;
+        }
+      },
+
+      /**
+       * Sync subscription state with server (source of truth)
+       * Call this on app launch and after any subscription changes
+       * Server-side validation prevents trial abuse and ensures accurate quotas
+       */
+      syncWithServer: async () => {
+        try {
+          // Import apiService dynamically to avoid circular dependency
+          const { apiService } = require('../services/api');
+
+          const serverStatus = await apiService.getSubscriptionStatus();
+
+          if (serverStatus) {
+            console.log('[SubscriptionStore] Synced with server:', serverStatus.tier);
+
+            // Map server tier to local tier constant
+            let localTier = serverStatus.tier;
+            if (localTier === 'basic') {
+              // If server says 'basic', treat as expired for AI features
+              localTier = SUBSCRIPTION_TIERS.EXPIRED;
+            } else if (localTier === 'pro') {
+              localTier = SUBSCRIPTION_TIERS.PRO;
+            } else if (localTier === 'trial') {
+              localTier = SUBSCRIPTION_TIERS.TRIAL;
+            } else {
+              localTier = SUBSCRIPTION_TIERS.EXPIRED;
+            }
+
+            // Update local state with server values
+            set({
+              currentTier: localTier,
+              // Trial info from server
+              trialStartDate: serverStatus.trial?.startedAt || null,
+              trialEndDate: serverStatus.trial?.endsAt || null,
+              // Quota info from server (server tracks actual usage)
+              aiCrateBuildCount: serverStatus.quotas?.crate_builder?.used || 0,
+              trackIdentificationCount: serverStatus.quotas?.track_identification?.used || 0,
+              // Server's reset date
+              usageResetDate: serverStatus.quotas?.crate_builder?.resetDate || null,
+              // Store server quota limits for reference
+              serverQuotas: serverStatus.quotas,
+              serverTierInfo: serverStatus.tierInfo,
+            });
+
+            return serverStatus;
+          }
+        } catch (error) {
+          // Don't fail silently - log for debugging
+          console.warn('[SubscriptionStore] Server sync failed (using local state):', error.message);
+          // Continue using local state - server may not be connected
+        }
+
+        return null;
+      },
+
+      /**
+       * Start trial on server (server controls trial dates)
+       * This prevents client-side manipulation of trial period
+       */
+      startTrialOnServer: async () => {
+        try {
+          const { apiService } = require('../services/api');
+          const result = await apiService.startTrial();
+
+          if (result.success) {
+            set({
+              currentTier: SUBSCRIPTION_TIERS.TRIAL,
+              trialStartDate: result.trialStartedAt,
+              trialEndDate: result.trialEndsAt,
+              hasSeenTrialStartScreen: true,
+              aiCrateBuildCount: 0,
+              trackIdentificationCount: 0,
+              usageResetDate: new Date().toISOString(),
+            });
+
+            // Also start locally for offline support
+            await SubscriptionService.startTrial();
+            await SubscriptionService.markTrialScreenSeen();
+
+            return true;
+          }
+
+          return false;
+        } catch (error) {
+          console.error('[SubscriptionStore] Failed to start trial on server:', error);
+          // Fall back to local trial start
+          return get().startTrial();
+        }
+      },
+
+      /**
+       * Link Firebase account on server
+       * Merges any device-based subscription data with Firebase account
+       */
+      linkFirebaseOnServer: async (firebaseUid) => {
+        try {
+          const { apiService } = require('../services/api');
+          await apiService.linkFirebaseAccount();
+          console.log('[SubscriptionStore] Linked Firebase on server:', firebaseUid);
+
+          // Sync to get merged state
+          await get().syncWithServer();
+          return true;
+        } catch (error) {
+          console.warn('[SubscriptionStore] Server link failed:', error.message);
+          return false;
+        }
+      },
+
+      // Link RevenueCat customer to Firebase UID (call after authentication)
+      linkToFirebaseUser: async (firebaseUid) => {
+        try {
+          if (!firebaseUid) {
+            console.log('[SubscriptionStore] No Firebase UID provided, skipping link');
+            return false;
+          }
+
+          // Link RevenueCat to Firebase UID
+          const success = await SubscriptionService.setUserId(firebaseUid);
+          if (success) {
+            console.log('[SubscriptionStore] Linked RevenueCat to Firebase UID:', firebaseUid);
+
+            // Link on server to merge any device-based data
+            await get().linkFirebaseOnServer(firebaseUid);
+
+            // Refresh subscription data after linking
+            await get().refreshSubscription();
+          }
+          return success;
+        } catch (error) {
+          console.error('[SubscriptionStore] Failed to link to Firebase:', error);
+          return false;
         }
       },
 
