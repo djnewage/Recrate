@@ -280,11 +280,18 @@ class VolumeDiscovery {
         hasDatabase = dbStats.isFile();
         lastModified = dbStats.mtime;
 
-        // Quick estimate of track count (very rough, based on file size)
-        // Average entry is ~200 bytes, but this is just for display
-        trackCount = Math.floor(dbStats.size / 200);
+        // Count actual tracks by finding 'otrk' markers in database
+        const dbBuffer = await fs.readFile(dbPath);
+        const otrkMarker = Buffer.from('otrk');
+        let offset = 0;
+        while (offset < dbBuffer.length) {
+          const index = dbBuffer.indexOf(otrkMarker, offset);
+          if (index === -1) break;
+          trackCount++;
+          offset = index + 4;
+        }
       } catch {
-        // Database file doesn't exist
+        // Database file doesn't exist or couldn't be read
       }
 
       // Check for Subcrates directory
