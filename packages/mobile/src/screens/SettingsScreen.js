@@ -15,6 +15,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
+import { useAuthStore } from '../store/authStore';
 import { SUBSCRIPTION_TIERS, TIER_FEATURES } from '../constants/subscription';
 import ACRCloudService from '../services/ACRCloudService';
 import AIKeyService from '../services/AIKeyService';
@@ -43,6 +44,16 @@ const SettingsScreen = ({ navigation }) => {
   const [isSavingAIKey, setIsSavingAIKey] = useState(false);
 
   const { resetLibrary, loadLibrary } = useStore();
+
+  // Auth state
+  const {
+    user,
+    displayName,
+    email,
+    signOut,
+    getDisplayName,
+    isLoading: isAuthLoading,
+  } = useAuthStore();
 
   // Debug state
   const [showDebug, setShowDebug] = useState(false);
@@ -75,6 +86,26 @@ const SettingsScreen = ({ navigation }) => {
     } else {
       Alert.alert('Restore Failed', result.error || 'No purchases found to restore.');
     }
+  };
+
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await signOut();
+            if (!result.success) {
+              Alert.alert('Error', result.error || 'Failed to sign out');
+            }
+          },
+        },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -346,8 +377,48 @@ const SettingsScreen = ({ navigation }) => {
     <ScrollView style={styles.container}>
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Library Settings</Text>
+          <Text style={styles.title}>Settings</Text>
           <Text style={styles.subtitle}>
+            Manage your account and library
+          </Text>
+        </View>
+
+        {/* Account Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <View style={styles.accountCard}>
+            <View style={styles.accountInfo}>
+              <View style={styles.accountAvatar}>
+                <Ionicons name="person" size={24} color={COLORS.text} />
+              </View>
+              <View style={styles.accountDetails}>
+                <Text style={styles.accountName}>{getDisplayName()}</Text>
+                {email && (
+                  <Text style={styles.accountEmail}>{email}</Text>
+                )}
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.signOutButton}
+              onPress={handleSignOut}
+              disabled={isAuthLoading}
+            >
+              {isAuthLoading ? (
+                <ActivityIndicator size="small" color={COLORS.error} />
+              ) : (
+                <>
+                  <Ionicons name="log-out-outline" size={18} color={COLORS.error} />
+                  <Text style={styles.signOutButtonText}>Sign Out</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Library Section Header */}
+        <View style={styles.libraryHeader}>
+          <Text style={styles.sectionTitle}>Library</Text>
+          <Text style={styles.librarySubtitle}>
             Select your Serato library location
           </Text>
         </View>
@@ -725,6 +796,62 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
+  },
+  // Account section styles
+  accountCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+  },
+  accountInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  accountAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  accountDetails: {
+    flex: 1,
+  },
+  accountName: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  accountEmail: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: BORDER_RADIUS.md,
+  },
+  signOutButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.error,
+  },
+  libraryHeader: {
+    marginBottom: SPACING.md,
+  },
+  librarySubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
   },
   section: {
     marginBottom: SPACING.xl,

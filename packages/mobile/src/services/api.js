@@ -1,4 +1,5 @@
 import axios from 'axios';
+import auth from '@react-native-firebase/auth';
 import { API_CONFIG, ENDPOINTS } from '../constants/config';
 import AIKeyService from './AIKeyService';
 
@@ -11,21 +12,43 @@ const api = axios.create({
   },
 });
 
-// Add request interceptor to dynamically set base URL and device ID header
+// Add request interceptor to dynamically set base URL and auth headers
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
     // Use synchronous require to avoid async timing issues
     const { useConnectionStore } = require('../store/connectionStore');
-    const { serverURL, deviceId } = useConnectionStore.getState();
+    const { serverURL, deviceId, userId } = useConnectionStore.getState();
 
     // Use serverURL from connection store if available
     if (serverURL) {
       config.baseURL = serverURL;
     }
 
-    // Add device ID header for authentication
+    // Add device ID header for device tracking (backwards compatibility)
     if (deviceId) {
       config.headers['X-Device-Id'] = deviceId;
+    }
+
+    // Get current Firebase user
+    const user = auth().currentUser;
+
+    if (user) {
+      try {
+        // Get fresh ID token (auto-refreshes if expired)
+        // This is the most secure auth method - server verifies the token
+        const idToken = await user.getIdToken();
+        config.headers['Authorization'] = `Bearer ${idToken}`;
+      } catch (error) {
+        console.warn('Failed to get ID token:', error.message);
+      }
+
+      // Keep X-Firebase-UID as fallback during migration period
+      config.headers['X-Firebase-UID'] = user.uid;
+      config.headers['X-User-Id'] = user.uid;
+    } else if (userId) {
+      // Fallback to stored userId if no Firebase user (shouldn't happen normally)
+      config.headers['X-Firebase-UID'] = userId;
+      config.headers['X-User-Id'] = userId;
     }
 
     return config;
@@ -280,6 +303,36 @@ export const apiService = {
 
   deleteAllCuePoints: async (trackId) => {
     const response = await api.delete(`${ENDPOINTS.CUEPOINTS}/${trackId}`);
+    return response.data;
+  },
+
+  // Subscription endpoints (server-side source of truth)
+
+  /**
+   * Get subscription status from server
+   * Server is the authoritative source for subscription/trial state
+   * Call this on app launch and after purchases to sync state
+   */
+  getSubscriptionStatus: async () => {
+    const response = await api.get('/api/subscription/status');
+    return response.data;
+  },
+
+  /**
+   * Start trial on server
+   * Server controls trial start date to prevent manipulation
+   */
+  startTrial: async () => {
+    const response = await api.post('/api/subscription/start-trial');
+    return response.data;
+  },
+
+  /**
+   * Link Firebase account to server user record
+   * Call this after Firebase authentication to merge any existing device-based data
+   */
+  linkFirebaseAccount: async () => {
+    const response = await api.post('/api/subscription/link-firebase');
     return response.data;
   },
 };

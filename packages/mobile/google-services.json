@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "666443636006",
+    "project_id": "recrate-app",
+    "storage_bucket": "recrate-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:666443636006:android:4e14c7f0d455d08f3c75e7",
+        "android_client_info": {
+          "package_name": "com.recrate.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "666443636006-drj6rmgvamj8nm43fj3tf6ssrpcut14t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCJLj0C5i_w6xsbnMUGGS6dfCFubGJb5zU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "666443636006-drj6rmgvamj8nm43fj3tf6ssrpcut14t.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "666443636006-v6gcsq168r0lpkmlehq0tmg6hfdfv4cd.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.recrate.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

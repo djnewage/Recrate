@@ -9,10 +9,19 @@ module.exports = {
   moduleNameMapper: {
     '^@react-native-async-storage/async-storage$':
       '<rootDir>/src/__tests__/__mocks__/async-storage.js',
+    '^@react-native-firebase/auth$':
+      '<rootDir>/src/__tests__/__mocks__/firebase-auth.js',
+    '^@react-native-google-signin/google-signin$':
+      '<rootDir>/src/__tests__/__mocks__/google-signin.js',
+    '^expo-apple-authentication$':
+      '<rootDir>/src/__tests__/__mocks__/apple-authentication.js',
+    '^expo-crypto$':
+      '<rootDir>/src/__tests__/__mocks__/expo-crypto.js',
   },
   collectCoverageFrom: [
     'src/store/**/*.js',
     'src/services/SyncService.js',
+    'src/services/AuthService.js',
     '!src/**/*.test.js',
   ],
   coverageDirectory: 'coverage',
