@@ -1,6 +1,6 @@
 {
   "name": "@recrate/shared",
-  "version": "1.0.12",
+  "version": "1.4.0",
   "description": "Shared constants and types for Recrate",
   "main": "index.js",
   "exports": {
