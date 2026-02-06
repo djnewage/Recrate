@@ -1,35 +1,25 @@
-import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Mic,
-  VolumeX,
-  ToggleLeft,
-  Music,
-  Layers,
-  Play,
-  Download,
-  Loader2,
-} from 'lucide-react'
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Mic, VolumeX, ToggleLeft, Music, Layers, Play, Download, Loader2 } from 'lucide-react';
 
 interface ReleaseAsset {
-  name: string
-  browser_download_url: string
-  size: number
+  name: string;
+  browser_download_url: string;
+  size: number;
 }
 
 interface GitHubRelease {
-  tag_name: string
-  assets: ReleaseAsset[]
+  tag_name: string;
+  assets: ReleaseAsset[];
 }
 
-type DownloadState = 'idle' | 'loading' | 'ready' | 'error'
+type DownloadState = 'idle' | 'loading' | 'ready' | 'error';
 
 const features = [
   {
     icon: Mic,
     title: 'AI Transcription',
-    description:
-      'Powered by faster-whisper for accurate, GPU-accelerated speech-to-text transcription of your audio files.',
+    description: 'GPU-accelerated speech-to-text transcription of your audio files.',
   },
   {
     icon: VolumeX,
@@ -46,8 +36,7 @@ const features = [
   {
     icon: Music,
     title: 'Vocal Separation',
-    description:
-      'Demucs-powered AI isolates vocals from instrumentals so censors blend seamlessly with the mix.',
+    description: 'AI isolates vocals from instrumentals so censors blend seamlessly with the mix.',
   },
   {
     icon: Layers,
@@ -61,7 +50,7 @@ const features = [
     description:
       'Karaoke-style playback with word highlighting so you can hear exactly how the censored audio will sound.',
   },
-]
+];
 
 const steps = [
   {
@@ -79,46 +68,45 @@ const steps = [
   {
     number: '03',
     title: 'Export your clean version',
-    description:
-      'Hit export and get your censored audio file, ready to distribute or publish.',
+    description: 'Hit export and get your censored audio file, ready to distribute or publish.',
   },
-]
+];
 
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const mb = bytes / (1024 * 1024)
-  return `${mb.toFixed(1)} MB`
+  if (bytes === 0) return '0 B';
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(1)} MB`;
 }
 
 export default function CleansePage() {
-  const [release, setRelease] = useState<GitHubRelease | null>(null)
-  const [dmgAsset, setDmgAsset] = useState<ReleaseAsset | null>(null)
-  const [downloadState, setDownloadState] = useState<DownloadState>('loading')
+  const [release, setRelease] = useState<GitHubRelease | null>(null);
+  const [dmgAsset, setDmgAsset] = useState<ReleaseAsset | null>(null);
+  const [downloadState, setDownloadState] = useState<DownloadState>('loading');
 
   useEffect(() => {
     fetch('https://api.github.com/repos/djnewage/cleanse/releases/latest')
       .then((res) => {
-        if (!res.ok) throw new Error('No release found')
-        return res.json()
+        if (!res.ok) throw new Error('No release found');
+        return res.json();
       })
       .then((data: GitHubRelease) => {
-        setRelease(data)
-        const dmg = data.assets.find((a) => a.name.endsWith('.dmg'))
+        setRelease(data);
+        const dmg = data.assets.find((a) => a.name.endsWith('.dmg'));
         if (dmg) {
-          setDmgAsset(dmg)
-          setDownloadState('ready')
+          setDmgAsset(dmg);
+          setDownloadState('ready');
         } else {
-          setDownloadState('idle')
+          setDownloadState('idle');
         }
       })
       .catch(() => {
-        setDownloadState('idle')
-      })
-  }, [])
+        setDownloadState('idle');
+      });
+  }, []);
 
   const scrollToDownload = () => {
-    document.getElementById('download')?.scrollIntoView({ behavior: 'smooth' })
-  }
+    document.getElementById('download')?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   return (
     <div className="bg-[#0a0a0a] min-h-screen cleanse-page">
@@ -151,8 +139,7 @@ export default function CleansePage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.15 }}
           >
-            Clean audio,{' '}
-            <span className="gradient-text-cleanse">automatically</span>
+            Clean audio, <span className="gradient-text-cleanse">automatically</span>
           </motion.h1>
 
           <motion.p
@@ -161,8 +148,8 @@ export default function CleansePage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
           >
-            AI-powered profanity detection and censoring for audio files.
-            Transcribe, review, and export — all on your machine.
+            AI-powered profanity detection and censoring for audio files. Transcribe, review, and
+            export — all on your machine.
           </motion.p>
 
           <motion.div
@@ -244,8 +231,7 @@ export default function CleansePage() {
               Features
             </p>
             <h2 className="text-3xl md:text-4xl font-bold">
-              Everything you need to{' '}
-              <span className="gradient-text-cleanse">censor audio</span>
+              Everything you need to <span className="gradient-text-cleanse">censor audio</span>
             </h2>
           </motion.div>
 
@@ -265,9 +251,7 @@ export default function CleansePage() {
                 <h3 className="font-mono text-sm font-semibold text-white mb-2 tracking-wide">
                   {feature.title}
                 </h3>
-                <p className="text-gray-500 text-sm leading-relaxed">
-                  {feature.description}
-                </p>
+                <p className="text-gray-500 text-sm leading-relaxed">{feature.description}</p>
               </motion.div>
             ))}
           </div>
@@ -288,8 +272,7 @@ export default function CleansePage() {
               Workflow
             </p>
             <h2 className="text-3xl md:text-4xl font-bold">
-              Three steps to{' '}
-              <span className="gradient-text-cleanse">clean audio</span>
+              Three steps to <span className="gradient-text-cleanse">clean audio</span>
             </h2>
           </motion.div>
 
@@ -313,9 +296,7 @@ export default function CleansePage() {
                     </span>
                   </div>
                 </div>
-                <h3 className="font-semibold text-white text-lg mb-2">
-                  {step.title}
-                </h3>
+                <h3 className="font-semibold text-white text-lg mb-2">{step.title}</h3>
                 <p className="text-gray-500 text-sm leading-relaxed max-w-xs mx-auto">
                   {step.description}
                 </p>
@@ -352,11 +333,7 @@ export default function CleansePage() {
           >
             {/* macOS icon */}
             <div className="flex justify-center mb-4">
-              <svg
-                className="w-10 h-10 text-gray-400"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
+              <svg className="w-10 h-10 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
               </svg>
             </div>
@@ -376,9 +353,7 @@ export default function CleansePage() {
                   className="flex flex-col items-center gap-3"
                 >
                   <Loader2 className="w-6 h-6 text-gray-500 animate-spin" />
-                  <p className="text-gray-500 text-sm">
-                    Checking for latest release...
-                  </p>
+                  <p className="text-gray-500 text-sm">Checking for latest release...</p>
                 </motion.div>
               )}
 
@@ -414,9 +389,7 @@ export default function CleansePage() {
                   <div className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-gray-500 bg-white/[0.05] border border-white/[0.07] cursor-default">
                     Coming Soon
                   </div>
-                  <p className="text-gray-600 text-xs">
-                    The first release is on the way.
-                  </p>
+                  <p className="text-gray-600 text-xs">The first release is on the way.</p>
                 </motion.div>
               )}
 
@@ -440,10 +413,8 @@ export default function CleansePage() {
 
       {/* ======================== BUILT BY ======================== */}
       <section className="px-6 py-12 text-center">
-        <p className="text-gray-600 text-xs font-mono tracking-wide">
-          Built by Recrate LLC
-        </p>
+        <p className="text-gray-600 text-xs font-mono tracking-wide">Built by Recrate LLC</p>
       </section>
     </div>
-  )
+  );
 }
