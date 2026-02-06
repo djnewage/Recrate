@@ -18,7 +18,7 @@ type DownloadState = 'idle' | 'loading' | 'ready' | 'error';
 const features = [
   {
     icon: Mic,
-    title: 'AI Transcription',
+    title: 'Transcription',
     description: 'GPU-accelerated speech-to-text transcription of your audio files.',
   },
   {
@@ -36,7 +36,7 @@ const features = [
   {
     icon: Music,
     title: 'Vocal Separation',
-    description: 'AI isolates vocals from instrumentals so censors blend seamlessly with the mix.',
+    description: 'Isolates vocals from instrumentals so censors blend seamlessly with the mix.',
   },
   {
     icon: Layers,
@@ -63,7 +63,7 @@ const steps = [
     number: '02',
     title: 'Review & edit the transcript',
     description:
-      'The AI transcribes your audio. Toggle words, change censor types, and fine-tune the result.',
+      'Your audio is transcribed automatically. Toggle words, change censor types, and fine-tune the result.',
   },
   {
     number: '03',
@@ -148,7 +148,7 @@ export default function CleansePage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
           >
-            AI-powered profanity detection and censoring for audio files. Transcribe, review, and
+            Automatic profanity detection and censoring for audio files. Transcribe, review, and
             export — all on your machine.
           </motion.p>
 
