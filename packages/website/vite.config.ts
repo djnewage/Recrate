@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
+import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [
@@ -20,5 +21,11 @@ export default defineConfig({
   },
   build: {
     sourcemap: true, // Required for Sentry source maps
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        cleanse: resolve(__dirname, 'cleanse.html'),
+      },
+    },
   },
 })

@@ -3,6 +3,7 @@
   "outputDirectory": "packages/website/dist",
   "installCommand": "npm install",
   "rewrites": [
+    { "source": "/cleanse", "destination": "/cleanse.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
