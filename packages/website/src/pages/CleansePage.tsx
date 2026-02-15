@@ -15,6 +15,43 @@ interface GitHubRelease {
 
 type DownloadState = 'idle' | 'loading' | 'ready' | 'error';
 
+/**
+ * Detect if user is on Apple Silicon Mac
+ * Uses WebGL renderer info as a reliable detection method
+ */
+function isAppleSilicon(): boolean {
+  const isMac =
+    navigator.platform.toLowerCase().includes('mac') ||
+    navigator.userAgent.toLowerCase().includes('mac');
+
+  if (!isMac) return false;
+
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (gl) {
+      const debugInfo = (gl as WebGLRenderingContext).getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const renderer = (gl as WebGLRenderingContext).getParameter(
+          debugInfo.UNMASKED_RENDERER_WEBGL
+        );
+        if (renderer.includes('Apple M') || renderer.includes('Apple GPU')) {
+          return true;
+        }
+      }
+    }
+  } catch {
+    // WebGL not available, fall back to other detection
+  }
+
+  if (navigator.userAgent.includes('ARM')) {
+    return true;
+  }
+
+  // Default to Intel for older/unknown Macs
+  return false;
+}
+
 const features = [
   {
     icon: Mic,
@@ -80,8 +117,14 @@ function formatBytes(bytes: number): string {
 
 export default function CleansePage() {
   const [release, setRelease] = useState<GitHubRelease | null>(null);
-  const [dmgAsset, setDmgAsset] = useState<ReleaseAsset | null>(null);
+  const [armAsset, setArmAsset] = useState<ReleaseAsset | null>(null);
+  const [intelAsset, setIntelAsset] = useState<ReleaseAsset | null>(null);
   const [downloadState, setDownloadState] = useState<DownloadState>('loading');
+  const [isSilicon, setIsSilicon] = useState(true);
+
+  useEffect(() => {
+    setIsSilicon(isAppleSilicon());
+  }, []);
 
   useEffect(() => {
     fetch('https://api.github.com/repos/djnewage/cleanse/releases/latest')
@@ -91,9 +134,15 @@ export default function CleansePage() {
       })
       .then((data: GitHubRelease) => {
         setRelease(data);
-        const dmg = data.assets.find((a) => a.name.endsWith('.dmg'));
-        if (dmg) {
-          setDmgAsset(dmg);
+        const arm = data.assets.find(
+          (a) => a.name.includes('arm64') && a.name.endsWith('.dmg')
+        );
+        const intel = data.assets.find(
+          (a) => a.name.includes('x64') && a.name.endsWith('.dmg')
+        );
+        if (arm) setArmAsset(arm);
+        if (intel) setIntelAsset(intel);
+        if (arm || intel) {
           setDownloadState('ready');
         } else {
           setDownloadState('idle');
@@ -339,9 +388,7 @@ export default function CleansePage() {
             </div>
 
             <h3 className="text-xl font-semibold text-white mb-1">macOS</h3>
-            <p className="text-gray-500 text-xs font-mono mb-6">
-              macOS 12+ &middot; Universal (Intel + Apple Silicon)
-            </p>
+            <p className="text-gray-500 text-xs font-mono mb-6">macOS 12+</p>
 
             <AnimatePresence mode="wait">
               {downloadState === 'loading' && (
@@ -357,7 +404,7 @@ export default function CleansePage() {
                 </motion.div>
               )}
 
-              {downloadState === 'ready' && dmgAsset && release && (
+              {downloadState === 'ready' && release && (
                 <motion.div
                   key="ready"
                   initial={{ opacity: 0 }}
@@ -365,16 +412,38 @@ export default function CleansePage() {
                   exit={{ opacity: 0 }}
                   className="flex flex-col items-center gap-4"
                 >
-                  <a
-                    href={dmgAsset.browser_download_url}
-                    className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow"
-                  >
-                    <Download className="w-5 h-5" />
-                    Download DMG
-                  </a>
-                  <p className="text-gray-600 text-xs font-mono">
-                    {release.tag_name} &middot; {formatBytes(dmgAsset.size)}
-                  </p>
+                  {(() => {
+                    const primaryAsset = isSilicon ? armAsset : intelAsset;
+                    const secondaryAsset = isSilicon ? intelAsset : armAsset;
+                    const primaryLabel = isSilicon ? 'Apple Silicon' : 'Intel';
+                    const secondaryLabel = isSilicon ? 'Intel' : 'Apple Silicon';
+
+                    return (
+                      <>
+                        {primaryAsset && (
+                          <a
+                            href={primaryAsset.browser_download_url}
+                            className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow"
+                          >
+                            <Download className="w-5 h-5" />
+                            Download for {primaryLabel}
+                          </a>
+                        )}
+                        <p className="text-gray-600 text-xs font-mono">
+                          {release.tag_name}
+                          {primaryAsset && <> &middot; {formatBytes(primaryAsset.size)}</>}
+                        </p>
+                        {secondaryAsset && (
+                          <a
+                            href={secondaryAsset.browser_download_url}
+                            className="text-xs text-cyan-400/70 hover:text-cyan-400 transition-colors"
+                          >
+                            Download for {secondaryLabel} ({formatBytes(secondaryAsset.size)})
+                          </a>
+                        )}
+                      </>
+                    );
+                  })()}
                 </motion.div>
               )}
 
