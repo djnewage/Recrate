@@ -1,5 +1,6 @@
-import { ReactNode } from 'react'
+import { ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { Menu, X } from 'lucide-react'
 
 interface LayoutProps {
   children: ReactNode
@@ -8,6 +9,16 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const isHomePage = location.pathname === '/'
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [location.pathname])
+
+  const handleMobileNavClick = () => {
+    setMobileMenuOpen(false)
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -18,6 +29,7 @@ export default function Layout({ children }: LayoutProps) {
             <img src="/logo.png" alt="Recrate" className="w-10 h-10 rounded-xl" />
             <span className="text-xl font-bold gradient-text">Recrate</span>
           </Link>
+          {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-8">
             {isHomePage && (
               <>
@@ -31,7 +43,33 @@ export default function Layout({ children }: LayoutProps) {
             )}
             <Link to="/cleanse" className="text-gray-300 hover:text-white transition-colors">Cleanse</Link>
           </div>
+          {/* Mobile hamburger button */}
+          <button
+            className="md:hidden text-gray-300 hover:text-white transition-colors"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+          >
+            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-white/10 bg-black/90 backdrop-blur-md">
+            <div className="px-6 py-4 flex flex-col gap-4">
+              {isHomePage && (
+                <>
+                  <a href="#features" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Features</a>
+                  <a href="#demo" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Demo</a>
+                  <a href="#how-to-use" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">How to Use</a>
+                  <a href="#faq" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">FAQ</a>
+                  <a href="#download" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Download</a>
+                  <a href="#contact" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Contact</a>
+                </>
+              )}
+              <Link to="/cleanse" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Cleanse</Link>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Main Content */}
