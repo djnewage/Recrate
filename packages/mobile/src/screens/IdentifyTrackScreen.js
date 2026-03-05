@@ -20,6 +20,7 @@ import { useSubscriptionStore } from '../store/subscriptionStore';
 import { SUBSCRIPTION_TIERS } from '../constants/subscription';
 import apiService from '../services/api';
 import TrackRow from '../components/TrackRow';
+import { logEvent } from '../config/firebase';
 
 const RECORDING_DURATION = 10;
 
@@ -165,6 +166,7 @@ const IdentifyTrackScreen = ({ navigation }) => {
 
       // Increment usage count for successful identification
       incrementTrackIdUsage();
+      logEvent('track_identified');
       console.log('[Identify] Incremented track ID usage');
 
       // Find matches

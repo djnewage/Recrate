@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
   PRODUCT_IDS,
 } from '../constants/subscription';
 import { useSubscriptionStore } from '../store/subscriptionStore';
+import { logEvent } from '../config/firebase';
 
 const PaywallScreen = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
@@ -35,6 +36,14 @@ const PaywallScreen = ({ navigation, route }) => {
   } = useSubscriptionStore();
 
   const trialDaysRemaining = getTrialDaysRemaining();
+
+  useEffect(() => {
+    logEvent('paywall_viewed', {
+      tier: currentTier,
+      trial_days_remaining: trialDaysRemaining,
+    });
+  }, []);
+
   const showTrialBanner = currentTier === SUBSCRIPTION_TIERS.TRIAL && trialDaysRemaining > 0;
   const isExpired = currentTier === SUBSCRIPTION_TIERS.EXPIRED;
   const isPro = currentTier === SUBSCRIPTION_TIERS.PRO;

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import SubscriptionService from '../services/SubscriptionService';
+import { logEvent, firebaseAnalytics } from '../config/firebase';
 import {
   SUBSCRIPTION_TIERS,
   TIER_FEATURES,
@@ -175,6 +176,11 @@ export const useSubscriptionStore = create(
               serverTierInfo: serverStatus.tierInfo,
             });
 
+            // Set user property for subscription tier
+            if (firebaseAnalytics) {
+              firebaseAnalytics.setUserProperties({ subscription_tier: serverStatus.tier });
+            }
+
             return serverStatus;
           }
         } catch (error) {
@@ -205,6 +211,8 @@ export const useSubscriptionStore = create(
               trackIdentificationCount: 0,
               usageResetDate: new Date().toISOString(),
             });
+
+            logEvent('trial_started');
 
             // Also start locally for offline support
             await SubscriptionService.startTrial();
@@ -313,6 +321,10 @@ export const useSubscriptionStore = create(
             trackIdentificationCount: 0,
             usageResetDate: new Date().toISOString(),
           });
+
+          logEvent('subscription_purchased', {
+            product_id: packageToPurchase?.product?.identifier,
+          });
         } else {
           set({
             isLoading: false,
@@ -336,6 +348,8 @@ export const useSubscriptionStore = create(
             customerInfo: result.customerInfo,
             isLoading: false,
           });
+
+          logEvent('subscription_restored');
         } else {
           set({
             isLoading: false,

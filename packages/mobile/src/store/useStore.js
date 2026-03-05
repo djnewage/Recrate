@@ -7,6 +7,7 @@ import * as TrackPlayerService from '../services/TrackPlayerService';
 import { normalizeTitle, normalizeArtist } from '../services/TrackMatchingService';
 import useOfflineStore, { OPERATION_TYPES, generateTempCrateId } from './offlineStore';
 import { useConnectionStore } from './connectionStore';
+import { logEvent } from '../config/firebase';
 
 // Skip cooldown to prevent rapid track changes that corrupt TrackPlayer state
 let lastSkipTime = 0;
@@ -487,6 +488,7 @@ const useStore = create(
     try {
       await apiService.createCrate(name, color, resolvedParentId);
       await get().loadCrates();
+      logEvent('crate_created');
       return true;
     } catch (error) {
       set({ cratesError: error.message });
@@ -570,6 +572,7 @@ const useStore = create(
       await apiService.addTracksToCrate(resolvedCrateId, trackIds);
       await get().loadCrate(crateId);
       await get().loadCrates(); // Refresh the crates list to update track counts
+      logEvent('tracks_added_to_crate', { count: trackIds.length });
       return true;
     } catch (error) {
       set({ cratesError: error.message });
@@ -675,6 +678,7 @@ const useStore = create(
     try {
       await apiService.deleteCrate(resolvedCrateId);
       await get().loadCrates(); // Refresh the crates list
+      logEvent('crate_deleted');
       return true;
     } catch (error) {
       set({ cratesError: error.message });

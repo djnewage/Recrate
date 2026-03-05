@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logEvent } from '../config/firebase';
 
 const CONNECTION_TYPES = {
   PROXY: 'proxy',
@@ -249,6 +250,7 @@ export const useConnectionStore = create((set, get) => ({
         isConnected: true,
         lastSuccessfulIP: url,
       });
+      logEvent('server_connected', { connection_type: connType });
       return true;
     }
 
@@ -262,6 +264,7 @@ export const useConnectionStore = create((set, get) => ({
       connectionType: CONNECTION_TYPES.OFFLINE,
       isConnected: false,
     });
+    logEvent('server_disconnected');
   },
 }));
 

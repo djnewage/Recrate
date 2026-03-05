@@ -20,6 +20,7 @@ import useStore from '../store/useStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { SUBSCRIPTION_TIERS } from '../constants/subscription';
 import TrackRow from '../components/TrackRow';
+import { logEvent } from '../config/firebase';
 
 // Available musical keys (Camelot notation - standard for DJs)
 const MUSICAL_KEYS = [
@@ -194,6 +195,7 @@ const AICrateBuilderScreen = ({ navigation }) => {
 
       // Increment usage count
       incrementCrateBuildUsage();
+      logEvent('ai_crate_builder_used');
       console.log('[AI] Incremented crate build usage');
 
       setCuration(result.curation);

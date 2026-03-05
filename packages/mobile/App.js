@@ -18,6 +18,7 @@ import { useAuthStore } from './src/store/authStore';
 import * as TrackPlayerService from './src/services/TrackPlayerService';
 import { syncQueue } from './src/services/SyncService';
 import { initSentry, setUser } from './src/utils/sentry';
+import { logEvent } from './src/config/firebase';
 import ErrorBoundary from './src/components/ErrorBoundary';
 
 // Initialize Sentry before component definition
@@ -244,6 +245,7 @@ function AppContent() {
 
 export default function App() {
   const navigationRef = useRef();
+  const routeNameRef = useRef();
 
   const linking = {
     prefixes: ['recrate://'],
@@ -373,7 +375,26 @@ export default function App() {
               <DisclaimerModal />
               <ConflictModal />
               <SafeAreaView style={styles.container}>
-                <NavigationContainer ref={navigationRef} linking={linking}>
+                <NavigationContainer
+                  ref={navigationRef}
+                  linking={linking}
+                  onReady={() => {
+                    routeNameRef.current = navigationRef.current?.getCurrentRoute()?.name;
+                  }}
+                  onStateChange={() => {
+                    const previousRouteName = routeNameRef.current;
+                    const currentRouteName = navigationRef.current?.getCurrentRoute()?.name;
+
+                    if (previousRouteName !== currentRouteName) {
+                      logEvent('screen_view', {
+                        screen_name: currentRouteName,
+                        screen_class: currentRouteName,
+                      });
+                    }
+
+                    routeNameRef.current = currentRouteName;
+                  }}
+                >
                   <AppContent />
                 </NavigationContainer>
               </SafeAreaView>

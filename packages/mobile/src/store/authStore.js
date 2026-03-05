@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthService from '../services/AuthService';
-import { setFirebaseUser } from '../config/firebase';
+import { setFirebaseUser, logEvent } from '../config/firebase';
 import { setUser as setSentryUser } from '../utils/sentry';
 import { useConnectionStore } from './connectionStore';
 import { useSubscriptionStore } from './subscriptionStore';
@@ -144,7 +144,7 @@ export const useAuthStore = create(
         const result = await AuthService.signInWithApple();
 
         if (result.success) {
-          // Auth state listener will handle state update
+          logEvent('login', { method: 'apple' });
         } else if (!result.cancelled) {
           set({ error: result.error, isLoading: false });
         } else {
@@ -163,7 +163,7 @@ export const useAuthStore = create(
         const result = await AuthService.signInWithGoogle();
 
         if (result.success) {
-          // Auth state listener will handle state update
+          logEvent('login', { method: 'google' });
         } else if (!result.cancelled) {
           set({ error: result.error, isLoading: false });
         } else {
@@ -182,7 +182,7 @@ export const useAuthStore = create(
         const result = await AuthService.signInWithEmail(email, password);
 
         if (result.success) {
-          // Auth state listener will handle state update
+          logEvent('login', { method: 'email' });
         } else {
           set({ error: result.error, isLoading: false });
         }
@@ -199,7 +199,7 @@ export const useAuthStore = create(
         const result = await AuthService.signUp(email, password, displayName);
 
         if (result.success) {
-          // Auth state listener will handle state update
+          logEvent('sign_up', { method: 'email' });
         } else {
           set({ error: result.error, isLoading: false });
         }
@@ -232,7 +232,9 @@ export const useAuthStore = create(
 
         const result = await AuthService.signOut();
 
-        if (!result.success) {
+        if (result.success) {
+          logEvent('sign_out');
+        } else {
           set({ error: result.error, isLoading: false });
         }
 
