@@ -31,6 +31,12 @@ router.get('/health', (req, res) => {
 // The desktop server proxies to ACRCloud (credentials never exposed to clients)
 // ============================================================================
 
+// Webhook routes (must be before parameterized routes to avoid treating "webhooks" as a deviceId)
+router.use('/webhooks', webhookRoutes());
+
+// Subscription routes (Firestore-backed, available without desktop connection)
+router.use('/subscription', subscriptionRoutes());
+
 // Check if device is connected
 router.get('/device/:deviceId/status', async (req, res) => {
   const { deviceId } = req.params;
@@ -72,12 +78,6 @@ router.get('/:deviceId/health', async (req, res) => {
     });
   }
 });
-
-// Webhook routes (must be before catch-all to avoid treating "webhooks" as a deviceId)
-router.use('/webhooks', webhookRoutes());
-
-// Subscription routes (Firestore-backed, available without desktop connection)
-router.use('/subscription', subscriptionRoutes());
 
 // Proxy all requests to desktop (catch-all route must be last)
 router.all('/:deviceId/*', async (req, res) => {
