@@ -6,10 +6,15 @@
 const express = require('express');
 
 // Mock dependencies before requiring the module
-jest.mock('../../../utils/db', () => ({
-  get: jest.fn(),
-  run: jest.fn(),
-  saveDatabase: jest.fn(),
+jest.mock('../../../utils/firestore', () => ({
+  getUser: jest.fn(),
+  getUserByDeviceId: jest.fn(),
+  getUserByLegacyId: jest.fn(),
+  getDeviceUserWithoutFirebase: jest.fn(),
+  createUser: jest.fn(),
+  updateUser: jest.fn(),
+  linkFirebaseUid: jest.fn(),
+  isAvailable: jest.fn().mockReturnValue(true),
 }));
 
 jest.mock('../../../utils/logger', () => ({
@@ -21,10 +26,10 @@ jest.mock('../../../utils/logger', () => ({
 }));
 
 jest.mock('../../../utils/usageTracker', () => ({
-  getMonthlyUsage: jest.fn().mockReturnValue({ included: 0, byok: 0 }),
+  getMonthlyUsage: jest.fn().mockResolvedValue({ included: 0, byok: 0 }),
 }));
 
-const db = require('../../../utils/db');
+const firestore = require('../../../utils/firestore');
 const logger = require('../../../utils/logger');
 const usageTracker = require('../../../utils/usageTracker');
 const createSubscriptionRoutes = require('../../../api/routes/subscription');
@@ -82,8 +87,8 @@ describe('Subscription Routes', () => {
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + 2); // 2 days from now
 
-      db.get.mockReturnValue({
-        id: 'user-123',
+      firestore.getUser.mockResolvedValue({
+        id: 'firebase-123',
         firebase_uid: 'firebase-123',
         tier: 'trial',
         trial_started_at: new Date().toISOString(),
@@ -106,8 +111,8 @@ describe('Subscription Routes', () => {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 25); // 25 days from now
 
-      db.get.mockReturnValue({
-        id: 'user-123',
+      firestore.getUser.mockResolvedValue({
+        id: 'firebase-123',
         firebase_uid: 'firebase-123',
         tier: 'pro',
         subscription_product_id: 'pro_monthly',
@@ -129,8 +134,8 @@ describe('Subscription Routes', () => {
     });
 
     it('should return correct tier info for expired user', async () => {
-      db.get.mockReturnValue({
-        id: 'user-123',
+      firestore.getUser.mockResolvedValue({
+        id: 'firebase-123',
         firebase_uid: 'firebase-123',
         tier: 'expired',
         trial_ends_at: new Date(Date.now() - 86400000).toISOString(), // Yesterday
@@ -158,19 +163,11 @@ describe('Subscription Routes', () => {
         trial_ends_at: new Date(Date.now() + 3 * 86400000).toISOString(),
       };
 
-      // Mock implementation that returns null until INSERT happens, then returns newUser
-      let userCreated = false;
-      db.get.mockImplementation((sql) => {
-        if (userCreated) {
-          return newUser;
-        }
-        return null;
-      });
-      db.run.mockImplementation((sql) => {
-        if (sql.includes('INSERT INTO users')) {
-          userCreated = true;
-        }
-      });
+      firestore.getUser
+        .mockResolvedValueOnce(null) // First lookup
+        .mockResolvedValueOnce(newUser); // After create
+      firestore.getUserByDeviceId.mockResolvedValue(null);
+      firestore.getUserByLegacyId.mockResolvedValue(null);
 
       const response = await makeRequest(app, 'GET', '/api/subscription/status', {
         headers: { 'X-Firebase-UID': 'firebase-new' },
@@ -178,29 +175,24 @@ describe('Subscription Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.tier).toBe('trial');
-      expect(db.run).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO users'),
-        expect.any(Array)
+      expect(firestore.createUser).toHaveBeenCalledWith(
+        'firebase-new',
+        expect.objectContaining({ firebase_uid: 'firebase-new', tier: 'trial' })
       );
     });
 
-    it('should auto-expire trial and save to database', async () => {
+    it('should auto-expire trial', async () => {
       // Trial ended yesterday
       const expiredTrial = new Date(Date.now() - 86400000).toISOString();
 
       const user = {
-        id: 'user-123',
+        id: 'firebase-123',
         firebase_uid: 'firebase-123',
         tier: 'trial',
         trial_ends_at: expiredTrial,
       };
 
-      // The checkExpiration function modifies user.tier in place after db.run
-      db.get.mockReturnValue(user);
-      db.run.mockImplementation(() => {
-        // Simulate what the real code does - updates the user object
-        user.tier = 'expired';
-      });
+      firestore.getUser.mockResolvedValue(user);
 
       const response = await makeRequest(app, 'GET', '/api/subscription/status', {
         headers: { 'X-Firebase-UID': 'firebase-123' },
@@ -208,24 +200,23 @@ describe('Subscription Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.tier).toBe('expired');
-      expect(db.run).toHaveBeenCalledWith(
-        expect.stringContaining("tier = ?"),
-        ['expired', 'user-123']
+      expect(firestore.updateUser).toHaveBeenCalledWith(
+        'firebase-123',
+        expect.objectContaining({ tier: 'expired' })
       );
-      expect(db.saveDatabase).toHaveBeenCalled();
     });
 
     it('should return quota information', async () => {
-      db.get.mockReturnValue({
-        id: 'user-123',
+      firestore.getUser.mockResolvedValue({
+        id: 'firebase-123',
         firebase_uid: 'firebase-123',
         tier: 'pro',
         subscription_expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
       });
 
       usageTracker.getMonthlyUsage
-        .mockReturnValueOnce({ included: 10, byok: 5 }) // crate_builder
-        .mockReturnValueOnce({ included: 20, byok: 0 }); // track_identification
+        .mockResolvedValueOnce({ included: 10, byok: 5 }) // crate_builder
+        .mockResolvedValueOnce({ included: 20, byok: 0 }); // track_identification
 
       const response = await makeRequest(app, 'GET', '/api/subscription/status', {
         headers: { 'X-Firebase-UID': 'firebase-123' },
@@ -241,7 +232,8 @@ describe('Subscription Routes', () => {
     });
 
     it('should work with X-Device-Id header for backwards compatibility', async () => {
-      db.get.mockReturnValue({
+      firestore.getUser.mockResolvedValue(null);
+      firestore.getUserByDeviceId.mockResolvedValue({
         id: 'device-abc',
         device_id: 'device-abc',
         tier: 'trial',
@@ -267,8 +259,8 @@ describe('Subscription Routes', () => {
 
     it('should start trial for new user', async () => {
       // User exists but has no trial started
-      db.get.mockReturnValue({
-        id: 'user-123',
+      firestore.getUser.mockResolvedValue({
+        id: 'firebase-123',
         firebase_uid: 'firebase-123',
         tier: 'trial',
         trial_started_at: null,
@@ -283,16 +275,15 @@ describe('Subscription Routes', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.tier).toBe('trial');
       expect(response.body.daysRemaining).toBe(3);
-      expect(db.run).toHaveBeenCalledWith(
-        expect.stringContaining("tier = 'trial'"),
-        expect.any(Array)
+      expect(firestore.updateUser).toHaveBeenCalledWith(
+        'firebase-123',
+        expect.objectContaining({ tier: 'trial' })
       );
-      expect(db.saveDatabase).toHaveBeenCalled();
     });
 
     it('should reject if trial already started', async () => {
-      db.get.mockReturnValue({
-        id: 'user-123',
+      firestore.getUser.mockResolvedValue({
+        id: 'firebase-123',
         firebase_uid: 'firebase-123',
         tier: 'trial',
         trial_started_at: new Date().toISOString(),
@@ -320,8 +311,8 @@ describe('Subscription Routes', () => {
     });
 
     it('should return success if Firebase account already linked', async () => {
-      db.get.mockReturnValue({
-        id: 'user-123',
+      firestore.getUser.mockResolvedValue({
+        id: 'firebase-123',
         firebase_uid: 'firebase-123',
         tier: 'pro',
       });
@@ -340,15 +331,14 @@ describe('Subscription Routes', () => {
 
     it('should link Firebase UID to existing device user', async () => {
       // First call: no existing Firebase user
-      // Second call: find device user
-      db.get
-        .mockReturnValueOnce(null) // No Firebase user
-        .mockReturnValueOnce({
-          id: 'device-123',
-          device_id: 'device-123',
-          firebase_uid: null,
-          tier: 'trial',
-        });
+      // Then getDeviceUserWithoutFirebase finds device user
+      firestore.getUser.mockResolvedValueOnce(null);
+      firestore.getDeviceUserWithoutFirebase.mockResolvedValue({
+        id: 'device-123',
+        device_id: 'device-123',
+        firebase_uid: null,
+        tier: 'trial',
+      });
 
       const response = await makeRequest(app, 'POST', '/api/subscription/link-firebase', {
         headers: {
@@ -360,11 +350,7 @@ describe('Subscription Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.merged).toBe(true);
-      expect(db.run).toHaveBeenCalledWith(
-        expect.stringContaining('firebase_uid = ?'),
-        expect.arrayContaining(['firebase-new'])
-      );
-      expect(db.saveDatabase).toHaveBeenCalled();
+      expect(firestore.linkFirebaseUid).toHaveBeenCalledWith('device-123', 'firebase-new');
     });
 
     it('should create new account if no existing accounts found', async () => {
@@ -374,19 +360,13 @@ describe('Subscription Routes', () => {
         tier: 'trial',
       };
 
-      // Mock implementation that returns null until INSERT happens, then returns newUser
-      let userCreated = false;
-      db.get.mockImplementation((sql) => {
-        if (userCreated) {
-          return newUser;
-        }
-        return null;
-      });
-      db.run.mockImplementation((sql) => {
-        if (sql.includes('INSERT INTO users')) {
-          userCreated = true;
-        }
-      });
+      firestore.getUser
+        .mockResolvedValueOnce(null) // No Firebase user exists
+        .mockResolvedValueOnce(null) // getUser in getOrCreateUser
+        .mockResolvedValueOnce(newUser); // After create
+      firestore.getDeviceUserWithoutFirebase.mockResolvedValue(null);
+      firestore.getUserByDeviceId.mockResolvedValue(null);
+      firestore.getUserByLegacyId.mockResolvedValue(null);
 
       const response = await makeRequest(app, 'POST', '/api/subscription/link-firebase', {
         headers: {

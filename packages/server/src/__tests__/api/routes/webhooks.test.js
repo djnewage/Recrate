@@ -6,10 +6,14 @@
 const express = require('express');
 
 // Mock dependencies before requiring the module
-jest.mock('../../../utils/db', () => ({
-  get: jest.fn(),
-  run: jest.fn(),
-  saveDatabase: jest.fn(),
+jest.mock('../../../utils/firestore', () => ({
+  getUser: jest.fn(),
+  getUserByLegacyId: jest.fn(),
+  getUserByFirebaseUidOrId: jest.fn(),
+  createUser: jest.fn(),
+  updateUser: jest.fn(),
+  linkFirebaseUid: jest.fn(),
+  isAvailable: jest.fn().mockReturnValue(true),
 }));
 
 jest.mock('../../../utils/logger', () => ({
@@ -20,7 +24,7 @@ jest.mock('../../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
-const db = require('../../../utils/db');
+const firestore = require('../../../utils/firestore');
 const logger = require('../../../utils/logger');
 const createWebhookRoutes = require('../../../api/routes/webhooks');
 
@@ -49,10 +53,6 @@ describe('Webhook Routes', () => {
 
     describe('Authorization', () => {
       it('should reject requests with missing Authorization header', async () => {
-        const request = require('http').request;
-        const { createServer } = require('http');
-
-        // Use supertest-like approach
         const makeRequest = (app, method, path, options = {}) => {
           return new Promise((resolve) => {
             const server = app.listen(0, () => {
@@ -128,9 +128,9 @@ describe('Webhook Routes', () => {
       });
 
       it('should accept requests with valid Authorization header', async () => {
-        // Mock db.get to return an existing user
-        db.get.mockReturnValue({
-          id: 'user-123',
+        // Mock firestore to return an existing user
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-123',
           firebase_uid: 'firebase-123',
           tier: 'trial',
         });
@@ -259,8 +259,8 @@ describe('Webhook Routes', () => {
 
       beforeEach(() => {
         // Default: user exists
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-123',
           firebase_uid: 'firebase-123',
           tier: 'trial',
         });
@@ -280,8 +280,10 @@ describe('Webhook Routes', () => {
 
         expect(response.status).toBe(200);
         expect(response.body.received).toBe(true);
-        expect(db.run).toHaveBeenCalled();
-        expect(db.saveDatabase).toHaveBeenCalled();
+        expect(firestore.updateUser).toHaveBeenCalledWith(
+          'firebase-123',
+          expect.objectContaining({ tier: 'pro' })
+        );
         expect(logger.success).toHaveBeenCalledWith(
           expect.stringContaining('subscription activated')
         );
@@ -300,8 +302,7 @@ describe('Webhook Routes', () => {
         });
 
         expect(response.status).toBe(200);
-        expect(db.run).toHaveBeenCalled();
-        expect(db.saveDatabase).toHaveBeenCalled();
+        expect(firestore.updateUser).toHaveBeenCalled();
       });
 
       it('should handle CANCELLATION event', async () => {
@@ -315,11 +316,10 @@ describe('Webhook Routes', () => {
         });
 
         expect(response.status).toBe(200);
-        expect(db.run).toHaveBeenCalledWith(
-          expect.stringContaining('subscription_will_renew = 0'),
-          expect.any(Array)
+        expect(firestore.updateUser).toHaveBeenCalledWith(
+          'firebase-123',
+          expect.objectContaining({ subscription_will_renew: 0 })
         );
-        expect(db.saveDatabase).toHaveBeenCalled();
       });
 
       it('should handle EXPIRATION event', async () => {
@@ -331,11 +331,10 @@ describe('Webhook Routes', () => {
         });
 
         expect(response.status).toBe(200);
-        expect(db.run).toHaveBeenCalledWith(
-          expect.stringContaining("tier = 'expired'"),
-          expect.any(Array)
+        expect(firestore.updateUser).toHaveBeenCalledWith(
+          'firebase-123',
+          expect.objectContaining({ tier: 'expired' })
         );
-        expect(db.saveDatabase).toHaveBeenCalled();
         expect(logger.info).toHaveBeenCalledWith(
           expect.stringContaining('subscription expired')
         );
@@ -352,8 +351,7 @@ describe('Webhook Routes', () => {
         });
 
         expect(response.status).toBe(200);
-        expect(db.run).toHaveBeenCalled();
-        expect(db.saveDatabase).toHaveBeenCalled();
+        expect(firestore.updateUser).toHaveBeenCalled();
         expect(logger.warn).toHaveBeenCalledWith(
           expect.stringContaining('billing issue')
         );
@@ -369,11 +367,10 @@ describe('Webhook Routes', () => {
         });
 
         expect(response.status).toBe(200);
-        expect(db.run).toHaveBeenCalledWith(
-          expect.stringContaining('subscription_will_renew = 1'),
-          expect.any(Array)
+        expect(firestore.updateUser).toHaveBeenCalledWith(
+          'firebase-123',
+          expect.objectContaining({ subscription_will_renew: 1 })
         );
-        expect(db.saveDatabase).toHaveBeenCalled();
       });
 
       it('should handle unknown event types gracefully', async () => {
@@ -402,11 +399,12 @@ describe('Webhook Routes', () => {
 
       it('should create user if not found during INITIAL_PURCHASE', async () => {
         // First call: user not found
-        // Second call: return the newly created user
-        db.get
-          .mockReturnValueOnce(null) // No user by firebase_uid
-          .mockReturnValueOnce(null) // No user by legacy id
-          .mockReturnValueOnce({ id: 'user-new', firebase_uid: 'firebase-123', tier: 'trial' });
+        // Second call (in getOrCreateUser): also not found
+        // Third call: return the newly created user
+        firestore.getUser
+          .mockResolvedValueOnce(null) // No user by firebase_uid (getOrCreateUser)
+          .mockResolvedValueOnce({ id: 'firebase-123', firebase_uid: 'firebase-123', tier: 'trial' }); // After create
+        firestore.getUserByLegacyId.mockResolvedValue(null);
 
         const response = await makeAuthenticatedRequest(app, {
           event: {
@@ -420,10 +418,9 @@ describe('Webhook Routes', () => {
         });
 
         expect(response.status).toBe(200);
-        // Should have created user
-        expect(db.run).toHaveBeenCalledWith(
-          expect.stringContaining('INSERT INTO users'),
-          expect.any(Array)
+        expect(firestore.createUser).toHaveBeenCalledWith(
+          'firebase-123',
+          expect.objectContaining({ firebase_uid: 'firebase-123', tier: 'trial' })
         );
       });
     });

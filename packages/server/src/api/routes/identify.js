@@ -245,7 +245,7 @@ function createIdentifyRoutes() {
           logger.success(`Track identified: ${result.track.artist} - ${result.track.title}`);
 
           // Record usage AFTER successful identification (server-side only)
-          usageTracker.recordUsage({
+          await usageTracker.recordUsage({
             userId: req.user.id,
             deviceId: req.headers['x-device-id'],
             feature: 'track_identification',

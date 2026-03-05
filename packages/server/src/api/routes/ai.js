@@ -127,7 +127,7 @@ function createAIRoutes(parser, writer = null) {
         }
 
         // Record usage AFTER success
-        usageTracker.recordUsage({
+        await usageTracker.recordUsage({
           userId: req.user.id,
           deviceId: req.headers["x-device-id"],
           feature: "crate_builder",

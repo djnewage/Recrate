@@ -28,11 +28,19 @@ function initializeFirebase() {
         credential: admin.credential.cert(credentials),
         projectId,
       });
-      logger.success('[Firebase] Admin SDK initialized with service account');
+      logger.success('[Firebase] Admin SDK initialized with service account (env)');
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      // Use service account key file pointed to by GOOGLE_APPLICATION_CREDENTIALS
+      const credentials = require(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+      firebaseApp = admin.initializeApp({
+        credential: admin.credential.cert(credentials),
+        projectId,
+      });
+      logger.success('[Firebase] Admin SDK initialized with service account (file)');
     } else {
       // Use default credentials (works in Google Cloud environments)
-      // Or initialize without credentials for basic project info
       firebaseApp = admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
         projectId,
       });
       logger.success('[Firebase] Admin SDK initialized with default credentials');
@@ -77,8 +85,18 @@ function isInitialized() {
   return firebaseApp !== null;
 }
 
+/**
+ * Get Firestore instance (lazy init via admin SDK)
+ * @returns {FirebaseFirestore.Firestore|null}
+ */
+function getFirestore() {
+  if (!firebaseApp) return null;
+  return admin.firestore();
+}
+
 module.exports = {
   initializeFirebase,
   verifyIdToken,
   isInitialized,
+  getFirestore,
 };

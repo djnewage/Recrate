@@ -4,10 +4,15 @@
  */
 
 // Mock dependencies before requiring the module
-jest.mock('../../../utils/db', () => ({
-  get: jest.fn(),
-  run: jest.fn(),
-  isInitialized: jest.fn().mockReturnValue(true),
+jest.mock('../../../utils/firestore', () => ({
+  getUser: jest.fn(),
+  getUserByDeviceId: jest.fn(),
+  getDeviceUserWithoutFirebase: jest.fn(),
+  getUserByLegacyId: jest.fn(),
+  createUser: jest.fn(),
+  updateUser: jest.fn(),
+  linkFirebaseUid: jest.fn(),
+  isAvailable: jest.fn().mockReturnValue(true),
 }));
 
 jest.mock('../../../utils/logger', () => ({
@@ -30,7 +35,7 @@ jest.mock('../../../config/tiers', () => ({
   isByokAllowed: jest.fn().mockReturnValue(false),
 }));
 
-const db = require('../../../utils/db');
+const firestore = require('../../../utils/firestore');
 const logger = require('../../../utils/logger');
 const usageTracker = require('../../../utils/usageTracker');
 const { verifyIdToken } = require('../../../utils/firebase');
@@ -66,7 +71,7 @@ const createMockRes = () => {
 describe('Auth Middleware', () => {
   beforeEach(() => {
     jest.resetAllMocks();
-    db.isInitialized.mockReturnValue(true);
+    firestore.isAvailable.mockReturnValue(true);
   });
 
   describe('requireAuth', () => {
@@ -77,8 +82,8 @@ describe('Auth Middleware', () => {
         const next = jest.fn();
 
         verifyIdToken.mockResolvedValue({ uid: 'firebase-uid-123' });
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-uid-123',
           firebase_uid: 'firebase-uid-123',
           tier: 'pro',
         });
@@ -97,8 +102,8 @@ describe('Auth Middleware', () => {
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-uid-123',
           firebase_uid: 'firebase-uid-123',
           tier: 'trial',
         });
@@ -116,8 +121,8 @@ describe('Auth Middleware', () => {
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-uid-123',
           firebase_uid: 'firebase-uid-123',
           tier: 'trial',
         });
@@ -134,7 +139,8 @@ describe('Auth Middleware', () => {
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockReturnValue({
+        firestore.getUser.mockResolvedValue(null);
+        firestore.getUserByDeviceId.mockResolvedValue({
           id: 'device-123',
           device_id: 'device-123',
           tier: 'trial',
@@ -168,8 +174,8 @@ describe('Auth Middleware', () => {
         const next = jest.fn();
 
         verifyIdToken.mockResolvedValue(null);
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-uid-123',
           firebase_uid: 'firebase-uid-123',
           tier: 'trial',
         });
@@ -196,15 +202,17 @@ describe('Auth Middleware', () => {
           trial_ends_at: new Date(Date.now() + 3 * 86400000).toISOString(),
         };
 
-        db.get
-          .mockReturnValueOnce(null) // First lookup - not found
-          .mockReturnValueOnce(newUser); // After insert
+        firestore.getUser
+          .mockResolvedValueOnce(null) // First lookup - not found
+          .mockResolvedValueOnce(newUser); // After create
+        firestore.getUserByDeviceId.mockResolvedValue(null);
+        firestore.getUserByLegacyId.mockResolvedValue(null);
 
         await requireAuth(req, res, next);
 
-        expect(db.run).toHaveBeenCalledWith(
-          expect.stringContaining('INSERT INTO users'),
-          expect.any(Array)
+        expect(firestore.createUser).toHaveBeenCalledWith(
+          'new-firebase-uid',
+          expect.objectContaining({ firebase_uid: 'new-firebase-uid', tier: 'trial' })
         );
         expect(req.user).toBeDefined();
         expect(next).toHaveBeenCalled();
@@ -219,22 +227,27 @@ describe('Auth Middleware', () => {
         const next = jest.fn();
 
         const migratedUser = {
-          id: 'user-123',
+          id: 'new-firebase-uid',
           firebase_uid: 'new-firebase-uid',
           device_id: 'existing-device-id',
           tier: 'pro',
         };
 
-        db.get
-          .mockReturnValueOnce(null) // No Firebase user
-          .mockReturnValueOnce({ id: 'user-123', device_id: 'existing-device-id', firebase_uid: null, tier: 'pro' }) // Device user
-          .mockReturnValueOnce(migratedUser); // After migration
+        firestore.getUser
+          .mockResolvedValueOnce(null) // No Firebase user
+          .mockResolvedValueOnce(migratedUser); // After migration
+        firestore.getDeviceUserWithoutFirebase.mockResolvedValue({
+          id: 'device:existing-device-id',
+          device_id: 'existing-device-id',
+          firebase_uid: null,
+          tier: 'pro',
+        });
 
         await requireAuth(req, res, next);
 
-        expect(db.run).toHaveBeenCalledWith(
-          expect.stringContaining('UPDATE users SET firebase_uid'),
-          expect.arrayContaining(['new-firebase-uid'])
+        expect(firestore.linkFirebaseUid).toHaveBeenCalledWith(
+          'device:existing-device-id',
+          'new-firebase-uid'
         );
         expect(logger.info).toHaveBeenCalledWith(
           expect.stringContaining('Migrated device user')
@@ -242,23 +255,20 @@ describe('Auth Middleware', () => {
         expect(next).toHaveBeenCalled();
       });
 
-      it('should lookup by device_id column', async () => {
+      it('should lookup by device_id', async () => {
         const req = createMockReq({ 'x-device-id': 'device-123' });
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUserByDeviceId.mockResolvedValue({
+          id: 'device-123',
           device_id: 'device-123',
           tier: 'trial',
         });
 
         await requireAuth(req, res, next);
 
-        expect(db.get).toHaveBeenCalledWith(
-          expect.stringContaining('device_id = ?'),
-          ['device-123']
-        );
+        expect(firestore.getUserByDeviceId).toHaveBeenCalledWith('device-123');
         expect(next).toHaveBeenCalled();
       });
     });
@@ -270,19 +280,19 @@ describe('Auth Middleware', () => {
         const next = jest.fn();
 
         const user = {
-          id: 'user-123',
+          id: 'firebase-uid',
           firebase_uid: 'firebase-uid',
           tier: 'pro',
           subscription_expires_at: new Date(Date.now() - 86400000).toISOString(), // Yesterday
         };
 
-        db.get.mockReturnValue(user);
+        firestore.getUser.mockResolvedValue(user);
 
         await requireAuth(req, res, next);
 
-        expect(db.run).toHaveBeenCalledWith(
-          expect.stringContaining("tier = 'expired'"),
-          expect.any(Array)
+        expect(firestore.updateUser).toHaveBeenCalledWith(
+          'firebase-uid',
+          expect.objectContaining({ tier: 'expired' })
         );
         expect(req.user.tier).toBe('expired');
         expect(next).toHaveBeenCalled();
@@ -294,19 +304,19 @@ describe('Auth Middleware', () => {
         const next = jest.fn();
 
         const user = {
-          id: 'user-123',
+          id: 'firebase-uid',
           firebase_uid: 'firebase-uid',
           tier: 'trial',
           trial_ends_at: new Date(Date.now() - 86400000).toISOString(), // Yesterday
         };
 
-        db.get.mockReturnValue(user);
+        firestore.getUser.mockResolvedValue(user);
 
         await requireAuth(req, res, next);
 
-        expect(db.run).toHaveBeenCalledWith(
-          expect.stringContaining("tier = 'expired'"),
-          expect.any(Array)
+        expect(firestore.updateUser).toHaveBeenCalledWith(
+          'firebase-uid',
+          expect.objectContaining({ tier: 'expired' })
         );
         expect(req.user.tier).toBe('expired');
         expect(next).toHaveBeenCalled();
@@ -317,8 +327,8 @@ describe('Auth Middleware', () => {
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-uid',
           firebase_uid: 'firebase-uid',
           tier: 'pro',
           subscription_expires_at: new Date(Date.now() + 30 * 86400000).toISOString(), // 30 days from now
@@ -331,20 +341,20 @@ describe('Auth Middleware', () => {
       });
     });
 
-    describe('database not initialized', () => {
-      it('should allow request with default trial user when DB not initialized', async () => {
+    describe('Firestore not available', () => {
+      it('should allow request with default trial user when Firestore not available', async () => {
         const req = createMockReq({ 'x-firebase-uid': 'firebase-uid' });
         const res = createMockRes();
         const next = jest.fn();
 
-        db.isInitialized.mockReturnValue(false);
+        firestore.isAvailable.mockReturnValue(false);
 
         await requireAuth(req, res, next);
 
         expect(req.user).toBeDefined();
         expect(req.user.tier).toBe('trial');
         expect(logger.warn).toHaveBeenCalledWith(
-          expect.stringContaining('Database not initialized')
+          expect.stringContaining('Firestore not available')
         );
         expect(next).toHaveBeenCalled();
       });
@@ -356,9 +366,7 @@ describe('Auth Middleware', () => {
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockImplementation(() => {
-          throw new Error('Database error');
-        });
+        firestore.getUser.mockRejectedValue(new Error('Firestore error'));
 
         await requireAuth(req, res, next);
 
@@ -392,8 +400,8 @@ describe('Auth Middleware', () => {
         const next = jest.fn();
 
         verifyIdToken.mockResolvedValue({ uid: 'firebase-uid-123' });
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-uid-123',
           firebase_uid: 'firebase-uid-123',
           tier: 'pro',
         });
@@ -406,13 +414,13 @@ describe('Auth Middleware', () => {
         expect(next).toHaveBeenCalled();
       });
 
-      it('should set basic user info when token valid but user not in DB', async () => {
+      it('should set basic user info when token valid but user not in Firestore', async () => {
         const req = createMockReq({ authorization: 'Bearer valid-token' });
         const res = createMockRes();
         const next = jest.fn();
 
         verifyIdToken.mockResolvedValue({ uid: 'firebase-uid-123' });
-        db.get.mockReturnValue(null); // User not found
+        firestore.getUser.mockResolvedValue(null); // User not found
 
         await optionalAuth(req, res, next);
 
@@ -433,8 +441,8 @@ describe('Auth Middleware', () => {
         const next = jest.fn();
 
         verifyIdToken.mockResolvedValue(null);
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-uid-123',
           firebase_uid: 'firebase-uid-123',
           tier: 'trial',
         });
@@ -454,8 +462,8 @@ describe('Auth Middleware', () => {
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-uid-123',
           firebase_uid: 'firebase-uid-123',
           tier: 'trial',
         });
@@ -472,7 +480,8 @@ describe('Auth Middleware', () => {
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockReturnValue({
+        firestore.getUser.mockResolvedValue(null);
+        firestore.getUserByDeviceId.mockResolvedValue({
           id: 'device-123',
           device_id: 'device-123',
           tier: 'trial',
@@ -485,15 +494,14 @@ describe('Auth Middleware', () => {
         expect(next).toHaveBeenCalled();
       });
 
-      it('should lookup device by id column as fallback', async () => {
+      it('should lookup device by legacy id as fallback', async () => {
         const req = createMockReq({ 'x-device-id': 'device-123' });
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get
-          .mockReturnValueOnce(null) // No firebase_uid match
-          .mockReturnValueOnce(null) // No device_id match
-          .mockReturnValueOnce({ id: 'device-123', tier: 'trial' }); // Match by id
+        firestore.getUser.mockResolvedValue(null);
+        firestore.getUserByDeviceId.mockResolvedValue(null);
+        firestore.getUserByLegacyId.mockResolvedValue({ id: 'device-123', tier: 'trial' });
 
         await optionalAuth(req, res, next);
 
@@ -502,13 +510,13 @@ describe('Auth Middleware', () => {
       });
     });
 
-    describe('database not initialized', () => {
-      it('should set basic user info when DB not initialized', async () => {
+    describe('Firestore not available', () => {
+      it('should set basic user info when Firestore not available', async () => {
         const req = createMockReq({ 'x-firebase-uid': 'firebase-uid-123' });
         const res = createMockRes();
         const next = jest.fn();
 
-        db.isInitialized.mockReturnValue(false);
+        firestore.isAvailable.mockReturnValue(false);
 
         await optionalAuth(req, res, next);
 
@@ -518,12 +526,12 @@ describe('Auth Middleware', () => {
         expect(next).toHaveBeenCalled();
       });
 
-      it('should use device ID when Firebase UID not available and DB not initialized', async () => {
+      it('should use device ID when Firebase UID not available and Firestore not available', async () => {
         const req = createMockReq({ 'x-device-id': 'device-123' });
         const res = createMockRes();
         const next = jest.fn();
 
-        db.isInitialized.mockReturnValue(false);
+        firestore.isAvailable.mockReturnValue(false);
 
         await optionalAuth(req, res, next);
 
@@ -541,9 +549,7 @@ describe('Auth Middleware', () => {
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockImplementation(() => {
-          throw new Error('Database error');
-        });
+        firestore.getUser.mockRejectedValue(new Error('Firestore error'));
 
         await optionalAuth(req, res, next);
 
@@ -571,13 +577,13 @@ describe('Auth Middleware', () => {
     });
 
     describe('user object structure', () => {
-      it('should include all expected fields from DB user', async () => {
+      it('should include all expected fields from Firestore user', async () => {
         const req = createMockReq({ 'x-firebase-uid': 'firebase-uid-123' });
         const res = createMockRes();
         const next = jest.fn();
 
-        db.get.mockReturnValue({
-          id: 'user-123',
+        firestore.getUser.mockResolvedValue({
+          id: 'firebase-uid-123',
           firebase_uid: 'firebase-uid-123',
           device_id: 'device-456',
           tier: 'pro',
@@ -591,7 +597,7 @@ describe('Auth Middleware', () => {
 
         expect(req.user).toEqual({
           id: 'firebase-uid-123',
-          internalId: 'user-123',
+          internalId: 'firebase-uid-123',
           firebaseUid: 'firebase-uid-123',
           deviceId: 'device-456',
           tier: 'pro',
@@ -649,19 +655,19 @@ describe('Auth Middleware', () => {
   });
 
   describe('requireQuota', () => {
-    it('should return 401 if no user', () => {
+    it('should return 401 if no user', async () => {
       const middleware = requireQuota('crate_builder');
       const req = createMockReq({});
       const res = createMockRes();
       const next = jest.fn();
 
-      middleware(req, res, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('should return 403 if BYOK not allowed for tier', () => {
+    it('should return 403 if BYOK not allowed for tier', async () => {
       const middleware = requireQuota('crate_builder');
       const req = createMockReq({}, { userApiKey: 'user-api-key' });
       req.user = { id: 'user-123', tier: 'trial' };
@@ -670,28 +676,28 @@ describe('Auth Middleware', () => {
 
       isByokAllowed.mockReturnValue(false);
 
-      middleware(req, res, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.jsonData.error).toContain('BYOK');
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('should return 429 if quota exceeded', () => {
+    it('should return 429 if quota exceeded', async () => {
       const middleware = requireQuota('crate_builder');
       const req = createMockReq({});
       req.user = { id: 'user-123', tier: 'trial' };
       const res = createMockRes();
       const next = jest.fn();
 
-      usageTracker.checkQuota.mockReturnValue({
+      usageTracker.checkQuota.mockResolvedValue({
         allowed: false,
         limit: 5,
         remaining: 0,
         resetDate: '2024-02-01T00:00:00Z',
       });
 
-      middleware(req, res, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(429);
       expect(res.jsonData.error).toContain('quota exceeded');
@@ -699,40 +705,40 @@ describe('Auth Middleware', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('should return 429 with upgrade message if limit is 0', () => {
+    it('should return 429 with upgrade message if limit is 0', async () => {
       const middleware = requireQuota('crate_builder');
       const req = createMockReq({});
       req.user = { id: 'user-123', tier: 'expired' };
       const res = createMockRes();
       const next = jest.fn();
 
-      usageTracker.checkQuota.mockReturnValue({
+      usageTracker.checkQuota.mockResolvedValue({
         allowed: false,
         limit: 0,
         remaining: 0,
       });
 
-      middleware(req, res, next);
+      await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(429);
       expect(res.jsonData.error).toContain('Upgrade to Pro');
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('should allow request if quota available', () => {
+    it('should allow request if quota available', async () => {
       const middleware = requireQuota('crate_builder');
       const req = createMockReq({});
       req.user = { id: 'user-123', tier: 'pro' };
       const res = createMockRes();
       const next = jest.fn();
 
-      usageTracker.checkQuota.mockReturnValue({
+      usageTracker.checkQuota.mockResolvedValue({
         allowed: true,
         limit: 50,
         remaining: 45,
       });
 
-      middleware(req, res, next);
+      await middleware(req, res, next);
 
       expect(next).toHaveBeenCalled();
       expect(req.quota).toBeDefined();
@@ -740,7 +746,7 @@ describe('Auth Middleware', () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
-    it('should set isByok flag on request', () => {
+    it('should set isByok flag on request', async () => {
       const middleware = requireQuota('crate_builder');
       const req = createMockReq({}, { userApiKey: 'user-api-key' });
       req.user = { id: 'user-123', tier: 'pro' };
@@ -748,13 +754,13 @@ describe('Auth Middleware', () => {
       const next = jest.fn();
 
       isByokAllowed.mockReturnValue(true);
-      usageTracker.checkQuota.mockReturnValue({
+      usageTracker.checkQuota.mockResolvedValue({
         allowed: true,
         limit: 50,
         remaining: 45,
       });
 
-      middleware(req, res, next);
+      await middleware(req, res, next);
 
       expect(req.isByok).toBe(true);
       expect(next).toHaveBeenCalled();

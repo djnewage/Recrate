@@ -1,4 +1,4 @@
-const db = require('../../utils/db');
+const firestore = require('../../utils/firestore');
 const logger = require('../../utils/logger');
 const usageTracker = require('../../utils/usageTracker');
 const { getTier, isByokAllowed } = require('../../config/tiers');
@@ -49,10 +49,10 @@ async function requireAuth(req, res, next) {
       });
     }
 
-    // Check if database is initialized
-    if (!db.isInitialized()) {
-      // Allow requests without DB for development/testing
-      logger.warn('[Auth] Database not initialized, using default trial user');
+    // Check if Firestore is available
+    if (!firestore.isAvailable()) {
+      // Allow requests without Firestore for development/testing
+      logger.warn('[Auth] Firestore not available, using default trial user');
       req.user = {
         id: firebaseUid || deviceId || 'anonymous',
         tier: 'trial',
@@ -66,22 +66,16 @@ async function requireAuth(req, res, next) {
     let user = null;
 
     if (firebaseUid) {
-      user = db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid]);
+      user = await firestore.getUser(firebaseUid);
 
       // If not found by firebase_uid, check if there's a device user to migrate
       if (!user && deviceId) {
-        const deviceUser = db.get(
-          'SELECT * FROM users WHERE (device_id = ? OR id = ?) AND firebase_uid IS NULL',
-          [deviceId, deviceId]
-        );
+        const deviceUser = await firestore.getDeviceUserWithoutFirebase(deviceId);
 
         if (deviceUser) {
           // Migrate device user to Firebase UID
-          db.run(
-            `UPDATE users SET firebase_uid = ?, updated_at = datetime('now') WHERE id = ?`,
-            [firebaseUid, deviceUser.id]
-          );
-          user = db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid]);
+          await firestore.linkFirebaseUid(deviceUser.id, firebaseUid);
+          user = await firestore.getUser(firebaseUid);
           logger.info(`[Auth] Migrated device user ${deviceUser.id} to Firebase UID ${firebaseUid}`);
         }
       }
@@ -89,11 +83,11 @@ async function requireAuth(req, res, next) {
 
     // Fall back to device ID lookup for backwards compatibility
     if (!user && deviceId) {
-      user = db.get('SELECT * FROM users WHERE device_id = ?', [deviceId]);
+      user = await firestore.getUserByDeviceId(deviceId);
 
       if (!user) {
-        // Legacy lookup by id column
-        user = db.get('SELECT * FROM users WHERE id = ? AND firebase_uid IS NULL', [deviceId]);
+        // Legacy lookup by id
+        user = await firestore.getUserByLegacyId(deviceId);
       }
     }
 
@@ -103,15 +97,15 @@ async function requireAuth(req, res, next) {
       const trialEnd = new Date();
       trialEnd.setDate(trialEnd.getDate() + 3);
 
-      db.run(
-        `INSERT INTO users (id, firebase_uid, device_id, tier, trial_started_at, trial_ends_at, created_at, updated_at)
-         VALUES (?, ?, ?, 'trial', datetime('now'), ?, datetime('now'), datetime('now'))`,
-        [id, firebaseUid || null, deviceId || null, trialEnd.toISOString()]
-      );
+      await firestore.createUser(id, {
+        firebase_uid: firebaseUid || null,
+        device_id: deviceId || null,
+        tier: 'trial',
+        trial_started_at: new Date().toISOString(),
+        trial_ends_at: trialEnd.toISOString(),
+      });
 
-      user = firebaseUid
-        ? db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid])
-        : db.get('SELECT * FROM users WHERE id = ?', [id]);
+      user = await firestore.getUser(id);
 
       logger.info(`[Auth] Created new trial user: ${id} (Firebase: ${!!firebaseUid}, Verified: ${verifiedByToken})`);
     }
@@ -120,10 +114,7 @@ async function requireAuth(req, res, next) {
     if (user.tier === 'pro' && user.subscription_expires_at) {
       if (new Date(user.subscription_expires_at) < new Date()) {
         // Subscription expired - downgrade
-        db.run(
-          `UPDATE users SET tier = 'expired', updated_at = datetime('now') WHERE id = ?`,
-          [user.id]
-        );
+        await firestore.updateUser(user.id, { tier: 'expired' });
         user.tier = 'expired';
         logger.info(`[Auth] Subscription expired for user: ${user.firebase_uid || user.id}`);
       }
@@ -133,10 +124,7 @@ async function requireAuth(req, res, next) {
     if (user.tier === 'trial' && user.trial_ends_at) {
       if (new Date(user.trial_ends_at) < new Date()) {
         // Trial expired - downgrade to expired (no AI access)
-        db.run(
-          `UPDATE users SET tier = 'expired', updated_at = datetime('now') WHERE id = ?`,
-          [user.id]
-        );
+        await firestore.updateUser(user.id, { tier: 'expired' });
         user.tier = 'expired';
         logger.info(`[Auth] Trial expired for user: ${user.firebase_uid || user.id}`);
       }
@@ -196,7 +184,7 @@ function requireTier(allowedTiers) {
  * @param {string} feature - 'crate_builder' or 'track_identification'
  */
 function requireQuota(feature) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
@@ -213,7 +201,7 @@ function requireQuota(feature) {
     }
 
     // QUOTA CHECK HAPPENS BEFORE API CALL
-    const quota = usageTracker.checkQuota(req.user.id, req.user.tier, feature, isByok);
+    const quota = await usageTracker.checkQuota(req.user.id, req.user.tier, feature, isByok);
 
     if (!quota.allowed) {
       const featureDisplayName = feature.replace(/_/g, ' ');
@@ -281,18 +269,18 @@ async function optionalAuth(req, res, next) {
 
     // Look up or create user if we have identification
     if (verifiedUser || deviceId) {
-      // Check if database is initialized
-      if (db.isInitialized()) {
+      // Check if Firestore is available
+      if (firestore.isAvailable()) {
         // Look up user by Firebase UID first
         let user = null;
         if (verifiedUser) {
-          user = db.get('SELECT * FROM users WHERE firebase_uid = ?', [verifiedUser]);
+          user = await firestore.getUser(verifiedUser);
         }
         // Fall back to device ID lookup
         if (!user && deviceId) {
-          user = db.get('SELECT * FROM users WHERE device_id = ?', [deviceId]);
+          user = await firestore.getUserByDeviceId(deviceId);
           if (!user) {
-            user = db.get('SELECT * FROM users WHERE id = ? AND firebase_uid IS NULL', [deviceId]);
+            user = await firestore.getUserByLegacyId(deviceId);
           }
         }
 
@@ -310,7 +298,7 @@ async function optionalAuth(req, res, next) {
             verifiedByToken,
           };
         } else {
-          // User not found in DB - set basic info without creating
+          // User not found - set basic info without creating
           req.user = {
             id: verifiedUser || deviceId,
             firebaseUid: verifiedUser,
@@ -320,7 +308,7 @@ async function optionalAuth(req, res, next) {
           };
         }
       } else {
-        // DB not initialized - set basic user info
+        // Firestore not available - set basic user info
         req.user = {
           id: verifiedUser || deviceId,
           firebaseUid: verifiedUser,

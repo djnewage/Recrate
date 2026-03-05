@@ -7,7 +7,7 @@
  */
 
 const express = require('express');
-const db = require('../../utils/db');
+const firestore = require('../../utils/firestore');
 const logger = require('../../utils/logger');
 const usageTracker = require('../../utils/usageTracker');
 const { getTier, getQuota } = require('../../config/tiers');
@@ -16,22 +16,22 @@ const { getTier, getQuota } = require('../../config/tiers');
  * Get user by Firebase UID or device ID (for backwards compatibility)
  * @param {string} firebaseUid - Firebase UID
  * @param {string} deviceId - Device ID (fallback)
- * @returns {Object|null} User record
+ * @returns {Promise<Object|null>} User record
  */
-function getUser(firebaseUid, deviceId) {
+async function getUser(firebaseUid, deviceId) {
   // Try Firebase UID first (preferred)
   if (firebaseUid) {
-    const user = db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid]);
+    const user = await firestore.getUser(firebaseUid);
     if (user) return user;
   }
 
   // Fall back to device ID for backwards compatibility
   if (deviceId) {
-    // Check device_id column first, then legacy id column
-    let user = db.get('SELECT * FROM users WHERE device_id = ?', [deviceId]);
+    // Check device_id field first, then legacy id
+    let user = await firestore.getUserByDeviceId(deviceId);
     if (user) return user;
 
-    user = db.get('SELECT * FROM users WHERE id = ? AND firebase_uid IS NULL', [deviceId]);
+    user = await firestore.getUserByLegacyId(deviceId);
     if (user) return user;
   }
 
@@ -42,10 +42,10 @@ function getUser(firebaseUid, deviceId) {
  * Create or get user, starting trial if new
  * @param {string} firebaseUid - Firebase UID
  * @param {string} deviceId - Device ID
- * @returns {Object} User record
+ * @returns {Promise<Object>} User record
  */
-function getOrCreateUser(firebaseUid, deviceId) {
-  let user = getUser(firebaseUid, deviceId);
+async function getOrCreateUser(firebaseUid, deviceId) {
+  let user = await getUser(firebaseUid, deviceId);
 
   if (!user) {
     // Create new user with trial
@@ -53,25 +53,22 @@ function getOrCreateUser(firebaseUid, deviceId) {
     const trialEnd = new Date();
     trialEnd.setDate(trialEnd.getDate() + 3); // 3 day trial
 
-    db.run(
-      `INSERT INTO users (id, firebase_uid, device_id, tier, trial_started_at, trial_ends_at, created_at, updated_at)
-       VALUES (?, ?, ?, 'trial', datetime('now'), ?, datetime('now'), datetime('now'))`,
-      [id, firebaseUid || null, deviceId || null, trialEnd.toISOString()]
-    );
+    await firestore.createUser(id, {
+      firebase_uid: firebaseUid || null,
+      device_id: deviceId || null,
+      tier: 'trial',
+      trial_started_at: new Date().toISOString(),
+      trial_ends_at: trialEnd.toISOString(),
+    });
 
-    user = firebaseUid
-      ? db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid])
-      : db.get('SELECT * FROM users WHERE id = ?', [id]);
+    user = await firestore.getUser(id);
 
     logger.info(`[Subscription] Created new trial user: ${id}`);
   }
 
   // Link Firebase UID to existing device-only user if needed
   if (firebaseUid && user && !user.firebase_uid && user.device_id === deviceId) {
-    db.run(
-      'UPDATE users SET firebase_uid = ?, updated_at = datetime("now") WHERE id = ?',
-      [firebaseUid, user.id]
-    );
+    await firestore.updateUser(user.id, { firebase_uid: firebaseUid });
     user.firebase_uid = firebaseUid;
     logger.info(`[Subscription] Linked Firebase UID ${firebaseUid} to device ${deviceId}`);
   }
@@ -82,9 +79,9 @@ function getOrCreateUser(firebaseUid, deviceId) {
 /**
  * Check if trial or subscription has expired and update tier
  * @param {Object} user - User record
- * @returns {Object} Updated user record
+ * @returns {Promise<Object>} Updated user record
  */
-function checkExpiration(user) {
+async function checkExpiration(user) {
   const now = new Date();
   let needsUpdate = false;
   let newTier = user.tier;
@@ -108,11 +105,7 @@ function checkExpiration(user) {
   }
 
   if (needsUpdate) {
-    db.run(
-      'UPDATE users SET tier = ?, updated_at = datetime("now") WHERE id = ?',
-      [newTier, user.id]
-    );
-    db.saveDatabase();
+    await firestore.updateUser(user.id, { tier: newTier });
     user.tier = newTier;
   }
 
@@ -145,24 +138,8 @@ function createSubscriptionRoutes() {
   /**
    * GET /api/subscription/status
    * Get current subscription status for the authenticated user
-   *
-   * Headers:
-   * - X-Firebase-UID: Firebase user ID (preferred)
-   * - X-Device-Id: Device ID (fallback for backwards compatibility)
-   *
-   * Response:
-   * {
-   *   tier: 'trial' | 'basic' | 'pro' | 'expired',
-   *   tierInfo: { name, price, features, aiQuotas },
-   *   trial: { active, startedAt, endsAt, daysRemaining },
-   *   subscription: { active, productId, expiresAt, willRenew, daysRemaining },
-   *   quotas: {
-   *     crate_builder: { used, limit, remaining, resetDate },
-   *     track_identification: { used, limit, remaining, resetDate }
-   *   }
-   * }
    */
-  router.get('/status', (req, res) => {
+  router.get('/status', async (req, res) => {
     try {
       const firebaseUid = req.headers['x-firebase-uid'];
       const deviceId = req.headers['x-device-id'];
@@ -175,10 +152,10 @@ function createSubscriptionRoutes() {
       }
 
       // Get or create user
-      let user = getOrCreateUser(firebaseUid, deviceId);
+      let user = await getOrCreateUser(firebaseUid, deviceId);
 
       // Check for expiration
-      user = checkExpiration(user);
+      user = await checkExpiration(user);
 
       // Get tier info
       const tierInfo = getTier(user.tier) || getTier('expired');
@@ -209,8 +186,8 @@ function createSubscriptionRoutes() {
 
       // Get usage quotas
       const userId = user.firebase_uid || user.id;
-      const crateBuilderUsage = usageTracker.getMonthlyUsage(userId, 'crate_builder');
-      const trackIdUsage = usageTracker.getMonthlyUsage(userId, 'track_identification');
+      const crateBuilderUsage = await usageTracker.getMonthlyUsage(userId, 'crate_builder');
+      const trackIdUsage = await usageTracker.getMonthlyUsage(userId, 'track_identification');
 
       const crateBuilderLimit = getQuota(user.tier, 'crate_builder');
       const trackIdLimit = getQuota(user.tier, 'track_identification');
@@ -259,11 +236,8 @@ function createSubscriptionRoutes() {
   /**
    * POST /api/subscription/start-trial
    * Start the free trial for a user (if not already started)
-   *
-   * This is called by the mobile app when the user accepts the trial.
-   * Server-side trial start prevents manipulation of trial dates.
    */
-  router.post('/start-trial', (req, res) => {
+  router.post('/start-trial', async (req, res) => {
     try {
       const firebaseUid = req.headers['x-firebase-uid'];
       const deviceId = req.headers['x-device-id'];
@@ -273,7 +247,7 @@ function createSubscriptionRoutes() {
       }
 
       // Get or create user
-      let user = getOrCreateUser(firebaseUid, deviceId);
+      let user = await getOrCreateUser(firebaseUid, deviceId);
 
       // Check if trial already started
       if (user.trial_started_at) {
@@ -288,17 +262,11 @@ function createSubscriptionRoutes() {
       const trialEnd = new Date();
       trialEnd.setDate(trialEnd.getDate() + 3); // 3 day trial
 
-      db.run(
-        `UPDATE users SET
-          tier = 'trial',
-          trial_started_at = datetime('now'),
-          trial_ends_at = ?,
-          updated_at = datetime('now')
-        WHERE id = ?`,
-        [trialEnd.toISOString(), user.id]
-      );
-
-      db.saveDatabase();
+      await firestore.updateUser(user.id, {
+        tier: 'trial',
+        trial_started_at: new Date().toISOString(),
+        trial_ends_at: trialEnd.toISOString(),
+      });
 
       logger.info(`[Subscription] Trial started for user ${user.firebase_uid || user.id}`);
 
@@ -318,9 +286,8 @@ function createSubscriptionRoutes() {
   /**
    * POST /api/subscription/link-firebase
    * Link a Firebase UID to an existing device-based user
-   * This merges the device's trial/subscription to the Firebase account
    */
-  router.post('/link-firebase', (req, res) => {
+  router.post('/link-firebase', async (req, res) => {
     try {
       const firebaseUid = req.headers['x-firebase-uid'];
       const deviceId = req.headers['x-device-id'];
@@ -330,10 +297,7 @@ function createSubscriptionRoutes() {
       }
 
       // Check if Firebase UID already has an account
-      const existingFirebaseUser = db.get(
-        'SELECT * FROM users WHERE firebase_uid = ?',
-        [firebaseUid]
-      );
+      const existingFirebaseUser = await firestore.getUser(firebaseUid);
 
       if (existingFirebaseUser) {
         // User already has a Firebase-linked account
@@ -347,22 +311,11 @@ function createSubscriptionRoutes() {
 
       // Check if device has an account to link
       if (deviceId) {
-        const deviceUser = db.get(
-          'SELECT * FROM users WHERE (device_id = ? OR id = ?) AND firebase_uid IS NULL',
-          [deviceId, deviceId]
-        );
+        const deviceUser = await firestore.getDeviceUserWithoutFirebase(deviceId);
 
         if (deviceUser) {
           // Link Firebase UID to device user
-          db.run(
-            `UPDATE users SET
-              firebase_uid = ?,
-              updated_at = datetime('now')
-            WHERE id = ?`,
-            [firebaseUid, deviceUser.id]
-          );
-
-          db.saveDatabase();
+          await firestore.linkFirebaseUid(deviceUser.id, firebaseUid);
 
           logger.info(`[Subscription] Linked Firebase ${firebaseUid} to device user ${deviceUser.id}`);
 
@@ -377,7 +330,7 @@ function createSubscriptionRoutes() {
       }
 
       // No existing account - create new one
-      const user = getOrCreateUser(firebaseUid, deviceId);
+      const user = await getOrCreateUser(firebaseUid, deviceId);
 
       res.json({
         success: true,

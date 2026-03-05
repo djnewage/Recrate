@@ -20,7 +20,7 @@
  */
 
 const express = require('express');
-const db = require('../../utils/db');
+const firestore = require('../../utils/firestore');
 const logger = require('../../utils/logger');
 
 /**
@@ -55,32 +55,27 @@ function verifyAuthorization(authHeader, expectedAuthKey) {
 /**
  * Get or create user by Firebase UID
  * @param {string} firebaseUid - Firebase UID
- * @returns {Object} User record
+ * @returns {Promise<Object>} User record
  */
-function getOrCreateUser(firebaseUid) {
-  let user = db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid]);
+async function getOrCreateUser(firebaseUid) {
+  let user = await firestore.getUser(firebaseUid);
 
   if (!user) {
     // Also check if this ID exists as a legacy device ID
-    user = db.get('SELECT * FROM users WHERE id = ? AND firebase_uid IS NULL', [firebaseUid]);
+    user = await firestore.getUserByLegacyId(firebaseUid);
 
     if (user) {
       // Migrate legacy device ID user to Firebase UID
-      db.run(
-        'UPDATE users SET firebase_uid = ?, updated_at = datetime("now") WHERE id = ?',
-        [firebaseUid, firebaseUid]
-      );
-      user.firebase_uid = firebaseUid;
+      await firestore.linkFirebaseUid(user.id, firebaseUid);
+      user = await firestore.getUser(firebaseUid);
       logger.info(`[Webhook] Migrated legacy user to Firebase UID: ${firebaseUid}`);
     } else {
       // Create new user - trial will be started when they first use the app
-      const id = `user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      db.run(
-        `INSERT INTO users (id, firebase_uid, tier, created_at, updated_at)
-         VALUES (?, ?, 'trial', datetime('now'), datetime('now'))`,
-        [id, firebaseUid]
-      );
-      user = db.get('SELECT * FROM users WHERE firebase_uid = ?', [firebaseUid]);
+      await firestore.createUser(firebaseUid, {
+        firebase_uid: firebaseUid,
+        tier: 'trial',
+      });
+      user = await firestore.getUser(firebaseUid);
       logger.info(`[Webhook] Created new user for Firebase UID: ${firebaseUid}`);
     }
   }
@@ -91,7 +86,7 @@ function getOrCreateUser(firebaseUid) {
 /**
  * Handle subscription activation (initial purchase or renewal)
  */
-function handleSubscriptionActive(firebaseUid, eventData) {
+async function handleSubscriptionActive(firebaseUid, eventData) {
   const {
     product_id,
     expiration_at_ms,
@@ -104,52 +99,35 @@ function handleSubscriptionActive(firebaseUid, eventData) {
   const startedAt = purchased_at_ms ? new Date(purchased_at_ms).toISOString() : null;
 
   // Ensure user exists
-  getOrCreateUser(firebaseUid);
+  await getOrCreateUser(firebaseUid);
 
-  db.run(
-    `UPDATE users SET
-      tier = 'pro',
-      subscription_product_id = ?,
-      subscription_id = ?,
-      subscription_expires_at = ?,
-      subscription_started_at = COALESCE(subscription_started_at, ?),
-      subscription_will_renew = 1,
-      subscription_cancelled_at = NULL,
-      revenuecat_app_user_id = ?,
-      updated_at = datetime('now')
-    WHERE firebase_uid = ?`,
-    [
-      product_id,
-      original_transaction_id || transaction_id,
-      expiresAt,
-      startedAt,
-      firebaseUid, // RevenueCat app_user_id should be Firebase UID
-      firebaseUid,
-    ]
-  );
+  await firestore.updateUser(firebaseUid, {
+    tier: 'pro',
+    subscription_product_id: product_id,
+    subscription_id: original_transaction_id || transaction_id,
+    subscription_expires_at: expiresAt,
+    subscription_started_at: startedAt,
+    subscription_will_renew: 1,
+    subscription_cancelled_at: null,
+    revenuecat_app_user_id: firebaseUid,
+  });
 
-  db.saveDatabase();
   logger.success(`[Webhook] User ${firebaseUid} subscription activated (expires: ${expiresAt})`);
 }
 
 /**
  * Handle subscription cancellation (user cancelled but still active until period ends)
  */
-function handleSubscriptionCancelled(firebaseUid, eventData) {
+async function handleSubscriptionCancelled(firebaseUid, eventData) {
   const { expiration_at_ms, cancellation_reason } = eventData;
   const expiresAt = expiration_at_ms ? new Date(expiration_at_ms).toISOString() : null;
 
-  db.run(
-    `UPDATE users SET
-      subscription_will_renew = 0,
-      subscription_expires_at = ?,
-      subscription_cancelled_at = datetime('now'),
-      updated_at = datetime('now')
-    WHERE firebase_uid = ?`,
-    [expiresAt, firebaseUid]
-  );
+  await firestore.updateUser(firebaseUid, {
+    subscription_will_renew: 0,
+    subscription_expires_at: expiresAt,
+    subscription_cancelled_at: new Date().toISOString(),
+  });
 
-  db.saveDatabase();
   logger.info(
     `[Webhook] User ${firebaseUid} cancelled subscription (expires: ${expiresAt}, reason: ${cancellation_reason || 'unknown'})`
   );
@@ -158,46 +136,36 @@ function handleSubscriptionCancelled(firebaseUid, eventData) {
 /**
  * Handle subscription uncancellation (user re-enabled auto-renewal)
  */
-function handleSubscriptionUncancelled(firebaseUid, eventData) {
+async function handleSubscriptionUncancelled(firebaseUid, eventData) {
   const { expiration_at_ms } = eventData;
   const expiresAt = expiration_at_ms ? new Date(expiration_at_ms).toISOString() : null;
 
-  db.run(
-    `UPDATE users SET
-      subscription_will_renew = 1,
-      subscription_expires_at = ?,
-      subscription_cancelled_at = NULL,
-      updated_at = datetime('now')
-    WHERE firebase_uid = ?`,
-    [expiresAt, firebaseUid]
-  );
+  await firestore.updateUser(firebaseUid, {
+    subscription_will_renew: 1,
+    subscription_expires_at: expiresAt,
+    subscription_cancelled_at: null,
+  });
 
-  db.saveDatabase();
   logger.info(`[Webhook] User ${firebaseUid} uncancelled subscription (expires: ${expiresAt})`);
 }
 
 /**
  * Handle subscription expiration
  */
-function handleSubscriptionExpired(firebaseUid) {
-  db.run(
-    `UPDATE users SET
-      tier = 'expired',
-      subscription_will_renew = 0,
-      updated_at = datetime('now')
-    WHERE firebase_uid = ?`,
-    [firebaseUid]
-  );
+async function handleSubscriptionExpired(firebaseUid) {
+  await firestore.updateUser(firebaseUid, {
+    tier: 'expired',
+    subscription_will_renew: 0,
+  });
 
-  db.saveDatabase();
   logger.info(`[Webhook] User ${firebaseUid} subscription expired`);
 }
 
 /**
  * Handle billing issue (payment failed)
  */
-function handleBillingIssue(firebaseUid, eventData) {
-  const { expiration_at_ms, grace_period_expires_at_ms } = eventData;
+async function handleBillingIssue(firebaseUid, eventData) {
+  const { grace_period_expires_at_ms } = eventData;
 
   // During grace period, subscription is still active
   // After grace period, it will expire
@@ -205,15 +173,10 @@ function handleBillingIssue(firebaseUid, eventData) {
     ? new Date(grace_period_expires_at_ms).toISOString()
     : null;
 
-  db.run(
-    `UPDATE users SET
-      subscription_will_renew = 0,
-      updated_at = datetime('now')
-    WHERE firebase_uid = ?`,
-    [firebaseUid]
-  );
+  await firestore.updateUser(firebaseUid, {
+    subscription_will_renew: 0,
+  });
 
-  db.saveDatabase();
   logger.warn(
     `[Webhook] User ${firebaseUid} billing issue (grace period ends: ${gracePeriodEnds || 'N/A'})`
   );
@@ -222,12 +185,9 @@ function handleBillingIssue(firebaseUid, eventData) {
 /**
  * Handle user alias change (e.g., anonymous user logs in)
  */
-function handleSubscriberAlias(oldUserId, newUserId, eventData) {
-  // Check if old user exists
-  const oldUser = db.get(
-    'SELECT * FROM users WHERE firebase_uid = ? OR id = ?',
-    [oldUserId, oldUserId]
-  );
+async function handleSubscriberAlias(oldUserId, newUserId, eventData) {
+  // Check if old user exists (by firebase_uid or doc ID)
+  const oldUser = await firestore.getUserByFirebaseUidOrId(oldUserId);
 
   if (!oldUser) {
     logger.info(`[Webhook] Alias: Old user ${oldUserId} not found, skipping`);
@@ -235,72 +195,45 @@ function handleSubscriberAlias(oldUserId, newUserId, eventData) {
   }
 
   // Check if new user already exists
-  const newUser = db.get('SELECT * FROM users WHERE firebase_uid = ?', [newUserId]);
+  const newUser = await firestore.getUser(newUserId);
 
   if (newUser) {
     // Merge: Copy subscription data from old to new if new doesn't have active subscription
     if (oldUser.tier === 'pro' && newUser.tier !== 'pro') {
-      db.run(
-        `UPDATE users SET
-          tier = ?,
-          subscription_product_id = ?,
-          subscription_id = ?,
-          subscription_expires_at = ?,
-          subscription_started_at = ?,
-          subscription_will_renew = ?,
-          revenuecat_app_user_id = ?,
-          updated_at = datetime('now')
-        WHERE firebase_uid = ?`,
-        [
-          oldUser.tier,
-          oldUser.subscription_product_id,
-          oldUser.subscription_id,
-          oldUser.subscription_expires_at,
-          oldUser.subscription_started_at,
-          oldUser.subscription_will_renew,
-          newUserId,
-          newUserId,
-        ]
-      );
+      await firestore.updateUser(newUserId, {
+        tier: oldUser.tier,
+        subscription_product_id: oldUser.subscription_product_id,
+        subscription_id: oldUser.subscription_id,
+        subscription_expires_at: oldUser.subscription_expires_at,
+        subscription_started_at: oldUser.subscription_started_at,
+        subscription_will_renew: oldUser.subscription_will_renew,
+        revenuecat_app_user_id: newUserId,
+      });
       logger.info(`[Webhook] Merged subscription from ${oldUserId} to ${newUserId}`);
     }
   } else {
     // Update old user's Firebase UID to new UID
-    db.run(
-      `UPDATE users SET
-        firebase_uid = ?,
-        revenuecat_app_user_id = ?,
-        updated_at = datetime('now')
-      WHERE firebase_uid = ? OR id = ?`,
-      [newUserId, newUserId, oldUserId, oldUserId]
-    );
+    await firestore.linkFirebaseUid(oldUser.id, newUserId, {
+      revenuecat_app_user_id: newUserId,
+    });
     logger.info(`[Webhook] Aliased user ${oldUserId} -> ${newUserId}`);
   }
-
-  db.saveDatabase();
 }
 
 /**
  * Handle product change (user upgraded/downgraded)
  */
-function handleProductChange(firebaseUid, eventData) {
+async function handleProductChange(firebaseUid, eventData) {
   const { new_product_id, expiration_at_ms } = eventData;
   const expiresAt = expiration_at_ms ? new Date(expiration_at_ms).toISOString() : null;
 
-  // For now, treat any active subscription as 'pro'
-  // If you add multiple tiers later, map product_id to tier here
-  db.run(
-    `UPDATE users SET
-      tier = 'pro',
-      subscription_product_id = ?,
-      subscription_expires_at = ?,
-      subscription_will_renew = 1,
-      updated_at = datetime('now')
-    WHERE firebase_uid = ?`,
-    [new_product_id, expiresAt, firebaseUid]
-  );
+  await firestore.updateUser(firebaseUid, {
+    tier: 'pro',
+    subscription_product_id: new_product_id,
+    subscription_expires_at: expiresAt,
+    subscription_will_renew: 1,
+  });
 
-  db.saveDatabase();
   logger.info(`[Webhook] User ${firebaseUid} changed product to ${new_product_id}`);
 }
 
@@ -313,12 +246,6 @@ function createWebhookRoutes() {
   /**
    * POST /api/webhooks/revenuecat
    * Receives subscription events from RevenueCat
-   *
-   * Headers:
-   * - Authorization: Bearer <auth_key> (configured in RevenueCat dashboard)
-   *
-   * Body: RevenueCat webhook payload
-   * See: https://www.revenuecat.com/docs/webhooks
    */
   router.post('/revenuecat', express.raw({ type: 'application/json' }), async (req, res) => {
     const startTime = Date.now();
@@ -356,7 +283,6 @@ function createWebhookRoutes() {
         type,
         app_user_id, // This should be Firebase UID (set via Purchases.logIn)
         original_app_user_id,
-        aliases,
       } = event;
 
       // Use app_user_id as Firebase UID (we set this via Purchases.logIn in mobile app)
@@ -369,15 +295,15 @@ function createWebhookRoutes() {
         case 'INITIAL_PURCHASE':
         case 'RENEWAL':
         case 'PRODUCT_CHANGE':
-          handleSubscriptionActive(firebaseUid, event);
+          await handleSubscriptionActive(firebaseUid, event);
           break;
 
         case 'CANCELLATION':
-          handleSubscriptionCancelled(firebaseUid, event);
+          await handleSubscriptionCancelled(firebaseUid, event);
           break;
 
         case 'UNCANCELLATION':
-          handleSubscriptionUncancelled(firebaseUid, event);
+          await handleSubscriptionUncancelled(firebaseUid, event);
           break;
 
         case 'EXPIRATION':
@@ -385,26 +311,26 @@ function createWebhookRoutes() {
           // For billing issues, we mark as potentially expiring
           // but don't immediately downgrade (grace period)
           if (type === 'EXPIRATION') {
-            handleSubscriptionExpired(firebaseUid);
+            await handleSubscriptionExpired(firebaseUid);
           } else {
-            handleBillingIssue(firebaseUid, event);
+            await handleBillingIssue(firebaseUid, event);
           }
           break;
 
         case 'SUBSCRIBER_ALIAS':
-          handleSubscriberAlias(original_app_user_id, app_user_id, event);
+          await handleSubscriberAlias(original_app_user_id, app_user_id, event);
           break;
 
         case 'TRANSFER':
           // Subscription transferred to another user
           // The new owner will get an INITIAL_PURCHASE event
           logger.info(`[Webhook] Subscription transferred from ${original_app_user_id} to ${app_user_id}`);
-          handleSubscriptionExpired(original_app_user_id);
+          await handleSubscriptionExpired(original_app_user_id);
           break;
 
         case 'NON_RENEWING_PURCHASE':
           // One-time purchase (if you add this later)
-          handleSubscriptionActive(firebaseUid, event);
+          await handleSubscriptionActive(firebaseUid, event);
           break;
 
         default:
