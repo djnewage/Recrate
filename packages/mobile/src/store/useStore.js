@@ -489,7 +489,8 @@ const useStore = create(
       await get().loadCrates();
       return true;
     } catch (error) {
-      set({ cratesError: error.message });
+      const serverMessage = error.response?.data?.error || error.message;
+      set({ cratesError: serverMessage });
       return false;
     }
   },

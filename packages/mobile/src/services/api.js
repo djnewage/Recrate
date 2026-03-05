@@ -58,6 +58,24 @@ api.interceptors.request.use(
   }
 );
 
+// In-flight request tracker for deduplication
+const inFlightRequests = new Map();
+
+/**
+ * Deduplicated GET request - returns existing promise if an identical request is in flight
+ */
+function deduplicatedGet(url, config = {}) {
+  const key = `GET:${url}:${JSON.stringify(config.params || {})}`;
+  if (inFlightRequests.has(key)) {
+    return inFlightRequests.get(key);
+  }
+  const promise = api.get(url, config).finally(() => {
+    inFlightRequests.delete(key);
+  });
+  inFlightRequests.set(key, promise);
+  return promise;
+}
+
 // API Service
 export const apiService = {
   // Set base URL dynamically
@@ -79,7 +97,7 @@ export const apiService = {
 
   // Library endpoints
   getLibrary: async (params = {}) => {
-    const response = await api.get(ENDPOINTS.LIBRARY, {
+    const response = await deduplicatedGet(ENDPOINTS.LIBRARY, {
       params,
       timeout: 120000, // 2 minutes for large libraries
     });
@@ -99,7 +117,7 @@ export const apiService = {
   // Crates endpoints
   getCrates: async () => {
     // Include track IDs for offline caching
-    const response = await api.get(`${ENDPOINTS.CRATES}?includeTrackIds=true`);
+    const response = await deduplicatedGet(`${ENDPOINTS.CRATES}?includeTrackIds=true`);
     return response.data;
   },
 
@@ -314,7 +332,7 @@ export const apiService = {
    * Call this on app launch and after purchases to sync state
    */
   getSubscriptionStatus: async () => {
-    const response = await api.get('/api/subscription/status');
+    const response = await deduplicatedGet('/api/subscription/status');
     return response.data;
   },
 

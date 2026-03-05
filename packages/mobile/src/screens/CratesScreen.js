@@ -225,7 +225,8 @@ const CratesScreen = ({ navigation, route }) => {
       }
       Alert.alert('Success', selectedParentId ? 'Subcrate created successfully' : 'Crate created successfully');
     } else {
-      Alert.alert('Error', 'Failed to create crate');
+      const errorMsg = useStore.getState().cratesError || 'Failed to create crate';
+      Alert.alert('Error', errorMsg);
     }
   };
 

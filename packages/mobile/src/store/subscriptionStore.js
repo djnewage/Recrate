@@ -34,6 +34,9 @@ export const useSubscriptionStore = create(
       serverQuotas: null,
       serverTierInfo: null,
 
+      // Billing issue detection (grace period / payment failure)
+      hasBillingIssue: false,
+
       // Initialize subscription state
       initializeSubscription: async (firebaseUid = null) => {
         set({ isLoading: true, error: null });
@@ -93,9 +96,19 @@ export const useSubscriptionStore = create(
           // Sync with server (source of truth) in background
           // This updates quotas and ensures trial/subscription state is accurate
           // Don't await - let it happen in background to not block UI
-          get().syncWithServer().catch((err) => {
-            console.warn('[SubscriptionStore] Background server sync failed:', err.message);
-          });
+          // Retry with exponential backoff on failure (5s, 15s, 30s)
+          const syncWithRetry = async (attempt = 0, maxAttempts = 3) => {
+            try {
+              await get().syncWithServer();
+            } catch (err) {
+              console.warn(`[SubscriptionStore] Background server sync failed (attempt ${attempt + 1}):`, err.message);
+              if (attempt < maxAttempts - 1) {
+                const delay = [5000, 15000, 30000][attempt] || 30000;
+                setTimeout(() => syncWithRetry(attempt + 1, maxAttempts), delay);
+              }
+            }
+          };
+          syncWithRetry();
 
           return tier;
         } catch (error) {
@@ -148,16 +161,20 @@ export const useSubscriptionStore = create(
 
             // Map server tier to local tier constant
             let localTier = serverStatus.tier;
-            if (localTier === 'basic') {
-              // If server says 'basic', treat as expired for AI features
-              localTier = SUBSCRIPTION_TIERS.EXPIRED;
-            } else if (localTier === 'pro') {
+            if (localTier === 'pro') {
               localTier = SUBSCRIPTION_TIERS.PRO;
             } else if (localTier === 'trial') {
               localTier = SUBSCRIPTION_TIERS.TRIAL;
             } else {
               localTier = SUBSCRIPTION_TIERS.EXPIRED;
             }
+
+            // Detect billing issues (subscription active but won't renew due to payment failure)
+            const hasBillingIssue = !!(
+              serverStatus.subscription?.active &&
+              !serverStatus.subscription?.willRenew &&
+              !serverStatus.subscription?.cancelledAt
+            );
 
             // Update local state with server values
             set({
@@ -173,6 +190,8 @@ export const useSubscriptionStore = create(
               // Store server quota limits for reference
               serverQuotas: serverStatus.quotas,
               serverTierInfo: serverStatus.tierInfo,
+              // Billing issue flag
+              hasBillingIssue,
             });
 
             return serverStatus;
@@ -463,6 +482,12 @@ export const useSubscriptionStore = create(
         trackIdentificationCount: state.trackIdentificationCount,
         usageResetDate: state.usageResetDate,
       }),
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.error('[SubscriptionStore] Failed to rehydrate (corrupted data):', error);
+          // Store will use initial defaults - will re-sync from server
+        }
+      },
     }
   )
 );

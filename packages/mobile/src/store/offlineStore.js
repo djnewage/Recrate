@@ -305,6 +305,11 @@ const useOfflineStore = create(
       // v2: Added serverCrateTracks for offline crate viewing
       version: 2,
       onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.error('[OfflineStore] Failed to rehydrate (corrupted data):', error);
+          // Store will use initial defaults - data will re-sync from server
+          return;
+        }
         if (state) {
           // Reset syncing state on rehydration (app restart)
           if (state.isSyncing) {

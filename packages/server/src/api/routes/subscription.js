@@ -152,7 +152,7 @@ function createSubscriptionRoutes() {
    *
    * Response:
    * {
-   *   tier: 'trial' | 'basic' | 'pro' | 'expired',
+   *   tier: 'trial' | 'pro' | 'expired',
    *   tierInfo: { name, price, features, aiQuotas },
    *   trial: { active, startedAt, endsAt, daysRemaining },
    *   subscription: { active, productId, expiresAt, willRenew, daysRemaining },

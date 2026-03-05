@@ -193,7 +193,7 @@ describe('SyncService', () => {
 
         const { operationQueue } = useOfflineStore.getState();
         expect(operationQueue[0].status).toBe(OPERATION_STATUS.FAILED);
-      });
+      }, 15000); // Extended timeout for exponential backoff delay
 
       it('should handle 404 errors by removing operation from queue', async () => {
         const { enqueueOperation } = useOfflineStore.getState();

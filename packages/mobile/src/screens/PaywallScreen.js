@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +33,7 @@ const PaywallScreen = ({ navigation, route }) => {
     restorePurchases,
     getTrialDaysRemaining,
     isLoading,
+    hasBillingIssue,
   } = useSubscriptionStore();
 
   const trialDaysRemaining = getTrialDaysRemaining();
@@ -120,6 +122,15 @@ const PaywallScreen = ({ navigation, route }) => {
             <Ionicons name="alert-circle" size={20} color={COLORS.error} />
             <Text style={[styles.trialBannerText, styles.expiredText]}>
               Your trial has ended. Subscribe to continue.
+            </Text>
+          </View>
+        )}
+
+        {hasBillingIssue && (
+          <View style={[styles.trialBanner, styles.expiredBanner]}>
+            <Ionicons name="card" size={20} color={COLORS.warning} />
+            <Text style={[styles.trialBannerText, { color: COLORS.warning }]}>
+              There's an issue with your payment. Please update your payment method to keep your subscription.
             </Text>
           </View>
         )}
@@ -219,9 +230,9 @@ const PaywallScreen = ({ navigation, route }) => {
 
         {/* Terms */}
         <Text style={styles.termsText}>
-          Payment will be charged to your Apple ID account at confirmation of purchase.
-          Subscriptions automatically renew unless cancelled at least 24 hours before the end of the current period.
-          Manage subscriptions in Settings {'>'} Apple ID {'>'} Subscriptions.
+          {Platform.OS === 'ios'
+            ? `Payment will be charged to your Apple ID account at confirmation of purchase. Subscriptions automatically renew unless cancelled at least 24 hours before the end of the current period. Manage subscriptions in Settings > Apple ID > Subscriptions.`
+            : `Payment will be charged to your Google Play account at confirmation of purchase. Subscriptions automatically renew unless cancelled at least 24 hours before the end of the current period. Manage subscriptions in Google Play Store > Payments & subscriptions.`}
         </Text>
       </ScrollView>
     </View>

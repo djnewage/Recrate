@@ -328,6 +328,9 @@ class SeratoWriter {
       logger.info(`Creating subcrate "${name}" under parent "${parentCrate.name}" (fullPath: ${fullPath})`);
     }
 
+    // Ensure Subcrates directory exists
+    await fs.mkdir(this.cratesDir, { recursive: true });
+
     const cratePath = this.getCratePath(fullPath);
 
     // Check if crate already exists

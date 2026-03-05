@@ -4,7 +4,6 @@
  *
  * TIERS:
  * - Free Trial: 3 days, full features, AI hard-capped
- * - Basic ($4.99/mo): Crate management + streaming, NO AI
  * - Pro ($9.99/mo): Full app + monthly AI allowance
  * - BYOK: Pro users can use their own Anthropic key (no allowance deduction for crate_builder)
  *
@@ -28,22 +27,6 @@ const TIERS = {
     aiQuotas: {
       crate_builder: 5,
       track_identification: 10,
-    },
-    byokAllowed: false,
-  },
-  basic: {
-    name: 'Basic',
-    price: 4.99,
-    features: {
-      crateManagement: true,
-      audioStreaming: true,
-      remoteAccess: true,
-      aiCrateBuilder: false,
-      trackIdentification: false,
-    },
-    aiQuotas: {
-      crate_builder: 0,
-      track_identification: 0,
     },
     byokAllowed: false,
   },
@@ -83,7 +66,7 @@ const TIERS = {
 
 /**
  * Get tier configuration by name
- * @param {string} tierName - 'trial', 'basic', or 'pro'
+ * @param {string} tierName - 'trial' or 'pro'
  * @returns {Object|null} Tier configuration
  */
 function getTier(tierName) {
@@ -92,7 +75,7 @@ function getTier(tierName) {
 
 /**
  * Get AI quota for a tier and feature
- * @param {string} tierName - 'trial', 'basic', or 'pro'
+ * @param {string} tierName - 'trial' or 'pro'
  * @param {string} feature - 'crate_builder' or 'track_identification'
  * @returns {number} Quota limit (0 = blocked)
  */
@@ -104,7 +87,7 @@ function getQuota(tierName, feature) {
 
 /**
  * Check if a tier allows BYOK
- * @param {string} tierName - 'trial', 'basic', or 'pro'
+ * @param {string} tierName - 'trial' or 'pro'
  * @returns {boolean}
  */
 function isByokAllowed(tierName) {

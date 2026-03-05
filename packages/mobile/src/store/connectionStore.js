@@ -37,6 +37,18 @@ export const useConnectionStore = create((set, get) => ({
   setNetworkState: (state) => set({ networkState: state }),
   setUserId: (uid) => set({ userId: uid }),
 
+  // Check if currently on cellular (for bandwidth-aware decisions)
+  isCellular: () => {
+    const { networkState } = get();
+    return networkState?.type === 'cellular';
+  },
+
+  // Check if device has any network connectivity
+  hasNetworkConnectivity: () => {
+    const { networkState } = get();
+    return networkState?.isConnected ?? false;
+  },
+
   // Initialize device ID (call on app start)
   initializeDeviceId: async () => {
     try {

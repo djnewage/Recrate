@@ -57,7 +57,7 @@ class APIServer {
     logger.info('Webhook routes registered (before body parsing)');
 
     // Middleware
-    this.app.use(cors());
+    this.app.use(cors({ origin: true, credentials: true }));
     this.app.use(express.json({ limit: '50mb' })); // Increased for base64 audio uploads
     this.app.use(morgan('dev'));
 
@@ -280,8 +280,9 @@ class APIServer {
     // Socket.IO for mobile app progress updates
     this.io = new Server(this.httpServer, {
       cors: {
-        origin: '*',
+        origin: true,
         methods: ['GET', 'POST'],
+        credentials: true,
       },
     });
 

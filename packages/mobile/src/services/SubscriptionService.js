@@ -85,6 +85,13 @@ const SubscriptionService = {
         ? REVENUECAT_API_KEY_IOS
         : REVENUECAT_API_KEY_ANDROID;
 
+      // Guard against placeholder/invalid API keys (e.g. Android key not yet configured)
+      if (!apiKey || apiKey.includes('XXXX') || apiKey.length < 16) {
+        console.warn('[SubscriptionService] Invalid API key detected - falling back to trial-only mode');
+        SubscriptionService._initialized = true;
+        return true;
+      }
+
       await Purchases.configure({ apiKey });
       SubscriptionService._initialized = true;
       console.log('[SubscriptionService] RevenueCat initialized');
@@ -397,68 +404,54 @@ const SubscriptionService = {
 
   // ============================================
   // DEBUG FUNCTIONS (for testing trial scenarios)
+  // Only available in development builds
   // ============================================
 
-  /**
-   * DEBUG: Set trial start date to a specific date
-   * @param {Date|string} date - The date to set as trial start
-   */
-  setTrialStartDate: async (date) => {
-    const dateStr = date instanceof Date ? date.toISOString() : date;
-    await SecureStore.setItemAsync(STORAGE_KEYS.TRIAL_START_DATE, dateStr);
-    console.log('[SubscriptionService] DEBUG: Trial start set to:', dateStr);
-    return dateStr;
-  },
+  ...(__DEV__ ? {
+    setTrialStartDate: async (date) => {
+      const dateStr = date instanceof Date ? date.toISOString() : date;
+      await SecureStore.setItemAsync(STORAGE_KEYS.TRIAL_START_DATE, dateStr);
+      console.log('[SubscriptionService] DEBUG: Trial start set to:', dateStr);
+      return dateStr;
+    },
 
-  /**
-   * DEBUG: Simulate trial with X days remaining
-   * Sets the trial start date to (TRIAL_DURATION_DAYS - days) ago
-   * @param {number} days - Number of days remaining in trial
-   */
-  simulateTrialDaysRemaining: async (days) => {
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - (TRIAL_DURATION_DAYS - days));
-    await SubscriptionService.setTrialStartDate(startDate);
-    console.log(`[SubscriptionService] DEBUG: Simulated ${days} days remaining`);
-    return startDate.toISOString();
-  },
+    simulateTrialDaysRemaining: async (days) => {
+      const now = new Date();
+      const startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - (TRIAL_DURATION_DAYS - days));
+      await SubscriptionService.setTrialStartDate(startDate);
+      console.log(`[SubscriptionService] DEBUG: Simulated ${days} days remaining`);
+      return startDate.toISOString();
+    },
 
-  /**
-   * DEBUG: Simulate expired trial
-   * Sets the trial start date to (TRIAL_DURATION_DAYS + 1) days ago
-   */
-  simulateExpiredTrial: async () => {
-    const expiredDate = new Date();
-    expiredDate.setDate(expiredDate.getDate() - (TRIAL_DURATION_DAYS + 1));
-    await SubscriptionService.setTrialStartDate(expiredDate);
-    console.log('[SubscriptionService] DEBUG: Trial set to expired');
-    return expiredDate.toISOString();
-  },
+    simulateExpiredTrial: async () => {
+      const expiredDate = new Date();
+      expiredDate.setDate(expiredDate.getDate() - (TRIAL_DURATION_DAYS + 1));
+      await SubscriptionService.setTrialStartDate(expiredDate);
+      console.log('[SubscriptionService] DEBUG: Trial set to expired');
+      return expiredDate.toISOString();
+    },
 
-  /**
-   * DEBUG: Get current trial debug info
-   * Returns all trial-related dates and status for debugging
-   */
-  getDebugInfo: async () => {
-    const startDate = await SubscriptionService.getTrialStartDate();
-    const endDate = await SubscriptionService.getTrialEndDate();
-    const daysRemaining = await SubscriptionService.getTrialDaysRemaining();
-    const isActive = await SubscriptionService.isTrialActive();
-    const tier = await SubscriptionService.getCurrentTier();
+    getDebugInfo: async () => {
+      const startDate = await SubscriptionService.getTrialStartDate();
+      const endDate = await SubscriptionService.getTrialEndDate();
+      const daysRemaining = await SubscriptionService.getTrialDaysRemaining();
+      const isActive = await SubscriptionService.isTrialActive();
+      const tier = await SubscriptionService.getCurrentTier();
 
-    const info = {
-      trialStartDate: startDate?.toISOString() || null,
-      trialEndDate: endDate?.toISOString() || null,
-      daysRemaining,
-      isTrialActive: isActive,
-      currentTier: tier,
-      now: new Date().toISOString(),
-    };
+      const info = {
+        trialStartDate: startDate?.toISOString() || null,
+        trialEndDate: endDate?.toISOString() || null,
+        daysRemaining,
+        isTrialActive: isActive,
+        currentTier: tier,
+        now: new Date().toISOString(),
+      };
 
-    console.log('[SubscriptionService] DEBUG Info:', JSON.stringify(info, null, 2));
-    return info;
-  },
+      console.log('[SubscriptionService] DEBUG Info:', JSON.stringify(info, null, 2));
+      return info;
+    },
+  } : {}),
 };
 
 export default SubscriptionService;

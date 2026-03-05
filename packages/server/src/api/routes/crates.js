@@ -94,11 +94,16 @@ function createCrateRoutes(parser, writer = null) {
 
       const { name, color = '#FF0000', parentId = null } = req.body;
 
-      if (!name) {
+      if (!name || typeof name !== 'string') {
         return res.status(400).json({ error: 'Crate name is required' });
       }
 
-      const crate = await writer.createCrate(name, color, parentId);
+      const trimmedName = name.trim();
+      if (trimmedName.length === 0 || trimmedName.length > 255) {
+        return res.status(400).json({ error: 'Crate name must be 1-255 characters' });
+      }
+
+      const crate = await writer.createCrate(trimmedName, color, parentId);
       parser.invalidateCache(); // Clear cache
 
       res.status(201).json({

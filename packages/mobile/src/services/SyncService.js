@@ -10,6 +10,31 @@ import apiService from './api';
 
 const MAX_RETRIES = 3;
 
+// Circuit breaker state - prevents hammering a downed server
+const circuitBreaker = {
+  consecutiveFailures: 0,
+  lastFailureTime: null,
+  cooldownMs: 60000, // 60 seconds
+  threshold: 5,
+};
+
+/**
+ * Get exponential backoff delay for retried operations
+ * @param {number} retryCount - Number of times this operation has been retried
+ * @returns {number} Delay in milliseconds
+ */
+function getBackoffDelay(retryCount) {
+  if (retryCount <= 0) return 0;
+  const base = 1000; // 1 second
+  const max = 30000; // 30 seconds
+  const jitter = Math.random() * 1000;
+  return Math.min(base * Math.pow(2, retryCount) + jitter, max);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Main sync function - processes entire pending queue
  */
@@ -30,6 +55,15 @@ export async function syncQueue() {
     return { success: false, reason: 'no_server_url' };
   }
 
+  // Circuit breaker: if too many recent failures, wait for cooldown
+  if (
+    circuitBreaker.consecutiveFailures >= circuitBreaker.threshold &&
+    circuitBreaker.lastFailureTime &&
+    Date.now() - circuitBreaker.lastFailureTime < circuitBreaker.cooldownMs
+  ) {
+    return { success: false, reason: 'circuit_open' };
+  }
+
   const pendingOps = operationQueue.filter((op) => op.status === OPERATION_STATUS.PENDING);
 
   if (pendingOps.length === 0) {
@@ -48,10 +82,17 @@ export async function syncQueue() {
   for (let i = 0; i < pendingOps.length; i++) {
     setSyncProgress(i + 1, pendingOps.length);
 
+    // Exponential backoff for retried operations
+    const delay = getBackoffDelay(pendingOps[i].retryCount || 0);
+    if (delay > 0) {
+      await sleep(delay);
+    }
+
     const result = await processOperation(pendingOps[i]);
 
     if (result.success) {
       syncedCount++;
+      circuitBreaker.consecutiveFailures = 0; // Reset on success
       // Track if any crate operations succeeded (need to refresh crate list after)
       const opType = pendingOps[i].type;
       if (opType === OPERATION_TYPES.CREATE_CRATE ||
@@ -64,6 +105,8 @@ export async function syncQueue() {
       conflictCount++;
     } else {
       failedCount++;
+      circuitBreaker.consecutiveFailures++;
+      circuitBreaker.lastFailureTime = Date.now();
     }
 
     // If we hit a conflict, stop processing to let user resolve it

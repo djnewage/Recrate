@@ -409,14 +409,16 @@ async function bootstrap() {
     logger.info("");
     logger.warn("Received SIGINT signal");
     await flushSentry();
-    service.stop();
+    await service.stop();
+    process.exit(0);
   });
 
   process.on("SIGTERM", async () => {
     logger.info("");
     logger.warn("Received SIGTERM signal");
     await flushSentry();
-    service.stop();
+    await service.stop();
+    process.exit(0);
   });
 
   // Set up error handlers
@@ -424,7 +426,8 @@ async function bootstrap() {
     logger.error("Uncaught exception:", error);
     captureError(error, { tags: { type: "uncaughtException" } });
     await flushSentry();
-    service.stop();
+    await service.stop();
+    process.exit(1);
   });
 
   process.on("unhandledRejection", async (reason, promise) => {
@@ -432,7 +435,8 @@ async function bootstrap() {
     const error = reason instanceof Error ? reason : new Error(String(reason));
     captureError(error, { tags: { type: "unhandledRejection" } });
     await flushSentry();
-    service.stop();
+    await service.stop();
+    process.exit(1);
   });
 
   try {

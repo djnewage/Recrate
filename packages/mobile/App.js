@@ -253,8 +253,21 @@ export default function App() {
         Connection: {
           path: 'connect',
           parse: {
-            ip: (ip) => ip,
-            port: (port) => port,
+            ip: (ip) => {
+              // Validate IPv4 or localhost only
+              if (ip === 'localhost') return ip;
+              const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+              const match = ip.match(ipv4);
+              if (!match) return null;
+              const parts = match.slice(1).map(Number);
+              if (parts.some((p) => p > 255)) return null;
+              return ip;
+            },
+            port: (port) => {
+              const portNum = parseInt(port, 10);
+              if (isNaN(portNum) || portNum < 1 || portNum > 65535) return null;
+              return portNum.toString();
+            },
           },
         },
         Main: 'main',
@@ -288,7 +301,10 @@ export default function App() {
   useEffect(() => {
     const initSubscription = async () => {
       try {
-        await useSubscriptionStore.getState().initializeSubscription();
+        // Use persisted auth UID if available (from previous session hydration)
+        // This avoids a redundant device-only sync before auth completes
+        const persistedUid = useAuthStore.getState().uid;
+        await useSubscriptionStore.getState().initializeSubscription(persistedUid || null);
         console.log('[App] Subscription initialized');
       } catch (error) {
         console.error('[App] Failed to initialize subscription:', error);
