@@ -7,6 +7,16 @@ const logger = {
     console.warn(`[WARN] ${new Date().toISOString()}`, ...args);
   },
 
+  success: (...args) => {
+    console.log(`[SUCCESS] ${new Date().toISOString()}`, ...args);
+  },
+
+  debug: (...args) => {
+    if (process.env.DEBUG) {
+      console.log(`[DEBUG] ${new Date().toISOString()}`, ...args);
+    }
+  },
+
   error: (...args) => {
     console.error(`[ERROR] ${new Date().toISOString()}`, ...args);
 

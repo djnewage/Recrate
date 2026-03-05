@@ -6,6 +6,8 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('./utils/logger');
+const webhookRoutes = require('./routes/webhooks');
+const subscriptionRoutes = require('./routes/subscription');
 
 // This will be injected by the main server
 let wsManager = null;
@@ -70,6 +72,12 @@ router.get('/:deviceId/health', async (req, res) => {
     });
   }
 });
+
+// Webhook routes (must be before catch-all to avoid treating "webhooks" as a deviceId)
+router.use('/webhooks', webhookRoutes());
+
+// Subscription routes (Firestore-backed, available without desktop connection)
+router.use('/subscription', subscriptionRoutes());
 
 // Proxy all requests to desktop (catch-all route must be last)
 router.all('/:deviceId/*', async (req, res) => {

@@ -8,9 +8,13 @@ const BinaryWebSocketManager = require('./binaryWebSocketManager');
 const apiRouter = require('./api');
 const logger = require('./utils/logger');
 const { initSentry, captureError, flush: flushSentry } = require('./utils/sentry');
+const { initializeFirebase } = require('./utils/firebase');
 
 // Initialize Sentry early
 initSentry();
+
+// Initialize Firebase
+initializeFirebase();
 
 const app = express();
 const server = createServer(app);
