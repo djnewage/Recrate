@@ -28,7 +28,11 @@ function trackEvent(clientId, eventName, params = {}) {
     client_id: clientId,
     events: [{
       name: eventName,
-      params,
+      params: {
+        session_id: String(Math.floor(Date.now() / 1000)),
+        engagement_time_msec: '100',
+        ...params,
+      },
     }],
   });
 
