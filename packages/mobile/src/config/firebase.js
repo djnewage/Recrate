@@ -26,10 +26,22 @@ try {
 export const firebaseAuth = auth();
 
 // Export Crashlytics instance (may be null)
-export const firebaseCrashlytics = crashlytics ? crashlytics() : null;
+let firebaseCrashlyticsInstance = null;
+try {
+  firebaseCrashlyticsInstance = crashlytics ? crashlytics() : null;
+} catch (e) {
+  console.log('[Firebase] Crashlytics native module not available');
+}
+export const firebaseCrashlytics = firebaseCrashlyticsInstance;
 
 // Export Analytics instance (may be null)
-export const firebaseAnalytics = analytics ? analytics() : null;
+let firebaseAnalyticsInstance = null;
+try {
+  firebaseAnalyticsInstance = analytics ? analytics() : null;
+} catch (e) {
+  console.log('[Firebase] Analytics native module not available');
+}
+export const firebaseAnalytics = firebaseAnalyticsInstance;
 
 /**
  * Set user ID across Firebase services (Crashlytics, Analytics)
