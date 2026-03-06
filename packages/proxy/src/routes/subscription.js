@@ -11,6 +11,7 @@ const firestore = require('../utils/firestore');
 const logger = require('../utils/logger');
 const usageTracker = require('../utils/usageTracker');
 const { getTier, getQuota } = require('../config/tiers');
+const { trackEvent } = require('../utils/analytics');
 
 /**
  * Get user by Firebase UID or device ID (for backwards compatibility)
@@ -269,6 +270,7 @@ function createSubscriptionRoutes() {
       });
 
       logger.info(`[Subscription] Trial started for user ${user.firebase_uid || user.id}`);
+      trackEvent(user.firebase_uid || user.id, 'trial_started', { user_id: user.firebase_uid || user.id });
 
       res.json({
         success: true,
@@ -318,6 +320,7 @@ function createSubscriptionRoutes() {
           await firestore.linkFirebaseUid(deviceUser.id, firebaseUid);
 
           logger.info(`[Subscription] Linked Firebase ${firebaseUid} to device user ${deviceUser.id}`);
+          trackEvent(firebaseUid, 'firebase_linked', { user_id: firebaseUid, merged: 'true' });
 
           return res.json({
             success: true,
@@ -331,6 +334,7 @@ function createSubscriptionRoutes() {
 
       // No existing account - create new one
       const user = await getOrCreateUser(firebaseUid, deviceId);
+      trackEvent(firebaseUid, 'firebase_linked', { user_id: firebaseUid, merged: 'false' });
 
       res.json({
         success: true,

@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('./utils/logger');
+const { trackEvent } = require('./utils/analytics');
 const webhookRoutes = require('./routes/webhooks');
 const subscriptionRoutes = require('./routes/subscription');
 
@@ -90,6 +91,7 @@ router.all('/:deviceId/*', async (req, res) => {
 
   try {
     logger.info(`[${deviceId}] Mobile request: ${req.method} ${path}`);
+    trackEvent(deviceId, 'proxy_request', { method: req.method, path: basePath, device_id: deviceId });
 
     // Check if device is connected
     const deviceStatus = wsManager.getDeviceStatus(deviceId);
@@ -125,6 +127,7 @@ router.all('/:deviceId/*', async (req, res) => {
       );
 
       logger.info(`[${deviceId}] Stream request dispatched: ${requestId}`);
+      trackEvent(deviceId, 'stream_started', { device_id: deviceId, track_id: trackId });
 
       // Set up streaming response handler
       // This allows us to send chunks to mobile as they arrive from Desktop

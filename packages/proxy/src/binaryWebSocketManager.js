@@ -6,6 +6,7 @@
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('./utils/logger');
+const { trackEvent } = require('./utils/analytics');
 
 class BinaryWebSocketManager {
   constructor(server) {
@@ -77,6 +78,7 @@ class BinaryWebSocketManager {
             });
 
             logger.info(`[${deviceId}] Desktop registered`);
+            trackEvent(deviceId, 'device_connected', { device_id: deviceId });
 
             // Send registration confirmation
             ws.send(JSON.stringify({
@@ -110,6 +112,7 @@ class BinaryWebSocketManager {
 
     ws.on('close', () => {
       if (deviceId) {
+        trackEvent(deviceId, 'device_disconnected', { device_id: deviceId });
         logger.warn(`[${deviceId}] Desktop disconnected`);
         this.devices.delete(deviceId);
         this.rejectPendingForDevice(deviceId);

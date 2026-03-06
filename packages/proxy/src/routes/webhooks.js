@@ -22,6 +22,7 @@
 const express = require('express');
 const firestore = require('../utils/firestore');
 const logger = require('../utils/logger');
+const { trackEvent } = require('../utils/analytics');
 
 /**
  * Verify RevenueCat webhook authorization
@@ -289,6 +290,11 @@ function createWebhookRoutes() {
       const firebaseUid = app_user_id;
 
       logger.info(`[Webhook] RevenueCat event: ${type} for user ${firebaseUid}`);
+      trackEvent(firebaseUid, 'subscription_event', {
+        event_type: type,
+        product_id: event.product_id || '',
+        user_id: firebaseUid,
+      });
 
       // Handle different event types
       switch (type) {
