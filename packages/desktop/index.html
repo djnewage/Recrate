@@ -1263,6 +1263,27 @@
         showError(statusData.error);
       }
 
+      if (serverStatus === 'restarting') {
+        // Show restarting state
+        statusDot.classList.add('running');
+        statusText.textContent = 'Restarting...';
+
+        // Keep QR/stats visible during restart
+        qrSection.classList.remove('hidden');
+        statsSection.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+
+        // Disable toggle button during restart
+        toggleBtn.className = 'btn btn-danger';
+        toggleBtn.disabled = true;
+        toggleIcon.innerHTML = ICONS.stop;
+        toggleText.textContent = 'Restarting...';
+        return;
+      }
+
+      // Re-enable toggle button
+      toggleBtn.disabled = false;
+
       if (serverStatus === 'running') {
         // Update status indicator
         statusDot.classList.add('running');
@@ -1516,9 +1537,13 @@
         autoStart: true
       };
 
-      await api.saveConfig(config);
-      alert('Settings saved! Restart the server for changes to take effect.');
-      showStatus();
+      const result = await api.saveConfig(config);
+      if (result.restarting) {
+        showStatus();
+      } else {
+        alert('Settings saved!');
+        showStatus();
+      }
     }
 
     // Re-index library

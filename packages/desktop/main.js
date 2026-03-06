@@ -29,6 +29,7 @@ let recrateService = null;  // Changed from serverProcess - now holds the servic
 let proxyClient = null;
 let serverPort = 3000;
 let serverStatus = 'stopped';
+let isRestarting = false;
 
 // Proxy configuration - can be overridden in settings
 const PROXY_URL = process.env.PROXY_URL || 'wss://steadfast-forgiveness-production.up.railway.app';
@@ -506,6 +507,47 @@ async function stopServer() {
   disconnectFromProxy();
 }
 
+// Restart server (used when path-sensitive settings change)
+async function restartServer() {
+  if (isRestarting) {
+    log.info('Restart already in progress, skipping');
+    return;
+  }
+
+  isRestarting = true;
+  serverStatus = 'restarting';
+  updateTrayMenu();
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('server-status', { status: 'restarting' });
+  }
+
+  try {
+    log.info('Restarting server...');
+    await stopServer();
+
+    // Brief delay to allow port release
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    await startServer();
+    log.info('Server restarted successfully');
+  } catch (error) {
+    log.error('Failed to restart server:', error);
+    serverStatus = 'stopped';
+    updateTrayMenu();
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('server-error', error.message);
+      mainWindow.webContents.send('server-status', {
+        status: 'stopped',
+        error: error.message
+      });
+    }
+  } finally {
+    isRestarting = false;
+  }
+}
+
 // IPC Handlers
 // Setup wizard handlers
 ipcMain.handle('get-setup-complete', () => {
@@ -549,14 +591,31 @@ ipcMain.handle('get-config', () => {
   };
 });
 
-ipcMain.handle('save-config', (event, config) => {
+ipcMain.handle('save-config', async (event, config) => {
+  // Read old values before saving
+  const oldSeratoPath = store.get('seratoPath');
+  const oldMusicPath = store.get('musicPath');
+  const oldPort = store.get('port');
+
   store.set('seratoPath', config.seratoPath);
   store.set('musicPath', config.musicPath);
   store.set('port', config.port);
   store.set('autoStart', config.autoStart);
 
   log.info('Config saved:', config);
-  return true;
+
+  // Check if path-sensitive settings changed while server is running
+  const pathsChanged = config.seratoPath !== oldSeratoPath ||
+    config.musicPath !== oldMusicPath ||
+    config.port !== oldPort;
+
+  if (pathsChanged && serverStatus === 'running') {
+    log.info('Path-sensitive settings changed, restarting server...');
+    restartServer(); // Don't await - let it run in the background
+    return { saved: true, restarting: true };
+  }
+
+  return { saved: true, restarting: false };
 });
 
 ipcMain.handle('select-directory', async (event, title) => {
