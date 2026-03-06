@@ -448,10 +448,10 @@ async function startServer() {
       }
     };
 
-    // Send immediately and again after delays to ensure it's received
+    // Send immediately, and retry once after a short delay in case the
+    // renderer wasn't ready for the first message
     sendStatus();
     setTimeout(sendStatus, 500);
-    setTimeout(sendStatus, 1000);
 
   } catch (error) {
     log.error('Failed to start server:', error);
@@ -470,7 +470,7 @@ async function startServer() {
 }
 
 // Stop server
-async function stopServer() {
+async function stopServer({ skipPortKill = false } = {}) {
   if (recrateService) {
     log.info('Stopping server...');
 
@@ -489,7 +489,11 @@ async function stopServer() {
     recrateService = null;
 
     // Force kill any lingering process on the port to ensure clean restart
-    if (serverPort) {
+    // Skip during restart — the port is freed by recrateService.stop() and
+    // startServer() already calls killProcessOnPort as its first step.
+    // Killing here during restart would kill the Electron process itself
+    // since the server runs in-process.
+    if (serverPort && !skipPortKill) {
       log.info(`Cleaning up port ${serverPort}...`);
       await killProcessOnPort(serverPort);
     }
@@ -524,7 +528,7 @@ async function restartServer() {
 
   try {
     log.info('Restarting server...');
-    await stopServer();
+    await stopServer({ skipPortKill: true });
 
     // Brief delay to allow port release
     await new Promise(resolve => setTimeout(resolve, 1000));

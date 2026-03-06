@@ -6,42 +6,14 @@
 
 import auth from '@react-native-firebase/auth';
 
-// Optional Firebase services - may not be available depending on build config
-let crashlytics = null;
-let analytics = null;
-
-try {
-  crashlytics = require('@react-native-firebase/crashlytics').default;
-} catch (e) {
-  console.log('[Firebase] Crashlytics not available');
-}
-
-try {
-  analytics = require('@react-native-firebase/analytics').default;
-} catch (e) {
-  console.log('[Firebase] Analytics not available');
-}
-
 // Export Firebase Auth instance
 export const firebaseAuth = auth();
 
-// Export Crashlytics instance (may be null)
-let firebaseCrashlyticsInstance = null;
-try {
-  firebaseCrashlyticsInstance = crashlytics ? crashlytics() : null;
-} catch (e) {
-  console.log('[Firebase] Crashlytics native module not available');
-}
-export const firebaseCrashlytics = firebaseCrashlyticsInstance;
-
-// Export Analytics instance (may be null)
-let firebaseAnalyticsInstance = null;
-try {
-  firebaseAnalyticsInstance = analytics ? analytics() : null;
-} catch (e) {
-  console.log('[Firebase] Analytics native module not available');
-}
-export const firebaseAnalytics = firebaseAnalyticsInstance;
+// Analytics and Crashlytics are not natively linked in the current build.
+// The JS packages exist but calling methods throws since the native modules aren't installed.
+// Set to null so all callsites safely no-op.
+export const firebaseCrashlytics = null;
+export const firebaseAnalytics = null;
 
 /**
  * Set user ID across Firebase services (Crashlytics, Analytics)

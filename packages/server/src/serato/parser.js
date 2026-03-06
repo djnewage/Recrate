@@ -166,7 +166,12 @@ class SeratoParser extends EventEmitter {
    * Returns array of track objects
    */
   async parseLibrary(musicPath = null) {
-    const cacheKey = 'library';
+    // Include musicPaths in cache key so changing paths invalidates cache
+    const configHash = crypto.createHash('md5')
+      .update(JSON.stringify(this.musicPaths))
+      .digest('hex')
+      .substring(0, 8);
+    const cacheKey = `library_${configHash}`;
 
     // Check in-memory cache first
     const cached = this.cache.get(cacheKey);
@@ -293,6 +298,12 @@ class SeratoParser extends EventEmitter {
                 logger.debug(`Could not resolve: ${metadata.filePath}`);
                 return; // Skip tracks that can't be resolved
               }
+            }
+
+            // Filter out tracks not under any configured musicPath
+            if (this.musicPaths.length > 0) {
+              const isInMusicPath = this.musicPaths.some(mp => trackPath.startsWith(mp));
+              if (!isInMusicPath) return;
             }
 
             // Create track object

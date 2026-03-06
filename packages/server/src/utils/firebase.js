@@ -10,7 +10,7 @@ let firebaseApp = null;
 function initializeFirebase() {
   if (firebaseApp) return firebaseApp;
 
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId = (process.env.FIREBASE_PROJECT_ID || '').trim();
 
   if (!projectId) {
     logger.warn('[Firebase] FIREBASE_PROJECT_ID not set - token verification disabled');
@@ -23,7 +23,7 @@ function initializeFirebase() {
 
     if (serviceAccount) {
       // Parse JSON from environment variable
-      const credentials = JSON.parse(serviceAccount);
+      const credentials = JSON.parse(serviceAccount.trim());
       firebaseApp = admin.initializeApp({
         credential: admin.credential.cert(credentials),
         projectId,
