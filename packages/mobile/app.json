@@ -89,6 +89,7 @@
           }
         }
       ],
+      "@react-native-firebase/app",
       "expo-apple-authentication",
       [
         "@react-native-google-signin/google-signin",
