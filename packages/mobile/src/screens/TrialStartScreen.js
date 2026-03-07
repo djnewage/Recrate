@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Image,
   Linking,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -84,7 +85,12 @@ const TrialStartScreen = ({ navigation }) => {
       />
 
       {/* Content */}
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
         {/* Header */}
         <View style={styles.header}>
           <Image
@@ -182,7 +188,7 @@ const TrialStartScreen = ({ navigation }) => {
             <Text style={styles.legalLinkText}>Privacy Policy</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 };
@@ -192,8 +198,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  content: {
+    flexGrow: 1,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.xl,
   },

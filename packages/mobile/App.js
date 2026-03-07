@@ -42,6 +42,7 @@ import MiniPlayer from './src/components/MiniPlayer';
 import DisclaimerModal from './src/components/DisclaimerModal';
 import ConnectionStatusBar from './src/components/ConnectionStatusBar';
 import ConflictModal from './src/components/ConflictModal';
+import ExpiredPaywallModal from './src/components/ExpiredPaywallModal';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -374,6 +375,7 @@ export default function App() {
               <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
               <DisclaimerModal />
               <ConflictModal />
+              <ExpiredPaywallModal />
               <SafeAreaView style={styles.container}>
                 <NavigationContainer
                   ref={navigationRef}
