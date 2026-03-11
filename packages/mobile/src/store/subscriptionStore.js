@@ -306,7 +306,7 @@ export const useSubscriptionStore = create(
 
       // Purchase a subscription
       purchasePackage: async (packageToPurchase) => {
-        set({ isLoading: true, error: null });
+        set({ error: null });
 
         const result = await SubscriptionService.purchasePackage(packageToPurchase);
 
@@ -315,7 +315,6 @@ export const useSubscriptionStore = create(
           set({
             currentTier: tier,
             customerInfo: result.customerInfo,
-            isLoading: false,
             // Reset usage on new subscription
             aiCrateBuildCount: 0,
             trackIdentificationCount: 0,
@@ -327,7 +326,6 @@ export const useSubscriptionStore = create(
           });
         } else {
           set({
-            isLoading: false,
             error: result.cancelled ? null : result.error,
           });
         }
@@ -337,7 +335,7 @@ export const useSubscriptionStore = create(
 
       // Restore purchases
       restorePurchases: async () => {
-        set({ isLoading: true, error: null });
+        set({ error: null });
 
         const result = await SubscriptionService.restorePurchases();
 
@@ -346,13 +344,11 @@ export const useSubscriptionStore = create(
           set({
             currentTier: tier,
             customerInfo: result.customerInfo,
-            isLoading: false,
           });
 
           logEvent('subscription_restored');
         } else {
           set({
-            isLoading: false,
             error: result.error,
           });
         }

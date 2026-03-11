@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import {
 } from '../constants/subscription';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { useAuthStore } from '../store/authStore';
+import SubscriptionService from '../services/SubscriptionService';
 
 const ExpiredPaywallModal = () => {
   const insets = useSafeAreaInsets();
@@ -34,12 +35,22 @@ const ExpiredPaywallModal = () => {
     purchasePackage,
     restorePurchases,
     clearSubscriptionData,
-    isLoading,
   } = useSubscriptionStore();
 
   const { signOut } = useAuthStore();
 
-  const isVisible = currentTier === SUBSCRIPTION_TIERS.EXPIRED && !isLoading;
+  const isVisible = currentTier === SUBSCRIPTION_TIERS.EXPIRED;
+
+  // Retry loading offerings when modal becomes visible and offerings are null
+  useEffect(() => {
+    if (isVisible && !offerings) {
+      SubscriptionService.getOfferings().then((freshOfferings) => {
+        if (freshOfferings) {
+          useSubscriptionStore.setState({ offerings: freshOfferings });
+        }
+      }).catch(() => {});
+    }
+  }, [isVisible, offerings]);
 
   if (!isVisible) {
     return null;
@@ -52,13 +63,30 @@ const ExpiredPaywallModal = () => {
   const displayPrice = proPackage?.product?.priceString || proFeatures.price;
 
   const handlePurchase = async () => {
-    if (!proPackage) {
+    let pkg = proPackage;
+
+    // Just-in-time retry if offerings were not loaded
+    if (!pkg) {
+      try {
+        const freshOfferings = await SubscriptionService.getOfferings();
+        if (freshOfferings) {
+          useSubscriptionStore.setState({ offerings: freshOfferings });
+          pkg = freshOfferings?.current?.availablePackages?.find(
+            (p) => p.product.identifier === PRODUCT_IDS.PRO_MONTHLY
+          );
+        }
+      } catch (e) {
+        // Fall through to error below
+      }
+    }
+
+    if (!pkg) {
       Alert.alert('Error', 'Unable to load subscription options. Please try again later.');
       return;
     }
 
     setIsPurchasing(true);
-    const result = await purchasePackage(proPackage);
+    const result = await purchasePackage(pkg);
     setIsPurchasing(false);
 
     if (result.success) {

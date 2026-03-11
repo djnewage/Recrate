@@ -19,6 +19,7 @@ import {
   PRODUCT_IDS,
 } from '../constants/subscription';
 import { useSubscriptionStore } from '../store/subscriptionStore';
+import SubscriptionService from '../services/SubscriptionService';
 import { logEvent } from '../config/firebase';
 
 const PaywallScreen = ({ navigation, route }) => {
@@ -57,14 +58,31 @@ const PaywallScreen = ({ navigation, route }) => {
   const displayPrice = proPackage?.product?.priceString || proFeatures.price;
 
   const handlePurchase = async () => {
-    if (!proPackage) {
+    let pkg = proPackage;
+
+    // Just-in-time retry if offerings were not loaded
+    if (!pkg) {
+      try {
+        const freshOfferings = await SubscriptionService.getOfferings();
+        if (freshOfferings) {
+          useSubscriptionStore.setState({ offerings: freshOfferings });
+          pkg = freshOfferings?.current?.availablePackages?.find(
+            (p) => p.product.identifier === PRODUCT_IDS.PRO_MONTHLY
+          );
+        }
+      } catch (e) {
+        // Fall through to error below
+      }
+    }
+
+    if (!pkg) {
       Alert.alert('Error', 'Unable to load subscription options. Please try again later.');
       return;
     }
 
     setIsPurchasing(true);
 
-    const result = await purchasePackage(proPackage);
+    const result = await purchasePackage(pkg);
 
     setIsPurchasing(false);
 
