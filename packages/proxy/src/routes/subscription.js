@@ -185,8 +185,11 @@ function createSubscriptionRoutes() {
         daysRemaining: subscriptionActive ? getDaysRemaining(user.subscription_expires_at) : 0,
       };
 
-      // Get usage quotas
+      // Track login event for GA4 user identity
       const userId = user.firebase_uid || user.id;
+      trackEvent(userId, 'login', { tier: user.tier }, userId);
+
+      // Get usage quotas
       const crateBuilderUsage = await usageTracker.getMonthlyUsage(userId, 'crate_builder');
       const trackIdUsage = await usageTracker.getMonthlyUsage(userId, 'track_identification');
 
@@ -270,7 +273,8 @@ function createSubscriptionRoutes() {
       });
 
       logger.info(`[Subscription] Trial started for user ${user.firebase_uid || user.id}`);
-      trackEvent(user.firebase_uid || user.id, 'trial_started', { user_id: user.firebase_uid || user.id });
+      const trialUserId = user.firebase_uid || user.id;
+      trackEvent(trialUserId, 'trial_started', { user_id: trialUserId }, trialUserId);
 
       res.json({
         success: true,
@@ -320,7 +324,7 @@ function createSubscriptionRoutes() {
           await firestore.linkFirebaseUid(deviceUser.id, firebaseUid);
 
           logger.info(`[Subscription] Linked Firebase ${firebaseUid} to device user ${deviceUser.id}`);
-          trackEvent(firebaseUid, 'firebase_linked', { user_id: firebaseUid, merged: 'true' });
+          trackEvent(firebaseUid, 'firebase_linked', { user_id: firebaseUid, merged: 'true' }, firebaseUid);
 
           return res.json({
             success: true,
@@ -334,7 +338,7 @@ function createSubscriptionRoutes() {
 
       // No existing account - create new one
       const user = await getOrCreateUser(firebaseUid, deviceId);
-      trackEvent(firebaseUid, 'firebase_linked', { user_id: firebaseUid, merged: 'false' });
+      trackEvent(firebaseUid, 'firebase_linked', { user_id: firebaseUid, merged: 'false' }, firebaseUid);
 
       res.json({
         success: true,

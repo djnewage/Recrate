@@ -78,7 +78,7 @@ class BinaryWebSocketManager {
             });
 
             logger.info(`[${deviceId}] Desktop registered`);
-            trackEvent(deviceId, 'device_connected', { device_id: deviceId });
+            trackEvent(deviceId, 'device_connected', { device_id: deviceId }, null);
 
             // Send registration confirmation
             ws.send(JSON.stringify({
@@ -112,7 +112,7 @@ class BinaryWebSocketManager {
 
     ws.on('close', () => {
       if (deviceId) {
-        trackEvent(deviceId, 'device_disconnected', { device_id: deviceId });
+        trackEvent(deviceId, 'device_disconnected', { device_id: deviceId }, null);
         logger.warn(`[${deviceId}] Desktop disconnected`);
         this.devices.delete(deviceId);
         this.rejectPendingForDevice(deviceId);

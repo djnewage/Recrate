@@ -294,7 +294,7 @@ function createWebhookRoutes() {
         event_type: type,
         product_id: event.product_id || '',
         user_id: firebaseUid,
-      });
+      }, firebaseUid);
 
       // Handle different event types
       switch (type) {

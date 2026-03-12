@@ -17,14 +17,15 @@ const API_SECRET = process.env.GA4_API_SECRET;
  * @param {string} clientId - Unique user/device identifier (Firebase UID or deviceId)
  * @param {string} eventName - GA4 event name (e.g. 'proxy_request')
  * @param {Object} [params={}] - Event parameters
+ * @param {string|null} [userId=null] - Optional user ID for GA4 user identity
  */
-function trackEvent(clientId, eventName, params = {}) {
+function trackEvent(clientId, eventName, params = {}, userId = null) {
   if (!MEASUREMENT_ID || !API_SECRET) return;
   if (!clientId || !eventName) return;
 
   const url = `${GA4_ENDPOINT}?measurement_id=${MEASUREMENT_ID}&api_secret=${API_SECRET}`;
 
-  const body = JSON.stringify({
+  const body = {
     client_id: clientId,
     events: [{
       name: eventName,
@@ -34,12 +35,15 @@ function trackEvent(clientId, eventName, params = {}) {
         ...params,
       },
     }],
-  });
+  };
+  if (userId) body.user_id = userId;
+
+  const jsonBody = JSON.stringify(body);
 
   fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body,
+    body: jsonBody,
   }).catch((err) => {
     logger.error('[Analytics] Failed to send event:', err.message);
   });
