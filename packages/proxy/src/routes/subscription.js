@@ -12,6 +12,7 @@ const logger = require('../utils/logger');
 const usageTracker = require('../utils/usageTracker');
 const { getTier, getQuota } = require('../config/tiers');
 const { trackEvent } = require('../utils/analytics');
+const { getBetaMode, getTrialDurationDays } = require('../utils/remoteConfig');
 
 /**
  * Get user by Firebase UID or device ID (for backwards compatibility)
@@ -51,8 +52,9 @@ async function getOrCreateUser(firebaseUid, deviceId) {
   if (!user) {
     // Create new user with trial
     const id = firebaseUid || deviceId || `user-${Date.now()}`;
+    const trialDays = await getTrialDurationDays();
     const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate() + 3); // 3 day trial
+    trialEnd.setDate(trialEnd.getDate() + trialDays);
 
     await firestore.createUser(id, {
       firebase_uid: firebaseUid || null,
@@ -216,6 +218,9 @@ function createSubscriptionRoutes() {
         },
       };
 
+      // Check beta mode from Remote Config
+      const betaMode = await getBetaMode();
+
       res.json({
         tier: user.tier,
         tierInfo: {
@@ -230,6 +235,7 @@ function createSubscriptionRoutes() {
         quotas,
         userId: userId,
         linkedToFirebase: !!user.firebase_uid,
+        betaMode,
       });
     } catch (error) {
       logger.error('[Subscription] Error getting status:', error);
@@ -263,8 +269,9 @@ function createSubscriptionRoutes() {
       }
 
       // Start trial
+      const trialDays = await getTrialDurationDays();
       const trialEnd = new Date();
-      trialEnd.setDate(trialEnd.getDate() + 3); // 3 day trial
+      trialEnd.setDate(trialEnd.getDate() + trialDays);
 
       await firestore.updateUser(user.id, {
         tier: 'trial',
@@ -281,7 +288,7 @@ function createSubscriptionRoutes() {
         tier: 'trial',
         trialStartedAt: new Date().toISOString(),
         trialEndsAt: trialEnd.toISOString(),
-        daysRemaining: 3,
+        daysRemaining: trialDays,
       });
     } catch (error) {
       logger.error('[Subscription] Error starting trial:', error);

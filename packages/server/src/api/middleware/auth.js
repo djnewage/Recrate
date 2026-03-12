@@ -3,6 +3,7 @@ const logger = require('../../utils/logger');
 const usageTracker = require('../../utils/usageTracker');
 const { getTier, isByokAllowed } = require('../../config/tiers');
 const { verifyIdToken } = require('../../utils/firebase');
+const { getTrialDurationDays } = require('../../utils/remoteConfig');
 
 /**
  * Require authentication - extracts user from Firebase ID token, Firebase UID header, or device ID
@@ -94,8 +95,9 @@ async function requireAuth(req, res, next) {
     // Create new user if not found
     if (!user) {
       const id = firebaseUid || deviceId || `user-${Date.now()}`;
+      const trialDays = await getTrialDurationDays();
       const trialEnd = new Date();
-      trialEnd.setDate(trialEnd.getDate() + 3);
+      trialEnd.setDate(trialEnd.getDate() + trialDays);
 
       await firestore.createUser(id, {
         firebase_uid: firebaseUid || null,

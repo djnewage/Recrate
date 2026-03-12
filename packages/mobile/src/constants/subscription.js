@@ -19,8 +19,8 @@ export const SUBSCRIPTION_TIERS = {
   EXPIRED: 'expired',
 };
 
-// Trial duration
-export const TRIAL_DURATION_DAYS = 3;
+// Trial duration (default fallback — actual value fetched from Firebase Remote Config)
+export const TRIAL_DURATION_DAYS = 7;
 
 // Feature limits and descriptions per tier
 export const TIER_FEATURES = {
@@ -31,7 +31,7 @@ export const TIER_FEATURES = {
     hasAIAccess: true,
     price: 'Free',
     priceValue: 0,
-    description: '3-day full access',
+    description: '7-day full access',
     features: [
       'Full library sync',
       'Crate management',

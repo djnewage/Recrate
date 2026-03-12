@@ -16,6 +16,7 @@ export const useSubscriptionStore = create(
       currentTier: null, // Will be determined on init
       isLoading: true,
       error: null,
+      betaMode: false,
 
       // Trial state
       trialStartDate: null,
@@ -160,9 +161,15 @@ export const useSubscriptionStore = create(
               localTier = SUBSCRIPTION_TIERS.EXPIRED;
             }
 
+            // Beta mode: override tier to PRO for full access
+            if (serverStatus.betaMode) {
+              localTier = SUBSCRIPTION_TIERS.PRO;
+            }
+
             // Update local state with server values
             set({
               currentTier: localTier,
+              betaMode: !!serverStatus.betaMode,
               // Trial info from server
               trialStartDate: serverStatus.trial?.startedAt || null,
               trialEndDate: serverStatus.trial?.endsAt || null,
@@ -472,6 +479,7 @@ export const useSubscriptionStore = create(
         aiCrateBuildCount: state.aiCrateBuildCount,
         trackIdentificationCount: state.trackIdentificationCount,
         usageResetDate: state.usageResetDate,
+        betaMode: state.betaMode,
       }),
     }
   )

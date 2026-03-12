@@ -11,6 +11,7 @@ const firestore = require('../../utils/firestore');
 const logger = require('../../utils/logger');
 const usageTracker = require('../../utils/usageTracker');
 const { getTier, getQuota } = require('../../config/tiers');
+const { getTrialDurationDays } = require('../../utils/remoteConfig');
 
 /**
  * Get user by Firebase UID or device ID (for backwards compatibility)
@@ -50,8 +51,9 @@ async function getOrCreateUser(firebaseUid, deviceId) {
   if (!user) {
     // Create new user with trial
     const id = firebaseUid || deviceId || `user-${Date.now()}`;
+    const trialDays = await getTrialDurationDays();
     const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate() + 3); // 3 day trial
+    trialEnd.setDate(trialEnd.getDate() + trialDays);
 
     await firestore.createUser(id, {
       firebase_uid: firebaseUid || null,
@@ -259,8 +261,9 @@ function createSubscriptionRoutes() {
       }
 
       // Start trial
+      const trialDays = await getTrialDurationDays();
       const trialEnd = new Date();
-      trialEnd.setDate(trialEnd.getDate() + 3); // 3 day trial
+      trialEnd.setDate(trialEnd.getDate() + trialDays);
 
       await firestore.updateUser(user.id, {
         tier: 'trial',
@@ -268,14 +271,14 @@ function createSubscriptionRoutes() {
         trial_ends_at: trialEnd.toISOString(),
       });
 
-      logger.info(`[Subscription] Trial started for user ${user.firebase_uid || user.id}`);
+      logger.info(`[Subscription] Trial started for user ${user.firebase_uid || user.id} (${trialDays} days)`);
 
       res.json({
         success: true,
         tier: 'trial',
         trialStartedAt: new Date().toISOString(),
         trialEndsAt: trialEnd.toISOString(),
-        daysRemaining: 3,
+        daysRemaining: trialDays,
       });
     } catch (error) {
       logger.error('[Subscription] Error starting trial:', error);

@@ -11,8 +11,43 @@ import { SUBSCRIPTION_TIERS } from '../constants/subscription';
  * Tappable to navigate to paywall
  */
 const TrialCountdownBadge = ({ onPress, style, compact = false }) => {
-  const { currentTier, getTrialDaysRemaining } = useSubscriptionStore();
+  const { currentTier, getTrialDaysRemaining, betaMode } = useSubscriptionStore();
   const daysRemaining = getTrialDaysRemaining();
+
+  // Beta mode: show static "Beta" badge
+  if (betaMode) {
+    const betaColors = ['#06B6D4', '#0891B2'];
+
+    if (compact) {
+      return (
+        <View style={[styles.compactContainer, style]}>
+          <LinearGradient
+            colors={betaColors}
+            style={styles.compactGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <Ionicons name="flask" size={12} color="#FFFFFF" />
+            <Text style={styles.compactText}>Beta</Text>
+          </LinearGradient>
+        </View>
+      );
+    }
+
+    return (
+      <View style={[styles.container, style]}>
+        <LinearGradient
+          colors={betaColors}
+          style={styles.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+        >
+          <Ionicons name="flask" size={16} color="#FFFFFF" />
+          <Text style={styles.text}>Beta</Text>
+        </LinearGradient>
+      </View>
+    );
+  }
 
   // Only show for trial users with time remaining
   if (currentTier !== SUBSCRIPTION_TIERS.TRIAL || daysRemaining <= 0) {
@@ -77,7 +112,17 @@ const TrialCountdownBadge = ({ onPress, style, compact = false }) => {
  * Tier badge component showing current subscription status
  */
 export const TierBadge = ({ tier, style }) => {
+  const betaMode = useSubscriptionStore((s) => s.betaMode);
+
   const getBadgeConfig = () => {
+    if (betaMode) {
+      return {
+        label: 'Beta',
+        colors: ['#06B6D4', '#0891B2'],
+        icon: 'flask',
+      };
+    }
+
     switch (tier) {
       case SUBSCRIPTION_TIERS.TRIAL:
         return {
