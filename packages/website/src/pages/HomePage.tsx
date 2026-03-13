@@ -2,17 +2,15 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Mail, Smartphone, Download, ChevronDown, HelpCircle } from 'lucide-react'
 
-const GITHUB_REPO = 'djnewage/Recrate'
-
-interface ReleaseAsset {
+interface ProxyAsset {
   name: string
-  browser_download_url: string
   size: number
+  downloadUrl: string
 }
 
-interface Release {
-  tag_name: string
-  assets: ReleaseAsset[]
+interface ProxyRelease {
+  version: string
+  assets: ProxyAsset[]
 }
 
 interface DownloadLinks {
@@ -85,10 +83,10 @@ export default function HomePage() {
     macIntelSize: null,
     windowsSize: null,
   })
-  const [_loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   const [macDownloadState, setMacDownloadState] = useState<DownloadState>('idle')
   const [winDownloadState, setWinDownloadState] = useState<DownloadState>('idle')
-  const [_isAppleSiliconMac, setIsAppleSiliconMac] = useState(false)
+  const [isAppleSiliconMac, setIsAppleSiliconMac] = useState(false)
 
   // Contact form state
   const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' })
@@ -109,12 +107,10 @@ export default function HomePage() {
   useEffect(() => {
     async function fetchLatestRelease() {
       try {
-        const response = await fetch(
-          `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
-        )
+        const response = await fetch('/api/releases')
         if (!response.ok) throw new Error('Failed to fetch release')
 
-        const release: Release = await response.json()
+        const release: ProxyRelease = await response.json()
 
         const macArm = release.assets.find(
           (a) => a.name.includes('arm64') && a.name.endsWith('.dmg')
@@ -127,10 +123,10 @@ export default function HomePage() {
         )
 
         setDownloads({
-          macArm: macArm?.browser_download_url || null,
-          macIntel: macIntel?.browser_download_url || null,
-          windows: windows?.browser_download_url || null,
-          version: release.tag_name,
+          macArm: macArm?.downloadUrl || null,
+          macIntel: macIntel?.downloadUrl || null,
+          windows: windows?.downloadUrl || null,
+          version: release.version,
           macArmSize: macArm ? formatBytes(macArm.size) : null,
           macIntelSize: macIntel ? formatBytes(macIntel.size) : null,
           windowsSize: windows ? formatBytes(windows.size) : null,
@@ -154,7 +150,7 @@ export default function HomePage() {
     fetchLatestRelease()
   }, [])
 
-  const _handleDownload = useCallback((url: string | null, platform: 'mac' | 'windows') => {
+  const handleDownload = useCallback((url: string | null, platform: 'mac' | 'windows') => {
     if (!url) return
 
     const setDownloadState = platform === 'mac' ? setMacDownloadState : setWinDownloadState
@@ -716,34 +712,7 @@ export default function HomePage() {
           </motion.div>
 
           <div className="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            {/* macOS Download - Coming Soon (pre-launch) */}
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="relative flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/5 opacity-60 cursor-not-allowed text-left"
-            >
-              {/* Coming Soon badge */}
-              <div className="absolute -top-3 -right-3 z-10 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-semibold text-white shadow-lg">
-                Coming Soon
-              </div>
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center flex-shrink-0">
-                <Apple size={32} className="text-white" />
-              </div>
-              <div className="text-left flex-grow">
-                <div className="text-sm text-gray-400 mb-1">Download for</div>
-                <div className="text-2xl font-bold">macOS</div>
-                <div className="text-sm text-gray-500">
-                  macOS 12+
-                </div>
-              </div>
-              <div className="ml-auto flex-shrink-0">
-                <AlertCircle size={20} className="text-gray-500" />
-              </div>
-            </motion.div>
-
-            {/* macOS Download - Functional version (uncomment when ready to launch)
+            {/* macOS Download */}
             {(() => {
               const macDownloadUrl = isAppleSiliconMac ? downloads.macArm : downloads.macIntel
               const macSize = isAppleSiliconMac ? downloads.macArmSize : downloads.macIntelSize
@@ -813,34 +782,63 @@ export default function HomePage() {
                 </motion.button>
               )
             })()}
-            */}
 
-            {/* Windows Download - Coming Soon */}
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-              className="relative flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/5 opacity-60 cursor-not-allowed text-left"
-            >
-              {/* Coming Soon badge */}
-              <div className="absolute -top-3 -right-3 z-10 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-semibold text-white shadow-lg">
-                Coming Soon
-              </div>
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center flex-shrink-0">
-                <Monitor size={32} className="text-white" />
-              </div>
-              <div className="text-left flex-grow">
-                <div className="text-sm text-gray-400 mb-1">Download for</div>
-                <div className="text-2xl font-bold">Windows</div>
-                <div className="text-sm text-gray-500">
-                  Windows 10/11
-                </div>
-              </div>
-              <div className="ml-auto flex-shrink-0">
-                <AlertCircle size={20} className="text-gray-500" />
-              </div>
-            </motion.div>
+            {/* Windows Download */}
+            {(() => {
+              const hasWindowsDownload = downloads.windows !== null
+
+              return (
+                <motion.button
+                  onClick={() => handleDownload(downloads.windows, 'windows')}
+                  disabled={loading || !hasWindowsDownload}
+                  initial={{ opacity: 0, x: 30 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.4 }}
+                  className={`flex items-center gap-4 p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border transition-all group text-left ${
+                    loading || !hasWindowsDownload
+                      ? 'border-white/5 opacity-60 cursor-not-allowed'
+                      : 'border-white/10 hover:border-purple-500/50 hover:scale-105 cursor-pointer'
+                  }`}
+                >
+                  <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center flex-shrink-0">
+                    <Monitor size={32} className="text-white" />
+                  </div>
+                  <div className="text-left flex-grow">
+                    <div className="text-sm text-gray-400 mb-1">Download for</div>
+                    <div className="text-2xl font-bold">Windows</div>
+                    <div className="text-sm text-gray-500">
+                      {loading ? 'Checking...' : hasWindowsDownload ? `Windows 10/11${downloads.windowsSize ? ` • ${downloads.windowsSize}` : ''}` : 'Coming Soon'}
+                    </div>
+                  </div>
+                  <div className="ml-auto flex-shrink-0">
+                    <AnimatePresence mode="wait">
+                      {loading ? (
+                        <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <Loader2 size={20} className="text-gray-400 animate-spin" />
+                        </motion.div>
+                      ) : winDownloadState === 'downloading' ? (
+                        <motion.div key="downloading" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
+                          <Loader2 size={20} className="text-purple-400 animate-spin" />
+                        </motion.div>
+                      ) : winDownloadState === 'complete' ? (
+                        <motion.div key="complete" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }}>
+                          <Check size={20} className="text-green-400" />
+                        </motion.div>
+                      ) : !hasWindowsDownload ? (
+                        <motion.div key="unavailable" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <AlertCircle size={20} className="text-gray-500" />
+                        </motion.div>
+                      ) : (
+                        <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                          <Download size={20} className="text-gray-400 group-hover:text-purple-400 transition-colors" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.button>
+              )
+            })()}
           </div>
 
           {/* Download started toast */}
