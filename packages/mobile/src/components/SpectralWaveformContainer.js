@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useProgress } from 'react-native-track-player';
 import { ScrollingWaveform } from '@recrate/waveform';
@@ -43,10 +43,17 @@ const SpectralWaveformContainer = ({
   // Get cached spectral data
   const spectralData = trackId ? spectralWaveformCache[trackId] : null;
 
+  // Track IDs that failed to load to prevent infinite retry loops
+  const failedTrackIds = useRef(new Set());
+
   // Load spectral waveform when track changes
   useEffect(() => {
-    if (trackId && !spectralData && !isLoadingSpectralWaveform) {
-      loadSpectralWaveform(trackId);
+    if (trackId && !spectralData && !isLoadingSpectralWaveform && !failedTrackIds.current.has(trackId)) {
+      loadSpectralWaveform(trackId).then(result => {
+        if (!result) {
+          failedTrackIds.current.add(trackId);
+        }
+      });
     }
   }, [trackId, spectralData, isLoadingSpectralWaveform, loadSpectralWaveform]);
 

@@ -225,6 +225,25 @@ class RecrateService {
    * No-op on non-Windows platforms.
    */
   _ensureFFmpegInPath() {
+    if (process.platform === "darwin") {
+      // macOS: Electron apps have restricted PATH, add common Homebrew locations
+      const macPaths = [
+        "/opt/homebrew/bin",       // Apple Silicon Homebrew
+        "/usr/local/bin",          // Intel Homebrew
+      ];
+      for (const p of macPaths) {
+        if (fs.existsSync(path.join(p, "ffmpeg"))) {
+          if (!process.env.PATH.includes(p)) {
+            process.env.PATH = p + path.delimiter + process.env.PATH;
+            logger.success(`Found FFmpeg at: ${p} (added to PATH)`);
+          }
+          return;
+        }
+      }
+      logger.debug("FFmpeg not found in common macOS locations");
+      return;
+    }
+
     if (process.platform !== "win32") return;
 
     // Quick check: if ffmpeg is already reachable, nothing to do
