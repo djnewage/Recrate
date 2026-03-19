@@ -36,6 +36,10 @@ function docToUser(doc) {
     subscription_will_renew: data.subscription_will_renew || 0,
     subscription_cancelled_at: toISOString(data.subscription_cancelled_at),
     byok_key_hash: data.byok_key_hash || null,
+    display_name: data.display_name || null,
+    app_version: data.app_version || null,
+    platform: data.platform || null,
+    last_active_at: toISOString(data.last_active_at),
     created_at: toISOString(data.created_at),
     updated_at: toISOString(data.updated_at),
   };

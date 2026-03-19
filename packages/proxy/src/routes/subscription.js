@@ -157,6 +157,20 @@ function createSubscriptionRoutes() {
       // Get or create user
       let user = await getOrCreateUser(firebaseUid, deviceId);
 
+      // Update user metadata for analytics (fire-and-forget)
+      const metadataUpdate = { last_active_at: new Date().toISOString() };
+      const userEmail = req.headers['x-user-email'];
+      const userDisplayName = req.headers['x-user-displayname'];
+      const appVersion = req.headers['x-app-version'];
+      const platform = req.headers['x-platform'];
+
+      if (userEmail && !user.email) metadataUpdate.email = userEmail;
+      if (userDisplayName) metadataUpdate.display_name = userDisplayName;
+      if (appVersion) metadataUpdate.app_version = appVersion;
+      if (platform) metadataUpdate.platform = platform;
+
+      firestore.updateUser(user.id, metadataUpdate).catch(() => {});
+
       // Check for expiration
       user = await checkExpiration(user);
 

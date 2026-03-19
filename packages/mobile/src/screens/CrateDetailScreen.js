@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import { useActionSheet } from '@expo/react-native-action-sheet';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
+import AlphabetScrollBar from '../components/AlphabetScrollBar';
+import useAlphabetIndex from '../hooks/useAlphabetIndex';
 
 const CrateDetailScreen = ({ route, navigation }) => {
   const { showActionSheetWithOptions } = useActionSheet();
@@ -24,6 +26,8 @@ const CrateDetailScreen = ({ route, navigation }) => {
   const [sortBy, setSortBy] = useState('title');
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
   const [searchQuery, setSearchQuery] = useState('');
+
+  const flatListRef = useRef(null);
 
   useEffect(() => {
     loadCrate(crateId);
@@ -217,6 +221,36 @@ const CrateDetailScreen = ({ route, navigation }) => {
   const filteredTracks = filterTracks(selectedCrate?.tracks);
   const sortedTracks = sortTracks(filteredTracks);
 
+  // Alphabet fast-scroll support
+  const getTrackSortKey = useCallback((track) => {
+    const sortField = sortBy === 'bpm' ? 'title' : sortBy;
+    return track[sortField] || track.title || '';
+  }, [sortBy]);
+  const alphabetIndex = useAlphabetIndex(sortedTracks, getTrackSortKey);
+
+  const getItemLayout = useCallback((data, index) => ({
+    length: 72,
+    offset: 72 * index,
+    index,
+  }), []);
+
+  const onScrollToIndexFailed = useCallback((info) => {
+    flatListRef.current?.scrollToOffset({
+      offset: info.averageItemLength * info.index,
+      animated: false,
+    });
+  }, []);
+
+  const handleScrollToLetter = useCallback((letter, itemIndex) => {
+    if (itemIndex !== undefined && flatListRef.current) {
+      flatListRef.current.scrollToIndex({
+        index: itemIndex,
+        animated: false,
+        viewPosition: 0,
+      });
+    }
+  }, []);
+
   // Check if this is a local/offline crate
   const isLocalCrate = crateId.startsWith('temp-') || selectedCrate?.isLocal;
 
@@ -328,21 +362,32 @@ const CrateDetailScreen = ({ route, navigation }) => {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={sortedTracks}
-          keyExtractor={(item, index) => `${item.id}-${index}`}
-          renderItem={({ item }) => (
-            <TrackRow
-              track={item}
-              onPress={handleTrackPress}
-              onLongPress={handleTrackLongPress}
-              onMenuPress={handleTrackMenu}
-              isSelected={selectedTrackIds.includes(item.id)}
-            />
-          )}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          contentContainerStyle={styles.list}
-        />
+        <View style={styles.listContainer}>
+          <FlatList
+            ref={flatListRef}
+            data={sortedTracks}
+            keyExtractor={(item, index) => `${item.id}-${index}`}
+            renderItem={({ item }) => (
+              <TrackRow
+                track={item}
+                onPress={handleTrackPress}
+                onLongPress={handleTrackLongPress}
+                onMenuPress={handleTrackMenu}
+                isSelected={selectedTrackIds.includes(item.id)}
+              />
+            )}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            getItemLayout={getItemLayout}
+            onScrollToIndexFailed={onScrollToIndexFailed}
+          />
+          <AlphabetScrollBar
+            alphabetIndex={alphabetIndex}
+            onScrollToLetter={handleScrollToLetter}
+            visible={sortedTracks.length > 0}
+          />
+        </View>
       )}
     </View>
   );
@@ -500,8 +545,13 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontWeight: '600',
   },
+  listContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
   list: {
     paddingBottom: SPACING.xl * 3,
+    paddingRight: 20,
   },
   separator: {
     height: 1,

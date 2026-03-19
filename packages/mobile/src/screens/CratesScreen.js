@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,8 @@ import useStore from '../store/useStore';
 import { useConnectionStore } from '../store/connectionStore';
 import useOfflineStore, { OPERATION_TYPES, OPERATION_STATUS } from '../store/offlineStore';
 import apiService from '../services/api';
+import AlphabetScrollBar from '../components/AlphabetScrollBar';
+import useAlphabetIndex from '../hooks/useAlphabetIndex';
 
 // Recursive component for rendering crate tree items
 const CrateTreeItem = ({
@@ -353,6 +355,36 @@ const CratesScreen = ({ navigation, route }) => {
     return result;
   }, [crateTree, searchQuery, sortBy, sortDirection]);
 
+  // Alphabet fast-scroll: flatten visible tree for indexing
+  const scrollViewRef = useRef(null);
+  const CRATE_ITEM_HEIGHT = 58;
+
+  const flatVisibleCrates = useMemo(() => {
+    const result = [];
+    const walk = (nodes) => {
+      for (const node of nodes) {
+        result.push(node);
+        if (node.children?.length > 0 && (expandedCrates[node.id] || node._autoExpand)) {
+          walk(node.children);
+        }
+      }
+    };
+    walk(displayTree);
+    return result;
+  }, [displayTree, expandedCrates]);
+
+  const getCrateSortKey = useCallback((crate) => crate.name || '', []);
+  const alphabetIndex = useAlphabetIndex(flatVisibleCrates, getCrateSortKey);
+
+  const handleScrollToLetter = useCallback((letter, itemIndex) => {
+    if (itemIndex !== undefined && scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({
+        y: itemIndex * CRATE_ITEM_HEIGHT,
+        animated: false,
+      });
+    }
+  }, []);
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -491,37 +523,46 @@ const CratesScreen = ({ navigation, route }) => {
           </Text>
         </ScrollView>
       ) : (
-        <ScrollView
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={COLORS.primary}
-            />
-          }
-        >
-          {/* Offline banner when showing local crates but couldn't reach server */}
-          {cratesError && displayTree.length > 0 && (
-            <View style={styles.offlineBanner}>
-              <Ionicons name="cloud-offline-outline" size={16} color={COLORS.warning} />
-              <Text style={styles.offlineBannerText}>Showing local crates (offline)</Text>
-            </View>
-          )}
-          {displayTree.map((crate, index) => (
-            <CrateTreeItem
-              key={`${crate.id}-${index}`}
-              crate={crate}
-              depth={0}
-              isExpanded={expandedCrates[crate.id]}
-              onToggle={toggleCrateExpanded}
-              onPress={handleCratePress}
-              onLongPress={handleDeleteCrate}
-              expandedCrates={expandedCrates}
-              selectedTracks={selectedTracks}
-            />
-          ))}
-        </ScrollView>
+        <View style={styles.listContainer}>
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={COLORS.primary}
+              />
+            }
+          >
+            {/* Offline banner when showing local crates but couldn't reach server */}
+            {cratesError && displayTree.length > 0 && (
+              <View style={styles.offlineBanner}>
+                <Ionicons name="cloud-offline-outline" size={16} color={COLORS.warning} />
+                <Text style={styles.offlineBannerText}>Showing local crates (offline)</Text>
+              </View>
+            )}
+            {displayTree.map((crate, index) => (
+              <CrateTreeItem
+                key={`${crate.id}-${index}`}
+                crate={crate}
+                depth={0}
+                isExpanded={expandedCrates[crate.id]}
+                onToggle={toggleCrateExpanded}
+                onPress={handleCratePress}
+                onLongPress={handleDeleteCrate}
+                expandedCrates={expandedCrates}
+                selectedTracks={selectedTracks}
+              />
+            ))}
+          </ScrollView>
+          <AlphabetScrollBar
+            alphabetIndex={alphabetIndex}
+            onScrollToLetter={handleScrollToLetter}
+            visible={flatVisibleCrates.length > 0}
+          />
+        </View>
       )}
 
       {/* Create Crate Modal */}
@@ -835,8 +876,13 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
   },
+  listContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
   list: {
     paddingBottom: SPACING.xl * 3,
+    paddingRight: 20,
   },
   crateItem: {
     flexDirection: 'row',

@@ -1,7 +1,9 @@
 import axios from 'axios';
+import { Platform } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import { API_CONFIG, ENDPOINTS } from '../constants/config';
 import AIKeyService from './AIKeyService';
+import appPackage from '../../package.json';
 
 // Create axios instance
 const api = axios.create({
@@ -50,6 +52,16 @@ api.interceptors.request.use(
       config.headers['X-Firebase-UID'] = userId;
       config.headers['X-User-Id'] = userId;
     }
+
+    // User metadata for analytics tracking
+    const { useAuthStore } = require('../store/authStore');
+    const { email, displayName } = useAuthStore.getState();
+    if (email) config.headers['X-User-Email'] = email;
+    if (displayName) config.headers['X-User-DisplayName'] = displayName;
+
+    // App metadata
+    config.headers['X-App-Version'] = appPackage.version;
+    config.headers['X-Platform'] = Platform.OS;
 
     return config;
   },

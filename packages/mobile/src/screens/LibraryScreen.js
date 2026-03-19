@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useActionSheet } from '@expo/react-native-action-sheet';
@@ -17,6 +16,8 @@ import useStore from '../store/useStore';
 import { useConnectionStore } from '../store/connectionStore';
 import TrackRow from '../components/TrackRow';
 import FilterModal from '../components/FilterModal';
+import AlphabetScrollBar from '../components/AlphabetScrollBar';
+import useAlphabetIndex from '../hooks/useAlphabetIndex';
 
 const LibraryScreen = ({ navigation }) => {
   const { showActionSheetWithOptions } = useActionSheet();
@@ -48,12 +49,8 @@ const LibraryScreen = ({ navigation }) => {
   const [sortBy, setSortBy] = useState('title');
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
   const [isEditMode, setIsEditMode] = useState(false);
-  const [scrollBarHeight, setScrollBarHeight] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [currentLetter, setCurrentLetter] = useState(null);
 
   const flatListRef = useRef(null);
-  const scrollBarRef = useRef(null);
   const lastPlayTimeRef = useRef(0);
   const PLAY_COOLDOWN = 300; // 300ms between track selections to prevent race conditions
 
@@ -206,77 +203,21 @@ const LibraryScreen = ({ navigation }) => {
   }, [displayTracks, sortBy, sortDirection]);
 
   // Build alphabet index for fast scrolling
-  const alphabetIndex = useMemo(() => {
-    const letters = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-    const index = {};
-
-    sortedTracks.forEach((track, idx) => {
-      let firstChar = '#';
-      const sortField = sortBy === 'bpm' ? 'title' : sortBy; // Fall back to title for BPM
-      const value = track[sortField] || track.title || '';
-
-      if (value.length > 0) {
-        const char = value.charAt(0).toUpperCase();
-        if (/[A-Z]/.test(char)) {
-          firstChar = char;
-        }
-      }
-
-      if (index[firstChar] === undefined) {
-        index[firstChar] = idx;
-      }
-    });
-
-    return { letters, index };
-  }, [sortedTracks, sortBy]);
+  const getTrackSortKey = useCallback((track) => {
+    const sortField = sortBy === 'bpm' ? 'title' : sortBy;
+    return track[sortField] || track.title || '';
+  }, [sortBy]);
+  const alphabetIndex = useAlphabetIndex(sortedTracks, getTrackSortKey);
 
   // Handle fast scroll via alphabet bar
-  const handleAlphabetScroll = useCallback((letter) => {
-    const targetIndex = alphabetIndex.index[letter];
-    if (targetIndex !== undefined && flatListRef.current) {
+  const handleScrollToLetter = useCallback((letter, itemIndex) => {
+    if (itemIndex !== undefined && flatListRef.current) {
       flatListRef.current.scrollToIndex({
-        index: targetIndex,
+        index: itemIndex,
         animated: false,
         viewPosition: 0,
       });
-      setCurrentLetter(letter);
     }
-  }, [alphabetIndex]);
-
-  // Pan responder for dragging on alphabet bar
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (evt) => {
-      setIsDragging(true);
-      handleScrollBarTouch(evt.nativeEvent.locationY);
-    },
-    onPanResponderMove: (evt) => {
-      handleScrollBarTouch(evt.nativeEvent.locationY);
-    },
-    onPanResponderRelease: () => {
-      setIsDragging(false);
-      setTimeout(() => setCurrentLetter(null), 500);
-    },
-    onPanResponderTerminate: () => {
-      setIsDragging(false);
-      setTimeout(() => setCurrentLetter(null), 500);
-    },
-  }), [scrollBarHeight, alphabetIndex]);
-
-  const handleScrollBarTouch = useCallback((y) => {
-    if (scrollBarHeight === 0) return;
-
-    const letters = alphabetIndex.letters;
-    const letterHeight = scrollBarHeight / letters.length;
-    const index = Math.min(Math.max(0, Math.floor(y / letterHeight)), letters.length - 1);
-    const letter = letters[index];
-
-    handleAlphabetScroll(letter);
-  }, [scrollBarHeight, alphabetIndex, handleAlphabetScroll]);
-
-  const onScrollBarLayout = useCallback((event) => {
-    setScrollBarHeight(event.nativeEvent.layout.height);
   }, []);
 
   const getItemLayout = useCallback((data, index) => ({
@@ -473,45 +414,11 @@ const LibraryScreen = ({ navigation }) => {
             windowSize={10}
           />
 
-          {/* Alphabet Fast Scroll Bar */}
-          {sortedTracks.length > 50 && (
-            <View
-              ref={scrollBarRef}
-              style={styles.alphabetBar}
-              onLayout={onScrollBarLayout}
-              {...panResponder.panHandlers}
-            >
-              {alphabetIndex.letters.map((letter) => {
-                const hasItems = alphabetIndex.index[letter] !== undefined;
-                return (
-                  <View
-                    key={letter}
-                    style={[
-                      styles.alphabetLetterContainer,
-                      currentLetter === letter && styles.alphabetLetterActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.alphabetLetter,
-                        !hasItems && styles.alphabetLetterDisabled,
-                        currentLetter === letter && styles.alphabetLetterTextActive,
-                      ]}
-                    >
-                      {letter}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Current Letter Popup */}
-          {isDragging && currentLetter && (
-            <View style={styles.letterPopup}>
-              <Text style={styles.letterPopupText}>{currentLetter}</Text>
-            </View>
-          )}
+          <AlphabetScrollBar
+            alphabetIndex={alphabetIndex}
+            onScrollToLetter={handleScrollToLetter}
+            visible={sortedTracks.length > 0}
+          />
         </View>
       )}
 
@@ -726,61 +633,6 @@ const styles = StyleSheet.create({
   list: {
     paddingBottom: SPACING.xl * 3,
     paddingRight: 20, // Space for alphabet bar
-  },
-  alphabetBar: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 100, // Leave space for footer
-    width: 20,
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    paddingVertical: SPACING.xs,
-    zIndex: 10,
-  },
-  alphabetLetterContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 20,
-  },
-  alphabetLetterActive: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 10,
-  },
-  alphabetLetter: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  alphabetLetterDisabled: {
-    color: 'rgba(255, 255, 255, 0.2)',
-  },
-  alphabetLetterTextActive: {
-    color: COLORS.text,
-    fontWeight: 'bold',
-  },
-  letterPopup: {
-    position: 'absolute',
-    left: '40%',
-    top: '40%',
-    width: 80,
-    height: 80,
-    backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
-  },
-  letterPopupText: {
-    fontSize: 40,
-    fontWeight: 'bold',
-    color: COLORS.text,
   },
   separator: {
     height: 1,
