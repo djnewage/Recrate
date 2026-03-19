@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, VolumeX, ToggleLeft, Music, Layers, Play, Download, Loader2 } from 'lucide-react';
+import { Mic, VolumeX, ToggleLeft, Music, Layers, Play, Download, Loader2, Check } from 'lucide-react';
 
 interface ReleaseAsset {
   name: string;
@@ -201,6 +201,15 @@ export default function CleansePage() {
             export — all on your machine.
           </motion.p>
 
+          <motion.p
+            className="text-sm text-gray-500 mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.38 }}
+          >
+            Start with 5 free exports. No credit card required.
+          </motion.p>
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -351,6 +360,87 @@ export default function CleansePage() {
                 </p>
               </motion.div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ======================== PRICING ======================== */}
+      <section className="relative px-6 py-24" id="pricing">
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            className="text-center mb-16"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <p className="text-sm font-mono uppercase tracking-widest text-cyan-400 mb-3">
+              Pricing
+            </p>
+            <h2 className="text-3xl md:text-4xl font-bold">
+              Start free, <span className="gradient-text-cleanse">upgrade when you're ready</span>
+            </h2>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+            {/* Free Card */}
+            <motion.div
+              className="rounded-2xl bg-white/[0.03] border border-white/[0.07] p-8 flex flex-col"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4 }}
+            >
+              <h3 className="font-mono text-sm font-semibold text-white tracking-wide mb-1">Free</h3>
+              <div className="mb-6">
+                <span className="text-4xl font-bold text-white">$0</span>
+              </div>
+              <ul className="space-y-3 mb-8 flex-1">
+                {['5 song exports', 'All features included', 'No credit card required'].map((item) => (
+                  <li key={item} className="flex items-start gap-2.5 text-sm text-gray-400">
+                    <Check className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={scrollToDownload}
+                className="w-full py-3 rounded-xl font-semibold text-white bg-white/[0.06] border border-white/[0.1] hover:bg-white/[0.1] transition-all duration-300"
+              >
+                Get Started
+              </button>
+            </motion.div>
+
+            {/* Pro Card */}
+            <motion.div
+              className="rounded-2xl p-[1px] bg-gradient-to-br from-orange-500 to-cyan-500 flex flex-col"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              <div className="rounded-2xl bg-[#0a0a0a] p-8 flex flex-col h-full">
+                <h3 className="font-mono text-sm font-semibold text-white tracking-wide mb-1">Pro</h3>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold gradient-text-cleanse">$9.99</span>
+                  <span className="text-gray-500 text-sm ml-1">/ month</span>
+                </div>
+                <ul className="space-y-3 mb-8 flex-1">
+                  {['Unlimited exports', 'All features included', 'Priority support'].map((item) => (
+                    <li key={item} className="flex items-start gap-2.5 text-sm text-gray-400">
+                      <Check className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={scrollToDownload}
+                  className="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow"
+                >
+                  Download &amp; Subscribe
+                </button>
+              </div>
+            </motion.div>
           </div>
         </div>
       </section>
