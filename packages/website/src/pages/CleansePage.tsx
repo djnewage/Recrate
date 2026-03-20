@@ -56,7 +56,7 @@ const features = [
   {
     icon: Mic,
     title: 'Transcription',
-    description: 'GPU-accelerated speech-to-text transcription of your audio files.',
+    description: 'GPU-accelerated speech-to-text transcription. Supports English and Spanish, with more languages coming soon.',
   },
   {
     icon: VolumeX,
