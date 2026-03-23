@@ -48,9 +48,6 @@ class APIServer {
     // Initialize Sentry first
     initSentry();
 
-    // Sentry request handler must be first middleware
-    Sentry.setupExpressErrorHandler(this.app);
-
     // Webhook routes MUST be registered before body parsers
     // Webhooks need raw body for signature verification
     this.app.use('/api/webhooks', createWebhookRoutes());
@@ -87,6 +84,9 @@ class APIServer {
         logger.info('Spectral analysis API enabled');
       }
     }
+
+    // Sentry error handler (must be after all routes but before custom error handlers)
+    Sentry.setupExpressErrorHandler(this.app);
 
     // 404 handler
     this.app.use((req, res) => {

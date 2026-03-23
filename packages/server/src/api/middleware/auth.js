@@ -4,6 +4,7 @@ const usageTracker = require('../../utils/usageTracker');
 const { getTier, isByokAllowed } = require('../../config/tiers');
 const { verifyIdToken } = require('../../utils/firebase');
 const { getTrialDurationDays } = require('../../utils/remoteConfig');
+const { setUser: setSentryUser } = require('../../utils/sentry');
 
 /**
  * Require authentication - extracts user from Firebase ID token, Firebase UID header, or device ID
@@ -99,17 +100,38 @@ async function requireAuth(req, res, next) {
       const trialEnd = new Date();
       trialEnd.setDate(trialEnd.getDate() + trialDays);
 
+      const signInMethod = req.decodedToken?.firebase?.sign_in_provider || null;
+
       await firestore.createUser(id, {
         firebase_uid: firebaseUid || null,
         device_id: deviceId || null,
         tier: 'trial',
         trial_started_at: new Date().toISOString(),
         trial_ends_at: trialEnd.toISOString(),
+        sign_in_method: signInMethod,
+        login_count: 1,
       });
 
       user = await firestore.getUser(id);
 
       logger.info(`[Auth] Created new trial user: ${id} (Firebase: ${!!firebaseUid}, Verified: ${verifiedByToken})`);
+    }
+
+    // Backfill sign_in_method for existing users (fire-and-forget)
+    if (user && verifiedByToken && !user.sign_in_method) {
+      const signInMethod = req.decodedToken?.firebase?.sign_in_provider || null;
+      if (signInMethod) {
+        firestore.updateUser(user.id, { sign_in_method: signInMethod }).catch(() => {});
+      }
+    }
+
+    // Throttled last_active_at update (at most once per hour, fire-and-forget)
+    if (user) {
+      const lastActive = user.last_active_at ? new Date(user.last_active_at) : null;
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      if (!lastActive || lastActive < oneHourAgo) {
+        firestore.updateUser(user.id, { last_active_at: new Date().toISOString() }).catch(() => {});
+      }
     }
 
     // Check subscription expiration (server is source of truth)
@@ -145,6 +167,13 @@ async function requireAuth(req, res, next) {
       subscriptionWillRenew: !!user.subscription_will_renew,
       verifiedByToken, // Indicates if auth was verified by Firebase token
     };
+
+    // Set Sentry user context for error tracking
+    setSentryUser({
+      id: req.user.id,
+      email: user.email || undefined,
+      username: user.display_name || undefined,
+    });
 
     next();
   } catch (error) {

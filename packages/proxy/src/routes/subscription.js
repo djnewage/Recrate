@@ -12,6 +12,8 @@ const logger = require('../utils/logger');
 const usageTracker = require('../utils/usageTracker');
 const { getTier, getQuota } = require('../config/tiers');
 const { trackEvent } = require('../utils/analytics');
+const admin = require('firebase-admin');
+const { setUser: setSentryUser } = require('../utils/sentry');
 const { getBetaMode, getTrialDurationDays } = require('../utils/remoteConfig');
 
 /**
@@ -157,17 +159,28 @@ function createSubscriptionRoutes() {
       // Get or create user
       let user = await getOrCreateUser(firebaseUid, deviceId);
 
+      // Set Sentry user context for error tracking
+      setSentryUser({
+        id: user.firebase_uid || user.id,
+        email: user.email || undefined,
+      });
+
       // Update user metadata for analytics (fire-and-forget)
-      const metadataUpdate = { last_active_at: new Date().toISOString() };
+      const metadataUpdate = {
+        last_active_at: new Date().toISOString(),
+        login_count: admin.firestore.FieldValue.increment(1),
+      };
       const userEmail = req.headers['x-user-email'];
       const userDisplayName = req.headers['x-user-displayname'];
       const appVersion = req.headers['x-app-version'];
       const platform = req.headers['x-platform'];
+      const signInMethod = req.headers['x-sign-in-method'];
 
       if (userEmail && !user.email) metadataUpdate.email = userEmail;
       if (userDisplayName) metadataUpdate.display_name = userDisplayName;
       if (appVersion) metadataUpdate.app_version = appVersion;
       if (platform) metadataUpdate.platform = platform;
+      if (signInMethod) metadataUpdate.sign_in_method = signInMethod;
 
       firestore.updateUser(user.id, metadataUpdate).catch(() => {});
 

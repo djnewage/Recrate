@@ -24,9 +24,6 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increased for base64 audio uploads (track identification)
 
-// Sentry error handler (must be after other middleware but before routes)
-Sentry.setupExpressErrorHandler(app);
-
 // Initialize Binary WebSocket manager (desktop connects here)
 const wsManager = new BinaryWebSocketManager(server);
 
@@ -44,6 +41,9 @@ app.get('/health', (req, res) => {
 
 // API routes (mobile app connects here)
 app.use('/api', apiRouter);
+
+// Sentry error handler (must be after all routes but before custom error handlers)
+Sentry.setupExpressErrorHandler(app);
 
 // Start server
 const PORT = process.env.PORT || 3001;

@@ -63,6 +63,10 @@ api.interceptors.request.use(
     config.headers['X-App-Version'] = appPackage.version;
     config.headers['X-Platform'] = Platform.OS;
 
+    // Sign-in method for analytics
+    const { provider } = useAuthStore.getState();
+    if (provider) config.headers['X-Sign-In-Method'] = provider;
+
     return config;
   },
   (error) => {

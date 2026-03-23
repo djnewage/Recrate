@@ -75,10 +75,12 @@ async function flush(timeout = 2000) {
 }
 
 /**
- * Express error handler middleware
+ * Set user context for Sentry
+ * @param {Object} user - User info (id, email, etc.)
  */
-function expressErrorHandler() {
-  return Sentry.setupExpressErrorHandler;
+function setUser(user) {
+  if (!initialized) return;
+  Sentry.setUser(user);
 }
 
-module.exports = { initSentry, captureError, flush, expressErrorHandler, Sentry };
+module.exports = { initSentry, captureError, setUser, flush, Sentry };

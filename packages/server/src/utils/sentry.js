@@ -101,20 +101,6 @@ function setUser(user) {
 }
 
 /**
- * Express request handler middleware (must be first middleware)
- */
-function expressRequestHandler() {
-  return Sentry.expressIntegration().setupExpressErrorHandler;
-}
-
-/**
- * Express error handler middleware
- */
-function expressErrorHandler() {
-  return Sentry.setupExpressErrorHandler;
-}
-
-/**
  * Flush pending events (call before shutdown)
  * @param {number} timeout - Timeout in ms
  */
@@ -127,8 +113,6 @@ module.exports = {
   initSentry,
   captureError,
   setUser,
-  expressRequestHandler,
-  expressErrorHandler,
   flush,
   Sentry,
 };
