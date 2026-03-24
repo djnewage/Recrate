@@ -153,7 +153,7 @@ export default function CleansePage() {
                 Download for macOS
               </button>
               <span className="text-sm text-gray-600">
-                5 free exports &middot; No credit card required
+                2 free exports &middot; No credit card required
               </span>
             </motion.div>
           </div>
