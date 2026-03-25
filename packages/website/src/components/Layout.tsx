@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, Instagram } from 'lucide-react'
 
 interface LayoutProps {
   children: ReactNode
@@ -97,6 +97,9 @@ export default function Layout({ children }: LayoutProps) {
             <Link to="/terms" className="text-gray-400 hover:text-white transition-colors text-sm">
               Terms of Service
             </Link>
+            <a href="https://www.instagram.com/recrate.app/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">
+              <Instagram size={18} />
+            </a>
           </div>
         </div>
       </footer>

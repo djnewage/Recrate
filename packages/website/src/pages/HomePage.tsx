@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Mail, Smartphone, Download, ChevronDown, HelpCircle } from 'lucide-react'
+import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Mail, Smartphone, Download, ChevronDown, HelpCircle, ScanLine } from 'lucide-react'
 
 interface ProxyAsset {
   name: string
@@ -556,25 +556,25 @@ export default function HomePage() {
                 icon: Download,
                 step: 1,
                 title: 'Download the Desktop App',
-                description: 'Get Recrate for macOS or Windows',
+                description: 'Get Recrate for macOS or Windows from the download section below',
+              },
+              {
+                icon: Monitor,
+                step: 2,
+                title: 'Set Up the Desktop Server',
+                description: 'Follow the on-screen prompts to connect your Serato library',
               },
               {
                 icon: Smartphone,
-                step: 2,
-                title: 'Install the Mobile App',
-                description: 'Available on iOS and Android',
-              },
-              {
-                icon: Wifi,
                 step: 3,
-                title: 'Connect Your Devices',
-                description: 'Connect via WiFi on the same network OR use mobile data/5G from anywhere',
+                title: 'Get the Mobile App',
+                description: 'Download Recrate from the App Store or Google Play',
               },
               {
-                icon: Music,
+                icon: ScanLine,
                 step: 4,
-                title: 'Browse & Play',
-                description: 'Access your full Serato library from your phone',
+                title: 'Scan & Connect',
+                description: 'Open the app and scan the QR code on your desktop to connect',
               },
             ].map((item, index) => (
               <motion.div
