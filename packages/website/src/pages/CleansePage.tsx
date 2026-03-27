@@ -153,7 +153,7 @@ export default function CleansePage() {
                 Download for macOS
               </button>
               <span className="text-sm text-gray-600">
-                2 free downloads &middot; 5 exports free &middot; Upgrade when you need more
+                2 free exports &middot; Upgrade when you need more
               </span>
             </motion.div>
           </div>
@@ -235,7 +235,7 @@ export default function CleansePage() {
             transition={{ duration: 0.5 }}
           >
             <p className="text-xl md:text-2xl text-gray-500 italic leading-relaxed">
-              5 exports free. Upgrade when you need more.
+              2 exports free. Upgrade when you need more.
             </p>
           </motion.blockquote>
 
@@ -249,7 +249,7 @@ export default function CleansePage() {
               <p className="text-sm text-gray-500 mb-2">Free</p>
               <p className="text-4xl font-bold text-white mb-6">$0</p>
               <ul className="space-y-3 mb-8">
-                {['2 free downloads', '5 free exports', 'All features included', 'Upgrade when you need more'].map((item) => (
+                {['2 free exports', 'All features included', 'Upgrade when you need more'].map((item) => (
                   <li key={item} className="flex items-center gap-2.5 text-sm text-gray-400">
                     <Check className="w-4 h-4 text-cyan-400 shrink-0" />
                     {item}
