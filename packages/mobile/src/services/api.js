@@ -5,7 +5,7 @@ import { API_CONFIG, ENDPOINTS } from '../constants/config';
 import AIKeyService from './AIKeyService';
 import appPackage from '../../package.json';
 
-// Create axios instance
+// Create axios instance for desktop server (library, streaming, crates, AI)
 const api = axios.create({
   baseURL: API_CONFIG.BASE_URL,
   timeout: API_CONFIG.TIMEOUT,
@@ -14,64 +14,80 @@ const api = axios.create({
   },
 });
 
-// Add request interceptor to dynamically set base URL and auth headers
+// Create axios instance for cloud proxy (subscription, user management)
+const proxyApi = axios.create({
+  baseURL: API_CONFIG.PROXY_URL,
+  timeout: API_CONFIG.TIMEOUT,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Shared interceptor for auth headers and metadata
+async function addAuthHeaders(config) {
+  const { useConnectionStore } = require('../store/connectionStore');
+  const { deviceId, userId } = useConnectionStore.getState();
+
+  // Add device ID header for device tracking (backwards compatibility)
+  if (deviceId) {
+    config.headers['X-Device-Id'] = deviceId;
+  }
+
+  // Get current Firebase user
+  const user = auth().currentUser;
+
+  if (user) {
+    try {
+      const idToken = await user.getIdToken();
+      config.headers['Authorization'] = `Bearer ${idToken}`;
+    } catch (error) {
+      console.warn('Failed to get ID token:', error.message);
+    }
+
+    config.headers['X-Firebase-UID'] = user.uid;
+    config.headers['X-User-Id'] = user.uid;
+  } else if (userId) {
+    config.headers['X-Firebase-UID'] = userId;
+    config.headers['X-User-Id'] = userId;
+  }
+
+  // User metadata for analytics tracking
+  const { useAuthStore } = require('../store/authStore');
+  const { email, displayName } = useAuthStore.getState();
+  if (email) config.headers['X-User-Email'] = email;
+  if (displayName) config.headers['X-User-DisplayName'] = displayName;
+
+  // App metadata
+  config.headers['X-App-Version'] = appPackage.version;
+  config.headers['X-Platform'] = Platform.OS;
+
+  // Sign-in method for analytics
+  const { provider } = useAuthStore.getState();
+  if (provider) config.headers['X-Sign-In-Method'] = provider;
+
+  return config;
+}
+
+// Desktop API interceptor: adds auth headers + overrides baseURL with serverURL
 api.interceptors.request.use(
   async (config) => {
-    // Use synchronous require to avoid async timing issues
     const { useConnectionStore } = require('../store/connectionStore');
-    const { serverURL, deviceId, userId } = useConnectionStore.getState();
+    const { serverURL } = useConnectionStore.getState();
 
     // Use serverURL from connection store if available
     if (serverURL) {
       config.baseURL = serverURL;
     }
 
-    // Add device ID header for device tracking (backwards compatibility)
-    if (deviceId) {
-      config.headers['X-Device-Id'] = deviceId;
-    }
-
-    // Get current Firebase user
-    const user = auth().currentUser;
-
-    if (user) {
-      try {
-        // Get fresh ID token (auto-refreshes if expired)
-        // This is the most secure auth method - server verifies the token
-        const idToken = await user.getIdToken();
-        config.headers['Authorization'] = `Bearer ${idToken}`;
-      } catch (error) {
-        console.warn('Failed to get ID token:', error.message);
-      }
-
-      // Keep X-Firebase-UID as fallback during migration period
-      config.headers['X-Firebase-UID'] = user.uid;
-      config.headers['X-User-Id'] = user.uid;
-    } else if (userId) {
-      // Fallback to stored userId if no Firebase user (shouldn't happen normally)
-      config.headers['X-Firebase-UID'] = userId;
-      config.headers['X-User-Id'] = userId;
-    }
-
-    // User metadata for analytics tracking
-    const { useAuthStore } = require('../store/authStore');
-    const { email, displayName } = useAuthStore.getState();
-    if (email) config.headers['X-User-Email'] = email;
-    if (displayName) config.headers['X-User-DisplayName'] = displayName;
-
-    // App metadata
-    config.headers['X-App-Version'] = appPackage.version;
-    config.headers['X-Platform'] = Platform.OS;
-
-    // Sign-in method for analytics
-    const { provider } = useAuthStore.getState();
-    if (provider) config.headers['X-Sign-In-Method'] = provider;
-
-    return config;
+    return addAuthHeaders(config);
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
+);
+
+// Proxy API interceptor: adds auth headers (always uses PROXY_URL)
+proxyApi.interceptors.request.use(
+  async (config) => addAuthHeaders(config),
+  (error) => Promise.reject(error)
 );
 
 // API Service
@@ -330,7 +346,7 @@ export const apiService = {
    * Call this on app launch and after purchases to sync state
    */
   getSubscriptionStatus: async () => {
-    const response = await api.get('/api/subscription/status');
+    const response = await proxyApi.get('/api/subscription/status');
     return response.data;
   },
 
@@ -339,7 +355,7 @@ export const apiService = {
    * Server controls trial start date to prevent manipulation
    */
   startTrial: async () => {
-    const response = await api.post('/api/subscription/start-trial');
+    const response = await proxyApi.post('/api/subscription/start-trial');
     return response.data;
   },
 
@@ -348,7 +364,7 @@ export const apiService = {
    * Call this after Firebase authentication to merge any existing device-based data
    */
   linkFirebaseAccount: async () => {
-    const response = await api.post('/api/subscription/link-firebase');
+    const response = await proxyApi.post('/api/subscription/link-firebase');
     return response.data;
   },
 };

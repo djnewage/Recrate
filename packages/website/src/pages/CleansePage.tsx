@@ -176,7 +176,7 @@ export default function CleansePage() {
 
       {/* ======================== PRODUCT SCREENSHOTS ======================== */}
       <section className="relative px-6 pb-16">
-        <div className="max-w-5xl mx-auto space-y-6">
+        <div className="max-w-3xl mx-auto space-y-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -184,13 +184,15 @@ export default function CleansePage() {
             transition={{ duration: 0.5 }}
           >
             <div className="rounded-lg overflow-hidden border border-white/[0.08]">
-              <img
-                src="/screenshots/cleanse-editor.png"
-                alt="Cleanse word-level editor with profanity flagging and playback"
+              <video
+                src="/videos/democleanse.mp4"
+                controls
+                loop
+                playsInline
                 className="w-full h-auto"
               />
             </div>
-            <p className="text-gray-600 text-xs font-mono mt-3">Word-level editor with playback comparison</p>
+            <p className="text-gray-600 text-xs font-mono mt-3">Cleanse demo</p>
           </motion.div>
         </div>
       </section>
