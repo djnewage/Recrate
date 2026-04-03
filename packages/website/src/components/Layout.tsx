@@ -35,10 +35,8 @@ export default function Layout({ children }: LayoutProps) {
               <>
                 <a href="#features" className="text-gray-300 hover:text-white transition-colors">Features</a>
                 <a href="#demo" className="text-gray-300 hover:text-white transition-colors">Demo</a>
-                <a href="#how-to-use" className="text-gray-300 hover:text-white transition-colors">How to Use</a>
-                <a href="#faq" className="text-gray-300 hover:text-white transition-colors">FAQ</a>
+                <a href="#pricing" className="text-gray-300 hover:text-white transition-colors">Pricing</a>
                 <a href="#download" className="text-gray-300 hover:text-white transition-colors">Download</a>
-                <a href="#contact" className="text-gray-300 hover:text-white transition-colors">Contact</a>
               </>
             )}
             <Link to="/cleanse" className="text-gray-300 hover:text-white transition-colors">Cleanse</Link>
@@ -60,10 +58,8 @@ export default function Layout({ children }: LayoutProps) {
                 <>
                   <a href="#features" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Features</a>
                   <a href="#demo" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Demo</a>
-                  <a href="#how-to-use" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">How to Use</a>
-                  <a href="#faq" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">FAQ</a>
+                  <a href="#pricing" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Pricing</a>
                   <a href="#download" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Download</a>
-                  <a href="#contact" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Contact</a>
                 </>
               )}
               <Link to="/cleanse" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Cleanse</Link>
