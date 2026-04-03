@@ -93,6 +93,23 @@ const nodeModulesPath = path.join(BUNDLE_DIR, 'node_modules');
 const packageCount = fs.readdirSync(nodeModulesPath).filter(f => !f.startsWith('.')).length;
 console.log(`\n📊 Total packages bundled: ${packageCount}`);
 
+// Download and bundle FFmpeg binary
+console.log('\n📥 Bundling FFmpeg binary...');
+try {
+  const downloadScript = path.join(__dirname, 'download-ffmpeg.js');
+  const ffmpegOutputDir = path.join(BUNDLE_DIR, 'ffmpeg');
+  const env = { ...process.env };
+  // Pass through TARGET_PLATFORM and TARGET_ARCH if set
+  execSync(`node "${downloadScript}" --output "${ffmpegOutputDir}"`, {
+    stdio: 'inherit',
+    env
+  });
+} catch (error) {
+  console.error('⚠️  Failed to bundle FFmpeg:', error.message);
+  console.error('   Waveform generation will not be available without FFmpeg.');
+  // Non-fatal: app still works without FFmpeg, just no waveforms
+}
+
 console.log('\n✅ Server bundle created successfully!');
 console.log(`   Location: ${BUNDLE_DIR}`);
 
