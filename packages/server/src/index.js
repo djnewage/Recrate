@@ -225,6 +225,27 @@ class RecrateService {
    * No-op on non-Windows platforms.
    */
   _ensureFFmpegInPath() {
+    const ffmpegName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+
+    // Check for bundled FFmpeg first (shipped with Electron app)
+    const bundledPaths = [];
+    if (process.resourcesPath) {
+      // Packaged Electron app: Resources/server/ffmpeg/
+      bundledPaths.push(path.join(process.resourcesPath, "server", "ffmpeg"));
+    }
+    // Dev mode: relative to server src
+    bundledPaths.push(path.join(__dirname, "..", "..", "desktop", "server-bundle", "ffmpeg"));
+
+    for (const p of bundledPaths) {
+      if (fs.existsSync(path.join(p, ffmpegName))) {
+        if (!process.env.PATH.includes(p)) {
+          process.env.PATH = p + path.delimiter + process.env.PATH;
+          logger.success(`Found bundled FFmpeg at: ${p} (added to PATH)`);
+        }
+        return;
+      }
+    }
+
     if (process.platform === "darwin") {
       // macOS: Electron apps have restricted PATH, add common Homebrew locations
       const macPaths = [

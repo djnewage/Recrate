@@ -16,7 +16,8 @@
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
     "generate-icons": "node scripts/generate-icons.js",
-    "kill-server": "lsof -ti :3000 | xargs kill -9 || echo 'No server running on port 3000'"
+    "kill-server": "lsof -ti :3000 | xargs kill -9 || echo 'No server running on port 3000'",
+    "setup:ffmpeg": "node scripts/download-ffmpeg.js --output server-bundle/ffmpeg"
   },
   "dependencies": {
     "@recrate/server": "*",
