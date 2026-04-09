@@ -91,11 +91,7 @@ function downloadFile(url, destPath, maxRedirects = 5) {
   });
 }
 
-async function downloadFFmpeg(options = {}) {
-  const platform = options.platform || getTargetPlatform();
-  const arch = options.arch || getTargetArch();
-  const outputDir = options.outputDir || path.join(__dirname, '..', 'server-bundle', 'ffmpeg');
-
+async function downloadFFmpegSingle(platform, arch, outputDir) {
   const binaryName = getBinaryName(platform);
   const outputPath = path.join(outputDir, binaryName);
   const cachePath = getCachePath(platform, arch);
@@ -143,6 +139,23 @@ async function downloadFFmpeg(options = {}) {
   console.log(`  Downloaded FFmpeg (${(size / 1024 / 1024).toFixed(1)} MB)`);
 
   return outputPath;
+}
+
+async function downloadFFmpeg(options = {}) {
+  const platform = options.platform || getTargetPlatform();
+  const arch = options.arch || getTargetArch();
+  const outputDir = options.outputDir || path.join(__dirname, '..', 'server-bundle', 'ffmpeg');
+
+  // On macOS, download both x64 and arm64 into arch-specific subdirs
+  // so a single electron-builder invocation can produce both arch installers
+  if (platform === 'darwin' && !options.singleArch) {
+    console.log('  macOS detected — downloading both x64 and arm64 binaries');
+    const x64Path = await downloadFFmpegSingle(platform, 'x64', path.join(outputDir, 'x64'));
+    const arm64Path = await downloadFFmpegSingle(platform, 'arm64', path.join(outputDir, 'arm64'));
+    return arm64Path;
+  }
+
+  return downloadFFmpegSingle(platform, arch, outputDir);
 }
 
 // Allow running directly or requiring as a module

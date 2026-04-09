@@ -94,32 +94,12 @@ jobs:
             echo "No signing certificate provided, skipping..."
           fi
 
-      - name: Build desktop app (mac x64)
-        if: matrix.platform == 'mac'
-        run: |
-          TARGET_ARCH=x64 node scripts/bundle-server.js
-          npx electron-builder --mac --x64
-        working-directory: packages/desktop
-        env:
-          TARGET_ARCH: x64
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-
-      - name: Build desktop app (mac arm64)
-        if: matrix.platform == 'mac'
-        run: |
-          TARGET_ARCH=arm64 node scripts/bundle-server.js
-          npx electron-builder --mac --arm64
-        working-directory: packages/desktop
-        env:
-          TARGET_ARCH: arm64
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-
-      - name: Build desktop app (win/linux)
-        if: matrix.platform != 'mac'
+      - name: Build desktop app
         run: npm run build:${{ matrix.platform }}
         working-directory: packages/desktop
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

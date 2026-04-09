@@ -228,12 +228,14 @@ class RecrateService {
     const ffmpegName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
 
     // Check for bundled FFmpeg first (shipped with Electron app)
+    // On macOS, binaries are in arch-specific subdirs (x64/, arm64/)
     const bundledPaths = [];
     if (process.resourcesPath) {
-      // Packaged Electron app: Resources/server/ffmpeg/
+      bundledPaths.push(path.join(process.resourcesPath, "server", "ffmpeg", process.arch));
       bundledPaths.push(path.join(process.resourcesPath, "server", "ffmpeg"));
     }
     // Dev mode: relative to server src
+    bundledPaths.push(path.join(__dirname, "..", "..", "desktop", "server-bundle", "ffmpeg", process.arch));
     bundledPaths.push(path.join(__dirname, "..", "..", "desktop", "server-bundle", "ffmpeg"));
 
     for (const p of bundledPaths) {
