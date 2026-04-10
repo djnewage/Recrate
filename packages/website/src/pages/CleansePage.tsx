@@ -199,6 +199,7 @@ export default function CleansePage() {
                 loop
                 playsInline
                 className="w-full h-auto"
+                onPlay={() => trackEvent('ViewContent', { content_name: 'Cleanse', content_category: 'demo_video' })}
               />
             </div>
             <p className="text-gray-600 text-xs font-mono mt-3">Cleanse demo</p>
