@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
   interface Window {
-    fbq?: (...args: unknown[]) => void;
+    fbq?: (...args: any[]) => void;
+    _fbq?: (...args: any[]) => void;
   }
 }
 
@@ -14,7 +16,7 @@ export type MetaPixelEvent =
 let initialized = false;
 
 /**
- * Initialize the Meta Pixel base snippet and fire the initial PageView.
+ * Initialize the Meta Pixel and fire the initial PageView.
  * Only runs in production when VITE_META_PIXEL_ID is set.
  */
 export function initMetaPixel(): void {
@@ -31,23 +33,40 @@ export function initMetaPixel(): void {
     return;
   }
 
-  // Inject Meta's exact base snippet via plain string concatenation.
-  // This is character-for-character identical to Meta's setup wizard output.
-  // We avoid template literals and TypeScript reconstruction so Vite's
-  // bundler cannot transform or break the snippet.
-  const script = document.createElement('script');
-  script.textContent =
-    '!function(f,b,e,v,n,t,s)' +
-    '{if(f.fbq)return;n=f.fbq=function(){n.callMethod?' +
-    'n.callMethod.apply(n,arguments):n.queue.push(arguments)};' +
-    'if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version=\'2.0\';' +
-    'n.queue=[];t=b.createElement(e);t.async=!0;' +
-    't.src=v;s=b.getElementsByTagName(e)[0];' +
-    's.parentNode.insertBefore(t,s)}(window,document,\'script\',' +
-    '\'https://connect.facebook.net/en_US/fbevents.js\');' +
-    'fbq(\'init\',\'' + pixelId + '\');' +
-    'fbq(\'track\',\'PageView\');';
-  document.head.appendChild(script);
+  if (window.fbq) return;
+
+  // Set up the fbq queue function directly in this module's scope.
+  // Equivalent to Meta's standard snippet but avoids inline script
+  // injection which failed under Vite's bundler.
+  // Using function() (not arrow) to preserve the arguments keyword.
+  const n: any = function () {
+    if (n.callMethod) {
+      n.callMethod.apply(n, arguments);
+    } else {
+      n.queue.push(arguments);
+    }
+  };
+  n.queue = [];
+  n.push = n;
+  n.loaded = true;
+  n.version = '2.0';
+  window.fbq = n;
+  if (!window._fbq) window._fbq = n;
+
+  // Load fbevents.js
+  const s = document.createElement('script');
+  s.async = true;
+  s.src = 'https://connect.facebook.net/en_US/fbevents.js';
+  const first = document.getElementsByTagName('script')[0];
+  if (first?.parentNode) {
+    first.parentNode.insertBefore(s, first);
+  } else {
+    document.head.appendChild(s);
+  }
+
+  // Init pixel and fire PageView
+  window.fbq('init', pixelId);
+  window.fbq('track', 'PageView');
 
   // Inject <noscript> fallback img
   const noscript = document.createElement('noscript');
