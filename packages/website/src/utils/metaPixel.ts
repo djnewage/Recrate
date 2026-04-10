@@ -33,40 +33,22 @@ export function initMetaPixel(): void {
     return;
   }
 
-  if (window.fbq) return;
-
-  // Set up the fbq queue function directly in this module's scope.
-  // Equivalent to Meta's standard snippet but avoids inline script
-  // injection which failed under Vite's bundler.
-  // Using function() (not arrow) to preserve the arguments keyword.
-  const n: any = function () {
-    if (n.callMethod) {
-      n.callMethod.apply(n, arguments);
-    } else {
-      n.queue.push(arguments);
-    }
-  };
-  n.queue = [];
-  n.push = n;
-  n.loaded = true;
-  n.version = '2.0';
-  window.fbq = n;
-  if (!window._fbq) window._fbq = n;
-
-  // Load fbevents.js
-  const s = document.createElement('script');
-  s.async = true;
-  s.src = 'https://connect.facebook.net/en_US/fbevents.js';
-  const first = document.getElementsByTagName('script')[0];
-  if (first?.parentNode) {
-    first.parentNode.insertBefore(s, first);
-  } else {
-    document.head.appendChild(s);
-  }
-
-  // Init pixel and fire PageView
-  window.fbq('init', pixelId);
-  window.fbq('track', 'PageView');
+  // Inject Meta's standard base snippet via string concatenation.
+  // The IIFE must run as an inline script (not TypeScript) so that
+  // fbevents.js loads and drains the queue correctly.
+  const script = document.createElement('script');
+  script.textContent =
+    '!function(f,b,e,v,n,t,s)' +
+    '{if(f.fbq)return;n=f.fbq=function(){n.callMethod?' +
+    'n.callMethod.apply(n,arguments):n.queue.push(arguments)};' +
+    'if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version=\'2.0\';' +
+    'n.queue=[];t=b.createElement(e);t.async=!0;' +
+    't.src=v;s=b.getElementsByTagName(e)[0];' +
+    's.parentNode.insertBefore(t,s)}(window,document,\'script\',' +
+    '\'https://connect.facebook.net/en_US/fbevents.js\');' +
+    'fbq(\'init\',\'' + pixelId + '\');' +
+    'fbq(\'track\',\'PageView\');';
+  document.head.appendChild(script);
 
   // Inject <noscript> fallback img
   const noscript = document.createElement('noscript');
@@ -79,7 +61,7 @@ export function initMetaPixel(): void {
   document.body.appendChild(noscript);
 
   initialized = true;
-  console.log('[MetaPixel] Initialized');
+  console.log('[MetaPixel] Initialized, window.fbq type:', typeof window.fbq);
 }
 
 /**
@@ -90,6 +72,11 @@ export function trackEvent(
   eventName: MetaPixelEvent,
   params?: Record<string, string | number>,
 ): void {
-  if (typeof window.fbq !== 'function') return;
+  console.log('[MetaPixel] trackEvent called:', eventName, 'window.fbq type:', typeof window.fbq);
+  if (typeof window.fbq !== 'function') {
+    console.warn('[MetaPixel] fbq not available, skipping:', eventName);
+    return;
+  }
   window.fbq('track', eventName, params);
+  console.log('[MetaPixel] Event sent:', eventName, params);
 }
