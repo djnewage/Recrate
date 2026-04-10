@@ -87,6 +87,8 @@ export function trackEvent(
   eventName: MetaPixelEvent,
   params?: Record<string, string | number>,
 ): void {
+  console.log('[MetaPixel] trackEvent:', eventName, '| fbq type:', typeof window.fbq, '| initialized:', initialized);
   if (typeof window.fbq !== 'function') return;
   window.fbq('track', eventName, params);
+  console.log('[MetaPixel] sent:', eventName);
 }
