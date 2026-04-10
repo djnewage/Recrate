@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Loader2, Check } from 'lucide-react';
+import { trackEvent } from '../utils/metaPixel';
 
 interface ReleaseAsset {
   name: string;
@@ -72,6 +73,11 @@ export default function CleansePage() {
   const [isSilicon, setIsSilicon] = useState(true);
 
   useEffect(() => { setIsSilicon(isAppleSilicon()); }, []);
+
+  // Meta Pixel: track product page view
+  useEffect(() => {
+    trackEvent('ViewContent', { content_name: 'Cleanse', content_category: 'product' });
+  }, []);
 
   useEffect(() => {
     fetch('https://api.github.com/repos/djnewage/cleanse/releases/latest')
@@ -259,7 +265,10 @@ export default function CleansePage() {
                 ))}
               </ul>
               <button
-                onClick={scrollToDownload}
+                onClick={() => {
+                  trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD' });
+                  scrollToDownload();
+                }}
                 className="px-6 py-2.5 rounded-lg text-sm font-medium text-white bg-white/[0.06] border border-white/[0.1] hover:bg-white/[0.1] transition-all duration-300"
               >
                 Get Started
@@ -287,7 +296,10 @@ export default function CleansePage() {
                 ))}
               </ul>
               <button
-                onClick={scrollToDownload}
+                onClick={() => {
+                  trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD' });
+                  scrollToDownload();
+                }}
                 className="px-6 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow"
               >
                 Download &amp; Subscribe
@@ -327,14 +339,14 @@ export default function CleansePage() {
                 <motion.div key="ready" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4">
                   <div className="flex flex-col items-center gap-3 w-full max-w-xs">
                     {armAsset && (
-                      <a href={armAsset.browser_download_url} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow text-sm">
+                      <a href={armAsset.browser_download_url} onClick={() => trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', platform: 'macos_apple_silicon' })} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow text-sm">
                         <Download className="w-4 h-4 shrink-0" />
                         Apple Silicon
                         <span className="text-white/60 font-normal">{formatBytes(armAsset.size)}</span>
                       </a>
                     )}
                     {intelAsset && (
-                      <a href={intelAsset.browser_download_url} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-white/[0.05] border border-white/[0.1] hover:border-cyan-500/50 hover:bg-white/[0.08] transition-all duration-300 text-sm">
+                      <a href={intelAsset.browser_download_url} onClick={() => trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', platform: 'macos_intel' })} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-white/[0.05] border border-white/[0.1] hover:border-cyan-500/50 hover:bg-white/[0.08] transition-all duration-300 text-sm">
                         <Download className="w-4 h-4 shrink-0" />
                         Intel Mac
                         <span className="text-white/40 font-normal">{formatBytes(intelAsset.size)}</span>
