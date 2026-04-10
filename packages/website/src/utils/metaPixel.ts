@@ -14,15 +14,17 @@ export type MetaPixelEvent =
   | 'Subscribe';
 
 let initialized = false;
+let sdkReady = false;
+const pendingEvents: Array<[MetaPixelEvent, Record<string, string | number>?]> = [];
 
 /**
  * Initialize the Meta Pixel and fire the initial PageView.
  * Only runs in production when VITE_META_PIXEL_ID is set.
  *
- * Sets up the fbq queue function directly in TypeScript (no inline
- * scripts, which SES lockdown from browser extensions blocks), then
- * loads fbevents.js via <script src>. When the SDK loads it drains
- * the queue and sets callMethod for future calls.
+ * Sets up a minimal queue function for init + PageView (which
+ * fbevents.js drains on load), then uses the script onload callback
+ * to know when the SDK is ready for direct calls. This avoids
+ * callMethod dispatch which SES lockdown (MetaMask) breaks.
  */
 export function initMetaPixel(): void {
   if (initialized) return;
@@ -38,32 +40,39 @@ export function initMetaPixel(): void {
     return;
   }
 
-  if (window.fbq) return;
+  initialized = true;
 
-  // Set up the fbq queue function. fbevents.js requires this to exist
-  // BEFORE it loads. Using function() (not arrow) for the arguments keyword.
-  const n: any = function () {
-    if (n.callMethod) {
-      n.callMethod.apply(n, arguments);
-    } else {
-      n.queue.push(arguments);
-    }
-  };
-  n.queue = [];
-  n.push = n;
-  n.loaded = true;
-  n.version = '2.0';
-  window.fbq = n;
-  if (!window._fbq) window._fbq = n;
+  if (!window.fbq) {
+    // Minimal queue for fbevents.js to find and drain on load.
+    const q: any = function (...args: any[]) {
+      q.queue.push(args);
+    };
+    q.queue = [] as any[];
+    q.push = q;
+    q.loaded = true;
+    q.version = '2.0';
+    window.fbq = q;
+    if (!window._fbq) window._fbq = q;
+  }
 
-  // Queue init and PageView — fbevents.js will drain these when it loads
+  // Queue init + PageView — fbevents.js drains these on load
   window.fbq!('init', pixelId);
   window.fbq!('track', 'PageView');
 
-  // Load fbevents.js via <script src> (no inline script, avoids SES lockdown)
+  // Load fbevents.js via <script src> (no inline script, avoids SES)
   const s = document.createElement('script');
   s.async = true;
   s.src = 'https://connect.facebook.net/en_US/fbevents.js';
+  s.addEventListener('load', () => {
+    sdkReady = true;
+    // Drain events that were queued while the SDK was loading
+    for (const [eventName, params] of pendingEvents) {
+      if (typeof window.fbq === 'function') {
+        window.fbq('track', eventName, params);
+      }
+    }
+    pendingEvents.length = 0;
+  });
   document.head.appendChild(s);
 
   // <noscript> fallback img
@@ -75,20 +84,21 @@ export function initMetaPixel(): void {
   img.src = 'https://www.facebook.com/tr?id=' + pixelId + '&ev=PageView&noscript=1';
   noscript.appendChild(img);
   document.body.appendChild(noscript);
-
-  initialized = true;
 }
 
 /**
- * Track a Meta Pixel standard event. Fails silently if the pixel
- * is not loaded (dev environment, ad blocker, etc.).
+ * Track a Meta Pixel standard event. Queues events until the SDK
+ * is loaded, then calls it directly. Fails silently if not initialized.
  */
 export function trackEvent(
   eventName: MetaPixelEvent,
   params?: Record<string, string | number>,
 ): void {
-  console.log('[MetaPixel] trackEvent:', eventName, '| fbq type:', typeof window.fbq, '| initialized:', initialized);
-  if (typeof window.fbq !== 'function') return;
-  window.fbq('track', eventName, params);
-  console.log('[MetaPixel] sent:', eventName);
+  if (!initialized) return;
+
+  if (sdkReady && typeof window.fbq === 'function') {
+    window.fbq('track', eventName, params);
+  } else {
+    pendingEvents.push([eventName, params]);
+  }
 }
