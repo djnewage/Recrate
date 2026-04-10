@@ -152,7 +152,10 @@ export default function CleansePage() {
               transition={{ duration: 0.6, delay: 0.2 }}
             >
               <button
-                onClick={scrollToDownload}
+                onClick={() => {
+                  trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD' });
+                  scrollToDownload();
+                }}
                 className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow"
               >
                 <Download className="w-5 h-5" />
