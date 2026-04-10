@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Mail, Smartphone, Download, ChevronDown, HelpCircle, ScanLine } from 'lucide-react'
+import { trackEvent } from '../utils/metaPixel'
 
 interface ProxyAsset {
   name: string
@@ -104,6 +105,11 @@ export default function HomePage() {
     setIsAppleSiliconMac(isAppleSilicon())
   }, [])
 
+  // Meta Pixel: track product page view
+  useEffect(() => {
+    trackEvent('ViewContent', { content_name: 'Recrate', content_category: 'product' })
+  }, [])
+
   useEffect(() => {
     async function fetchLatestRelease() {
       try {
@@ -151,6 +157,7 @@ export default function HomePage() {
   }, [])
 
   const handleDownload = useCallback((url: string | null, platform: 'mac' | 'windows') => {
+    trackEvent('Lead', { content_name: 'Recrate', content_category: 'desktop_download', platform })
     if (!url) return
 
     const setDownloadState = platform === 'mac' ? setMacDownloadState : setWinDownloadState
@@ -211,6 +218,7 @@ export default function HomePage() {
       if (response.ok) {
         setWaitlistStatus('success')
         setWaitlistEmail('')
+        trackEvent('Lead', { content_name: 'Recrate', content_category: 'mobile_waitlist' })
       } else {
         setWaitlistStatus('error')
         setTimeout(() => setWaitlistStatus('idle'), 5000)
