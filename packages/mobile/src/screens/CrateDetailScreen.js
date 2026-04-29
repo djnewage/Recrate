@@ -128,9 +128,12 @@ const CrateDetailScreen = ({ route, navigation }) => {
   };
 
   const handleTrackMenu = (track) => {
-    const options = ['Play Now', 'Remove from Crate', 'Cancel'];
-    const destructiveButtonIndex = 1;
-    const cancelButtonIndex = 2;
+    const isSmart = selectedCrate?.isSmart;
+    const options = isSmart
+      ? ['Play Now', 'Cancel']
+      : ['Play Now', 'Remove from Crate', 'Cancel'];
+    const destructiveButtonIndex = isSmart ? undefined : 1;
+    const cancelButtonIndex = isSmart ? 1 : 2;
 
     showActionSheetWithOptions(
       {
@@ -156,7 +159,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
       (buttonIndex) => {
         if (buttonIndex === 0) {
           handleTrackPress(track);
-        } else if (buttonIndex === 1) {
+        } else if (!isSmart && buttonIndex === 1) {
           handleRemoveTrack(track);
         }
       }
@@ -253,6 +256,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
 
   // Check if this is a local/offline crate
   const isLocalCrate = crateId.startsWith('temp-') || selectedCrate?.isLocal;
+  const isSmartCrate = selectedCrate?.isSmart;
 
   if (isLoadingCrates || !selectedCrate) {
     return (
@@ -282,7 +286,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
             )}
           </View>
           <View style={styles.headerButtons}>
-            {isEditMode && selectedTrackIds.length > 0 && (
+            {!isSmartCrate && isEditMode && selectedTrackIds.length > 0 && (
               <TouchableOpacity
                 style={[styles.headerButton, styles.removeButton]}
                 onPress={handleRemoveTracks}
@@ -290,14 +294,16 @@ const CrateDetailScreen = ({ route, navigation }) => {
                 <Text style={styles.removeButtonText}>Remove</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={handleEditPress}
-            >
-              <Text style={styles.headerButtonText}>
-                {isEditMode ? 'Cancel' : 'Edit'}
-              </Text>
-            </TouchableOpacity>
+            {!isSmartCrate && (
+              <TouchableOpacity
+                style={styles.headerButton}
+                onPress={handleEditPress}
+              >
+                <Text style={styles.headerButtonText}>
+                  {isEditMode ? 'Cancel' : 'Edit'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -307,6 +313,14 @@ const CrateDetailScreen = ({ route, navigation }) => {
         <View style={styles.offlineBanner}>
           <Ionicons name="cloud-upload-outline" size={16} color={COLORS.warning} />
           <Text style={styles.offlineBannerText}>Local crate (pending sync)</Text>
+        </View>
+      )}
+
+      {/* Smart crate banner */}
+      {isSmartCrate && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="sparkles" size={16} color="#EC4899" />
+          <Text style={styles.offlineBannerText}>Smart crate · managed by Serato rules</Text>
         </View>
       )}
 

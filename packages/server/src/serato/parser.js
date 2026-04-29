@@ -48,6 +48,7 @@ class SeratoParser extends EventEmitter {
     this.seratoPath = seratoPath;
     this.musicPaths = Array.isArray(musicPaths) ? musicPaths : [musicPaths].filter(Boolean);
     this.cratesDir = path.join(seratoPath, 'Subcrates');
+    this.smartCratesDir = path.join(seratoPath, 'SmartCrates');
 
     // Concurrency limiter to prevent "too many open files" errors
     this.fileOpLimit = pLimit(100); // Max 100 concurrent file operations
@@ -509,6 +510,68 @@ class SeratoParser extends EventEmitter {
   }
 
   /**
+   * Scan a single crate directory for files matching `extension`,
+   * returning crate-shaped metadata objects tagged with `kind`.
+   * Smart crate IDs are prefixed with `smart-` to avoid collision
+   * with regular crates of the same name; parentId is *not* prefixed
+   * so smart crates can nest under regular parent folders via the
+   * shared %% filename hierarchy.
+   * @private
+   */
+  async _scanCrateDir(dir, extension, kind) {
+    try {
+      await fs.stat(dir);
+    } catch {
+      return [];
+    }
+
+    const files = await fs.readdir(dir);
+    const crateFiles = files.filter(f => f.endsWith(extension));
+    const isSmart = kind === 'smart';
+
+    return Promise.all(
+      crateFiles.map(async (file) => {
+        const fullPath = path.basename(file, extension);
+        const cratePath = path.join(dir, file);
+
+        const pathParts = fullPath.split(SUBCRATE_DELIMITER);
+        const name = pathParts[pathParts.length - 1];
+        const parentPath = pathParts.length > 1
+          ? pathParts.slice(0, -1).join(SUBCRATE_DELIMITER)
+          : null;
+        const depth = pathParts.length - 1;
+
+        let trackCount = 0;
+        let lastModified = null;
+        try {
+          const fileContent = await fs.readFile(cratePath);
+          trackCount = this._countTracksInCrate(fileContent);
+          const stats = await fs.stat(cratePath);
+          lastModified = stats.mtime.getTime();
+        } catch (error) {
+          logger.warn(`Error counting tracks in ${name}:`, error.message);
+        }
+
+        const baseSlug = this.slugify(fullPath);
+        return {
+          id: isSmart ? `smart-${baseSlug}` : baseSlug,
+          name,
+          fullPath,
+          parentId: parentPath ? this.slugify(parentPath) : null,
+          parentPath,
+          depth,
+          trackCount,
+          filePath: cratePath,
+          lastModified,
+          kind,
+          isSmart,
+          isReadOnly: isSmart,
+        };
+      })
+    );
+  }
+
+  /**
    * Get all crates (metadata only, no track details)
    */
   async getAllCrates() {
@@ -523,65 +586,23 @@ class SeratoParser extends EventEmitter {
     try {
       await this.verifySeratoPath();
 
-      // Check if crates directory exists
-      try {
-        await fs.stat(this.cratesDir);
-      } catch {
-        logger.warn('Subcrates directory not found, returning empty crates list');
-        return [];
-      }
+      const [regularCrates, smartCrates] = await Promise.all([
+        this._scanCrateDir(this.cratesDir, '.crate', 'crate'),
+        this._scanCrateDir(this.smartCratesDir, '.scrate', 'smart'),
+      ]);
+      const crates = [...regularCrates, ...smartCrates];
 
-      const files = await fs.readdir(this.cratesDir);
-      const crateFiles = files.filter(f => f.endsWith('.crate'));
-
-      const crates = await Promise.all(
-        crateFiles.map(async (file) => {
-          const fullPath = path.basename(file, '.crate');
-          const cratePath = path.join(this.cratesDir, file);
-
-          // Parse hierarchy from filename using %% delimiter
-          const pathParts = fullPath.split(SUBCRATE_DELIMITER);
-          const name = pathParts[pathParts.length - 1]; // Last part is display name
-          const parentPath = pathParts.length > 1
-            ? pathParts.slice(0, -1).join(SUBCRATE_DELIMITER)
-            : null;
-          const depth = pathParts.length - 1;
-
-          // Quick count of tracks without full parsing
-          let trackCount = 0;
-          let lastModified = null;
-          try {
-            const fileContent = await fs.readFile(cratePath);
-            trackCount = this._countTracksInCrate(fileContent);
-
-            // Get file modification time
-            const stats = await fs.stat(cratePath);
-            lastModified = stats.mtime.getTime();
-          } catch (error) {
-            logger.warn(`Error counting tracks in ${name}:`, error.message);
-          }
-
-          return {
-            id: this.slugify(fullPath),
-            name: name,
-            fullPath: fullPath, // Full path with %% for file operations
-            parentId: parentPath ? this.slugify(parentPath) : null,
-            parentPath: parentPath,
-            depth: depth,
-            trackCount: trackCount,
-            filePath: cratePath,
-            lastModified: lastModified,
-          };
-        })
-      );
-
-      // Sort crates: root crates first, then by depth, then alphabetically
       crates.sort((a, b) => {
         if (a.depth !== b.depth) return a.depth - b.depth;
         return a.name.localeCompare(b.name);
       });
 
-      logger.success(`Found ${crates.length} crates (${crates.filter(c => c.depth === 0).length} root, ${crates.filter(c => c.depth > 0).length} subcrates)`);
+      logger.success(
+        `Found ${crates.length} crates ` +
+        `(${regularCrates.filter(c => c.depth === 0).length} root, ` +
+        `${regularCrates.filter(c => c.depth > 0).length} subcrates, ` +
+        `${smartCrates.length} smart)`
+      );
       this.cache.set(cacheKey, crates);
       return crates;
     } catch (error) {
@@ -748,6 +769,10 @@ class SeratoParser extends EventEmitter {
         depth: crate.depth,
         trackCount: tracks.length,
         tracks: tracks,
+        kind: crate.kind,
+        isSmart: crate.isSmart,
+        isReadOnly: crate.isReadOnly,
+        lastModified: crate.lastModified,
       };
 
       this.cache.set(cacheKey, result);

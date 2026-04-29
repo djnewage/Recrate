@@ -16,13 +16,16 @@
 
 /**
  * @typedef {Object} Crate
- * @property {string} id - Unique crate identifier
+ * @property {string} id - Unique crate identifier (smart crates prefixed with `smart-`)
  * @property {string} name - Crate name
  * @property {number} trackCount - Number of tracks in crate
  * @property {string} color - Hex color code
  * @property {Date} createdAt - Creation timestamp
  * @property {Date} updatedAt - Last update timestamp
  * @property {Track[]} [tracks] - Array of tracks (when expanded)
+ * @property {('crate'|'smart')} [kind] - Source type: regular `.crate` or Serato `.scrate`
+ * @property {boolean} [isSmart] - Convenience flag mirroring `kind === 'smart'`
+ * @property {boolean} [isReadOnly] - True when Recrate cannot mutate this crate (smart crates)
  */
 
 /**

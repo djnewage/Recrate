@@ -520,6 +520,15 @@ const useStore = create(
     const { isConnected } = useConnectionStore.getState();
     const { enqueueOperation, getServerId } = useOfflineStore.getState();
 
+    // Smart crates are managed by Serato's rule engine — reject mutations
+    // to mirror the server-side guard and avoid queueing dead-on-arrival ops.
+    const { crates: allCrates } = get();
+    const targetCrate = allCrates.find((c) => c.id === crateId);
+    if (targetCrate?.isSmart) {
+      set({ cratesError: 'Smart crates are managed by Serato. Edit rules in Serato to change tracks.' });
+      return false;
+    }
+
     // Resolve crate ID if it's a temp ID
     const resolvedCrateId = getServerId(crateId) || crateId;
 
@@ -584,6 +593,13 @@ const useStore = create(
     const { isConnected } = useConnectionStore.getState();
     const { enqueueOperation, getServerId } = useOfflineStore.getState();
 
+    const { crates: allCrates } = get();
+    const targetCrate = allCrates.find((c) => c.id === crateId);
+    if (targetCrate?.isSmart) {
+      set({ cratesError: 'Smart crates are managed by Serato. Edit rules in Serato to change tracks.' });
+      return false;
+    }
+
     // Resolve crate ID if it's a temp ID
     const resolvedCrateId = getServerId(crateId) || crateId;
 
@@ -642,6 +658,13 @@ const useStore = create(
   deleteCrate: async (crateId) => {
     const { isConnected } = useConnectionStore.getState();
     const { enqueueOperation, getServerId, dequeueOperation, operationQueue } = useOfflineStore.getState();
+
+    const { crates: allCrates } = get();
+    const targetCrate = allCrates.find((c) => c.id === crateId);
+    if (targetCrate?.isSmart) {
+      set({ cratesError: 'Smart crates can only be deleted from Serato.' });
+      return false;
+    }
 
     // Check if this is a local-only crate (temp ID)
     const isLocalOnly = crateId.startsWith('temp-');

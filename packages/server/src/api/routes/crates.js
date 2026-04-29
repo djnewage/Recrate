@@ -7,6 +7,18 @@ const logger = require('../../utils/logger');
 function createCrateRoutes(parser, writer = null) {
   const router = express.Router();
 
+  // Smart crates (.scrate) are read-only — Recrate parses them but Serato owns
+  // the rule-evaluation/materialization. Mutating them on disk would clobber
+  // Serato's next refresh, so we reject writes at the API boundary.
+  const rejectIfSmart = async (crateId, res) => {
+    const crate = await parser.getCrateById(crateId);
+    if (crate && crate.isSmart) {
+      res.status(400).json({ error: 'Smart crates are read-only. Edit rules in Serato.' });
+      return true;
+    }
+    return false;
+  };
+
   /**
    * POST /api/crates/refresh
    * Force refresh crate cache (useful when Serato modifies crates externally)
@@ -98,6 +110,8 @@ function createCrateRoutes(parser, writer = null) {
         return res.status(400).json({ error: 'Crate name is required' });
       }
 
+      if (parentId && await rejectIfSmart(parentId, res)) return;
+
       const crate = await writer.createCrate(name, color, parentId);
       parser.invalidateCache(); // Clear cache
 
@@ -137,6 +151,8 @@ function createCrateRoutes(parser, writer = null) {
         return res.status(400).json({ error: 'trackIds array is required' });
       }
 
+      if (await rejectIfSmart(crateId, res)) return;
+
       await writer.addTracksToCrate(crateId, trackIds);
       parser.invalidateCache(`crate-${crateId}`);
 
@@ -169,6 +185,8 @@ function createCrateRoutes(parser, writer = null) {
 
       const { crateId, trackId } = req.params;
 
+      if (await rejectIfSmart(crateId, res)) return;
+
       await writer.removeTrackFromCrate(crateId, trackId);
       parser.invalidateCache(`crate-${crateId}`);
 
@@ -200,6 +218,8 @@ function createCrateRoutes(parser, writer = null) {
       }
 
       const { crateId } = req.params;
+
+      if (await rejectIfSmart(crateId, res)) return;
 
       await writer.deleteCrate(crateId);
       parser.invalidateCache(); // Clear all cache

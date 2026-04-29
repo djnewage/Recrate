@@ -77,9 +77,9 @@ const CrateTreeItem = ({
 
         <View style={styles.crateIcon}>
           <Ionicons
-            name={hasChildren ? 'folder' : 'folder-outline'}
+            name={crate.isSmart ? 'sparkles' : (hasChildren ? 'folder' : 'folder-outline')}
             size={24}
-            color="#8B5CF6"
+            color={crate.isSmart ? '#EC4899' : '#8B5CF6'}
           />
           {/* Pending sync indicator badge */}
           {isPendingSync && (
@@ -233,6 +233,13 @@ const CratesScreen = ({ navigation, route }) => {
 
   const handleCratePress = (crate) => {
     if (selectedTracks.length > 0) {
+      if (crate.isSmart) {
+        Alert.alert(
+          'Smart Crate',
+          'Smart crates are managed by rules in Serato. Edit the rules in Serato to change which tracks appear here.'
+        );
+        return;
+      }
       Alert.alert(
         'Add to Crate',
         `Add ${selectedTracks.length} track(s) to "${crate.name}"?`,
@@ -263,6 +270,13 @@ const CratesScreen = ({ navigation, route }) => {
   };
 
   const handleDeleteCrate = (crate) => {
+    if (crate.isSmart) {
+      Alert.alert(
+        'Smart Crate',
+        'Smart crates can only be deleted from Serato.'
+      );
+      return;
+    }
     Alert.alert(
       'Delete Crate',
       `Are you sure you want to delete "${crate.name}"? This action cannot be undone.`,
