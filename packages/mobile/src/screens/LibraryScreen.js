@@ -17,6 +17,7 @@ import { useConnectionStore } from '../store/connectionStore';
 import TrackRow from '../components/TrackRow';
 import FilterModal from '../components/FilterModal';
 import AlphabetScrollBar from '../components/AlphabetScrollBar';
+import AddToCratesModal from '../components/AddToCratesModal';
 import useAlphabetIndex from '../hooks/useAlphabetIndex';
 
 const LibraryScreen = ({ navigation }) => {
@@ -49,6 +50,7 @@ const LibraryScreen = ({ navigation }) => {
   const [sortBy, setSortBy] = useState('title');
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
   const [isEditMode, setIsEditMode] = useState(false);
+  const [addToCrateTrack, setAddToCrateTrack] = useState(null);
 
   const flatListRef = useRef(null);
   const lastPlayTimeRef = useRef(0);
@@ -154,10 +156,7 @@ const LibraryScreen = ({ navigation }) => {
         if (buttonIndex === 0) {
           handleTrackPress(track);
         } else if (buttonIndex === 1) {
-          navigation.navigate('Crates', {
-            screen: 'CratesList',
-            params: { selectedTracks: [track.id] },
-          });
+          setAddToCrateTrack(track);
         }
       }
     );
@@ -464,6 +463,12 @@ const LibraryScreen = ({ navigation }) => {
 
       {/* Filter Modal */}
       <FilterModal />
+
+      <AddToCratesModal
+        visible={!!addToCrateTrack}
+        onClose={() => setAddToCrateTrack(null)}
+        tracks={addToCrateTrack ? [addToCrateTrack] : []}
+      />
     </View>
   );
 };

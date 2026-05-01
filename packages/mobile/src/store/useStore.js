@@ -64,6 +64,7 @@ const useStore = create(
   currentTrack: null,
   isPlaying: false,
   isBuffering: false,
+  isLoadingTrack: false,
   playerError: null,
   queue: [],
   currentQueueIndex: -1,
@@ -346,6 +347,36 @@ const useStore = create(
     sortChildren(tree);
 
     return tree;
+  },
+
+  // Walk the crate tree starting at rootId and return all descendant crate
+  // IDs (excluding the root). Used to aggregate tracks from sub-crates when
+  // a parent crate has no direct tracks of its own.
+  getDescendantCrateIds: (rootId) => {
+    const { crateTree } = get();
+    const ids = [];
+
+    const findRoot = (nodes) => {
+      for (const node of nodes) {
+        if (node.id === rootId) return node;
+        if (node.children?.length) {
+          const found = findRoot(node.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const collect = (nodes) => {
+      for (const node of nodes) {
+        ids.push(node.id);
+        if (node.children?.length) collect(node.children);
+      }
+    };
+
+    const root = findRoot(crateTree);
+    if (root?.children?.length) collect(root.children);
+    return ids;
   },
 
   // Crates actions
@@ -1040,6 +1071,18 @@ const useStore = create(
   },
 
   setQueue: async (tracks, startIndex = 0) => {
+    // Set the new queue + currentTrack synchronously up front so the mini-player
+    // and full-screen player display the user's selection immediately. The
+    // isLoadingTrack flag also gates the PlaybackActiveTrackChanged listener
+    // from clobbering currentTrack while TrackPlayer is being reset/refilled.
+    set({
+      queue: tracks,
+      currentQueueIndex: startIndex,
+      currentTrack: tracks[startIndex],
+      isPlaying: false,
+      isLoadingTrack: true,
+    });
+
     try {
       await TrackPlayer.reset();
 
@@ -1069,13 +1112,11 @@ const useStore = create(
       await TrackPlayer.play();
 
       set({
-        queue: tracks,  // Keep full playlist reference for later navigation
-        currentQueueIndex: startIndex,
-        currentTrack: tracks[startIndex],
+        isLoadingTrack: false,
         isPlaying: true,
       });
     } catch (error) {
-      // Error setting queue
+      set({ isLoadingTrack: false });
     }
   },
 

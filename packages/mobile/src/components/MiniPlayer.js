@@ -8,8 +8,15 @@ import useStore from '../store/useStore';
 
 const MiniPlayer = () => {
   const navigation = useNavigation();
-  const { currentTrack, isPlaying, pauseTrack, resumeTrack, stopTrack, playNext } =
-    useStore();
+  const {
+    currentTrack,
+    isPlaying,
+    isLoadingTrack,
+    pauseTrack,
+    resumeTrack,
+    stopTrack,
+    playNext,
+  } = useStore();
 
   // Get real playback progress from TrackPlayer
   const { position, duration } = useProgress();
@@ -67,10 +74,10 @@ const MiniPlayer = () => {
           activeOpacity={0.7}
         >
           <Text style={styles.title} numberOfLines={1}>
-            {currentTrack.title}
+            {isLoadingTrack ? 'Loading…' : currentTrack.title}
           </Text>
           <Text style={styles.artist} numberOfLines={1}>
-            {currentTrack.artist}
+            {isLoadingTrack ? '' : currentTrack.artist}
           </Text>
         </TouchableOpacity>
         <View style={styles.controls}>

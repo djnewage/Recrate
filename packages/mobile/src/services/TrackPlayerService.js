@@ -214,6 +214,12 @@ export function setupEventHandlers(store) {
     const track = event.track;
     const trackIndex = event.index;
 
+    // Skip listener-driven updates while setQueue is mid-flight; the queue
+    // and currentTrack have already been set synchronously by setQueue.
+    if (store.getState().isLoadingTrack) {
+      return;
+    }
+
     if (track) {
       // Get the queue from store to find the full track object
       const { queue } = store.getState();
