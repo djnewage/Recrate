@@ -15,23 +15,79 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
 import AlphabetScrollBar from '../components/AlphabetScrollBar';
+import AddToCratesModal from '../components/AddToCratesModal';
 import useAlphabetIndex from '../hooks/useAlphabetIndex';
+import { apiService } from '../services/api';
 
 const CrateDetailScreen = ({ route, navigation }) => {
   const { showActionSheetWithOptions } = useActionSheet();
   const { crateId } = route.params;
-  const { selectedCrate, isLoadingCrates, loadCrate, removeTrackFromCrate } = useStore();
+  const {
+    selectedCrate,
+    loadCrate,
+    removeTrackFromCrate,
+    getDescendantCrateIds,
+  } = useStore();
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedTrackIds, setSelectedTrackIds] = useState([]);
-  const [sortBy, setSortBy] = useState('title');
+  const [sortBy, setSortBy] = useState('order');
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
   const [searchQuery, setSearchQuery] = useState('');
+  const [addToCrateTrack, setAddToCrateTrack] = useState(null);
+  const [aggregated, setAggregated] = useState(null); // { tracks, crateCount } | null
 
   const flatListRef = useRef(null);
 
   useEffect(() => {
     loadCrate(crateId);
+    setAggregated(null);
   }, [crateId]);
+
+  // Aggregate sub-crate tracks when this crate has no direct tracks but has children.
+  useEffect(() => {
+    if (!selectedCrate) return;
+    const directTracks = selectedCrate.tracks || [];
+    if (directTracks.length > 0) {
+      setAggregated(null);
+      return;
+    }
+
+    const descendantIds = getDescendantCrateIds(selectedCrate.id);
+    if (descendantIds.length === 0) {
+      setAggregated(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const results = await Promise.all(
+          descendantIds.map((id) => apiService.getCrate(id).catch(() => null))
+        );
+        if (cancelled) return;
+
+        const seen = new Set();
+        const merged = [];
+        let crateCount = 0;
+        for (const c of results) {
+          if (!c?.tracks?.length) continue;
+          crateCount++;
+          for (const t of c.tracks) {
+            if (seen.has(t.id)) continue;
+            seen.add(t.id);
+            merged.push(t);
+          }
+        }
+        setAggregated({ tracks: merged, crateCount });
+      } catch {
+        if (!cancelled) setAggregated(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCrate?.id, selectedCrate?.tracks?.length]);
 
   // Exit edit mode when selection is cleared
   useEffect(() => {
@@ -129,11 +185,16 @@ const CrateDetailScreen = ({ route, navigation }) => {
 
   const handleTrackMenu = (track) => {
     const isSmart = selectedCrate?.isSmart;
-    const options = isSmart
-      ? ['Play Now', 'Cancel']
-      : ['Play Now', 'Remove from Crate', 'Cancel'];
-    const destructiveButtonIndex = isSmart ? undefined : 1;
-    const cancelButtonIndex = isSmart ? 1 : 2;
+    // Aggregated views (parent crate showing sub-crate tracks) and smart crates
+    // can't have tracks "removed from this crate" — the user is viewing tracks
+    // that don't actually live here. Hide that option in those cases.
+    const canRemove = !isSmart && !aggregated;
+
+    const options = canRemove
+      ? ['Play Now', 'Add to other Crate', 'Remove from Crate', 'Cancel']
+      : ['Play Now', 'Add to other Crate', 'Cancel'];
+    const destructiveButtonIndex = canRemove ? 2 : undefined;
+    const cancelButtonIndex = canRemove ? 3 : 2;
 
     showActionSheetWithOptions(
       {
@@ -159,7 +220,9 @@ const CrateDetailScreen = ({ route, navigation }) => {
       (buttonIndex) => {
         if (buttonIndex === 0) {
           handleTrackPress(track);
-        } else if (!isSmart && buttonIndex === 1) {
+        } else if (buttonIndex === 1) {
+          setAddToCrateTrack(track);
+        } else if (canRemove && buttonIndex === 2) {
           handleRemoveTrack(track);
         }
       }
@@ -198,6 +261,12 @@ const CrateDetailScreen = ({ route, navigation }) => {
   const sortTracks = (tracksToSort) => {
     if (!tracksToSort) return [];
 
+    if (sortBy === 'order') {
+      // Preserve the array order Serato gave us. Filter is order-preserving so
+      // a search-narrowed list still reflects crate order.
+      return sortDirection === 'desc' ? [...tracksToSort].reverse() : tracksToSort;
+    }
+
     return [...tracksToSort].sort((a, b) => {
       let comparison = 0;
 
@@ -220,14 +289,17 @@ const CrateDetailScreen = ({ route, navigation }) => {
     });
   };
 
+  const baseTracks = aggregated?.tracks ?? selectedCrate?.tracks ?? [];
   // Filter first, then sort
-  const filteredTracks = filterTracks(selectedCrate?.tracks);
+  const filteredTracks = filterTracks(baseTracks);
   const sortedTracks = sortTracks(filteredTracks);
 
   // Alphabet fast-scroll support
   const getTrackSortKey = useCallback((track) => {
-    const sortField = sortBy === 'bpm' ? 'title' : sortBy;
-    return track[sortField] || track.title || '';
+    if (sortBy === 'order' || sortBy === 'bpm') {
+      return track.title || '';
+    }
+    return track[sortBy] || track.title || '';
   }, [sortBy]);
   const alphabetIndex = useAlphabetIndex(sortedTracks, getTrackSortKey);
 
@@ -257,8 +329,13 @@ const CrateDetailScreen = ({ route, navigation }) => {
   // Check if this is a local/offline crate
   const isLocalCrate = crateId.startsWith('temp-') || selectedCrate?.isLocal;
   const isSmartCrate = selectedCrate?.isSmart;
+  const isAggregated = !!aggregated;
 
-  if (isLoadingCrates || !selectedCrate) {
+  // Only block render when we have no data yet. A background refresh of the
+  // global crates list (e.g. from AddToCratesModal opening) flips
+  // isLoadingCrates true, but we shouldn't unmount the whole screen for that —
+  // doing so unmounts the modal too and creates an infinite re-load loop.
+  if (!selectedCrate) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -276,7 +353,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
             <View style={styles.headerTitleRow}>
               <Text style={styles.title}>{selectedCrate.name}</Text>
               <Text style={styles.subtitle}>
-                • {searchQuery ? `${sortedTracks.length} of ${selectedCrate.tracks?.length || 0}` : `${selectedCrate.tracks?.length || 0}`} tracks
+                • {searchQuery ? `${sortedTracks.length} of ${baseTracks.length}` : `${baseTracks.length}`} tracks
               </Text>
             </View>
             {selectedTrackIds.length > 0 && (
@@ -286,7 +363,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
             )}
           </View>
           <View style={styles.headerButtons}>
-            {!isSmartCrate && isEditMode && selectedTrackIds.length > 0 && (
+            {!isSmartCrate && !isAggregated && isEditMode && selectedTrackIds.length > 0 && (
               <TouchableOpacity
                 style={[styles.headerButton, styles.removeButton]}
                 onPress={handleRemoveTracks}
@@ -294,7 +371,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
                 <Text style={styles.removeButtonText}>Remove</Text>
               </TouchableOpacity>
             )}
-            {!isSmartCrate && (
+            {!isSmartCrate && !isAggregated && (
               <TouchableOpacity
                 style={styles.headerButton}
                 onPress={handleEditPress}
@@ -324,6 +401,16 @@ const CrateDetailScreen = ({ route, navigation }) => {
         </View>
       )}
 
+      {/* Sub-crate aggregation banner */}
+      {isAggregated && (
+        <View style={[styles.offlineBanner, styles.aggregatedBanner]}>
+          <Ionicons name="albums-outline" size={16} color={COLORS.primary} />
+          <Text style={[styles.offlineBannerText, { color: COLORS.primary }]}>
+            Showing {aggregated.tracks.length} tracks from {aggregated.crateCount} sub-crate{aggregated.crateCount === 1 ? '' : 's'}
+          </Text>
+        </View>
+      )}
+
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <TextInput
@@ -345,7 +432,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
 
       {/* Sort Options */}
       <View style={styles.sortContainer}>
-        {['title', 'artist', 'bpm'].map((option) => (
+        {['order', 'title', 'artist', 'bpm'].map((option) => (
           <TouchableOpacity
             key={option}
             style={[
@@ -368,7 +455,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
       </View>
 
       {/* Tracks List */}
-      {selectedCrate.tracks?.length === 0 ? (
+      {baseTracks.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No tracks in this crate</Text>
           <Text style={styles.emptySubtext}>
@@ -403,6 +490,13 @@ const CrateDetailScreen = ({ route, navigation }) => {
           />
         </View>
       )}
+
+      <AddToCratesModal
+        visible={!!addToCrateTrack}
+        onClose={() => setAddToCrateTrack(null)}
+        tracks={addToCrateTrack ? [addToCrateTrack] : []}
+        excludeCrateId={crateId}
+      />
     </View>
   );
 };
@@ -507,6 +601,9 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.warning,
     fontWeight: '500',
+  },
+  aggregatedBanner: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
   },
   loadingContainer: {
     flex: 1,
