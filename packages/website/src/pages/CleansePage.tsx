@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Loader2, Check } from 'lucide-react';
+import { Download, Loader2, Check, Monitor } from 'lucide-react';
 import { trackEvent } from '../utils/metaPixel';
 
 interface ReleaseAsset {
@@ -69,6 +69,7 @@ export default function CleansePage() {
   const [release, setRelease] = useState<GitHubRelease | null>(null);
   const [armAsset, setArmAsset] = useState<ReleaseAsset | null>(null);
   const [intelAsset, setIntelAsset] = useState<ReleaseAsset | null>(null);
+  const [winAsset, setWinAsset] = useState<ReleaseAsset | null>(null);
   const [downloadState, setDownloadState] = useState<DownloadState>('loading');
   const [isSilicon, setIsSilicon] = useState(true);
 
@@ -89,9 +90,11 @@ export default function CleansePage() {
         setRelease(data);
         const arm = data.assets.find((a) => a.name.includes('arm64') && a.name.endsWith('.dmg'));
         const intel = data.assets.find((a) => a.name.includes('x64') && a.name.endsWith('.dmg'));
+        const win = data.assets.find((a) => a.name.endsWith('.exe'));
         if (arm) setArmAsset(arm);
         if (intel) setIntelAsset(intel);
-        setDownloadState(arm || intel ? 'ready' : 'idle');
+        if (win) setWinAsset(win);
+        setDownloadState(arm || intel || win ? 'ready' : 'idle');
       })
       .catch(() => setDownloadState('idle'));
   }, []);
@@ -142,7 +145,7 @@ export default function CleansePage() {
               transition={{ duration: 0.6, delay: 0.1 }}
             >
               Automatic profanity detection with mute, beep, reverse, and tape stop censors.
-              Batch process your whole library. Runs locally on your Mac.
+              Batch process your whole library. Runs locally on your Mac or Windows PC.
             </motion.p>
 
             <motion.div
@@ -159,7 +162,7 @@ export default function CleansePage() {
                 className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow"
               >
                 <Download className="w-5 h-5" />
-                Download for macOS
+                Download
               </button>
               <span className="text-sm text-gray-600">
                 2 free exports &middot; Upgrade when you need more
@@ -329,7 +332,7 @@ export default function CleansePage() {
                 <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
               </svg>
             </div>
-            <p className="text-gray-500 text-sm mb-8">Requires macOS 13.3 (Ventura) or later</p>
+            <p className="text-gray-500 text-sm mb-8">macOS 13.3 (Ventura) or later &middot; Windows 10/11 (x64)</p>
 
             <AnimatePresence mode="wait">
               {downloadState === 'loading' && (
@@ -354,6 +357,13 @@ export default function CleansePage() {
                         <Download className="w-4 h-4 shrink-0" />
                         Intel Mac
                         <span className="text-white/40 font-normal">{formatBytes(intelAsset.size)}</span>
+                      </a>
+                    )}
+                    {winAsset && (
+                      <a href={winAsset.browser_download_url} onClick={() => trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', platform: 'windows_x64' })} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-white/[0.05] border border-white/[0.1] hover:border-cyan-500/50 hover:bg-white/[0.08] transition-all duration-300 text-sm">
+                        <Monitor className="w-4 h-4 shrink-0" />
+                        Windows
+                        <span className="text-white/40 font-normal">{formatBytes(winAsset.size)}</span>
                       </a>
                     )}
                   </div>
