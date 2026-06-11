@@ -1,6 +1,6 @@
 {
   "name": "recrate",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Recrate - Stream your Serato music library to mobile devices",
   "private": true,
   "workspaces": [
