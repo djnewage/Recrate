@@ -72,6 +72,9 @@ const AICrateBuilderScreen = ({ navigation }) => {
 
   // AI status
   const [aiConfigured, setAiConfigured] = useState(null);
+  // Why the AI screen is unavailable: 'connection' (can't reach the computer)
+  // or 'unconfigured' (reached it, but AI isn't available)
+  const [aiErrorReason, setAiErrorReason] = useState(null);
 
   // Check AI status on mount
   useEffect(() => {
@@ -84,8 +87,14 @@ const AICrateBuilderScreen = ({ navigation }) => {
     try {
       const status = await apiService.getAIStatus();
       setAiConfigured(status.configured);
+      setAiErrorReason(status.configured ? null : 'unconfigured');
     } catch (err) {
+      // A network error or a 503 "device not connected" means we couldn't reach
+      // the computer; anything else means the request got through but AI is off.
+      const status = err?.response?.status;
+      const reachedServer = !!err?.response && status !== 503;
       setAiConfigured(false);
+      setAiErrorReason(reachedServer ? 'unconfigured' : 'connection');
     }
   };
 
@@ -699,8 +708,9 @@ const AICrateBuilderScreen = ({ navigation }) => {
     );
   }
 
-  // Show API not configured state (server issue)
+  // Show AI unavailable state, differentiating connection vs service issues
   if (aiConfigured === false) {
+    const isConnection = aiErrorReason === 'connection';
     return (
       <View style={[styles.container, { paddingTop: insets.top > 20 ? insets.top - 20 : insets.top }]}>
         <View style={styles.header}>
@@ -711,11 +721,30 @@ const AICrateBuilderScreen = ({ navigation }) => {
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.centerContent}>
-          <Ionicons name="warning" size={64} color={COLORS.warning} />
-          <Text style={styles.mainText}>Service Unavailable</Text>
-          <Text style={styles.subText}>
-            The AI service is temporarily unavailable. Please try again later.
+          <Ionicons
+            name={isConnection ? 'cloud-offline' : 'warning'}
+            size={64}
+            color={COLORS.warning}
+          />
+          <Text style={styles.mainText}>
+            {isConnection ? 'Not Connected' : 'Service Unavailable'}
           </Text>
+          <Text style={styles.subText}>
+            {isConnection
+              ? 'Can’t reach your computer. Make sure Recrate is running on your computer and try again.'
+              : 'The AI service is temporarily unavailable. Please try again later.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setAiConfigured(null);
+              setAiErrorReason(null);
+              checkAIStatus();
+            }}
+          >
+            <Ionicons name="refresh" size={18} color={COLORS.text} />
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -762,6 +791,8 @@ const styles = StyleSheet.create({
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: SPACING.xl },
   mainText: { fontSize: 24, fontWeight: '700', color: COLORS.text, marginTop: SPACING.xl, textAlign: 'center' },
   subText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, marginTop: SPACING.sm, textAlign: 'center', paddingHorizontal: SPACING.lg },
+  retryButton: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.xl, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg, borderRadius: 8, backgroundColor: COLORS.surface },
+  retryButtonText: { fontSize: FONT_SIZES.md, fontWeight: '600', color: COLORS.text },
   loadingContainer: { width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center' },
   settingsButton: {
     flexDirection: 'row',

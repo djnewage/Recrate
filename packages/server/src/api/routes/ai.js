@@ -114,6 +114,12 @@ function createAIRoutes(parser, writer = null) {
           limit,
           ...options,
           userApiKey: isByok ? userApiKey : undefined, // Only pass BYOK key if allowed
+          // Forward the end-user identity so the cloud proxy (when the desktop has
+          // no local key) can verify entitlement before spending the shared key.
+          auth: {
+            firebaseUid: req.headers["x-firebase-uid"] || req.user?.id,
+            deviceId: req.headers["x-device-id"],
+          },
         });
 
         if (!result.success) {

@@ -6,6 +6,7 @@
 const config = require("../utils/config");
 const logger = require("../utils/logger");
 const AnthropicProvider = require("./providers/anthropic");
+const ProxyLLMProvider = require("./providers/proxy-llm");
 
 class LLMService {
   constructor(customConfig = null) {
@@ -28,11 +29,18 @@ class LLMService {
     try {
       switch (providerName) {
         case "anthropic":
-          if (!this.config.anthropic?.apiKey) {
-            logger.warn("[LLMService] Anthropic API key not configured");
+          if (this.config.anthropic?.apiKey) {
+            // Local key present (dev or self-host) — call Anthropic directly.
+            this.provider = new AnthropicProvider(this.config.anthropic);
+          } else if (this.config.proxyUrl) {
+            // No local key (packaged app) — route through the cloud proxy,
+            // which holds the org's key. AI "just works" for entitled users.
+            logger.info("[LLMService] No local API key; using cloud proxy provider");
+            this.provider = new ProxyLLMProvider(this.config);
+          } else {
+            logger.warn("[LLMService] No Anthropic API key and no proxy URL configured");
             return false;
           }
-          this.provider = new AnthropicProvider(this.config.anthropic);
           break;
 
         case "openai":
