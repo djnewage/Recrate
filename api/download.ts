@@ -27,20 +27,29 @@ export default async function handler(req: Request) {
     })
   }
 
-  // Public repo: token optional. Use it if present, otherwise call GitHub
-  // unauthenticated so an expired GITHUB_TOKEN doesn't break downloads.
+  // Public repo: token optional. Use it if present, but if the authenticated
+  // call fails (e.g. expired/invalid token), retry unauthenticated so a bad
+  // GITHUB_TOKEN doesn't break downloads. `useToken` tracks the working mode so
+  // the asset fetch uses the same one.
   const token = process.env.GITHUB_TOKEN
-  const releaseHeaders: Record<string, string> = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'Recrate-Website',
+  let useToken = !!token
+
+  const ghFetch = (url: string, accept: string, manualRedirect = false) => {
+    const headers: Record<string, string> = {
+      Accept: accept,
+      'User-Agent': 'Recrate-Website',
+    }
+    if (useToken && token) headers.Authorization = `Bearer ${token}`
+    return fetch(url, manualRedirect ? { headers, redirect: 'manual' } : { headers })
   }
-  if (token) releaseHeaders.Authorization = `Bearer ${token}`
 
   try {
-    const response = await fetch(
-      'https://api.github.com/repos/djnewage/Recrate/releases/latest',
-      { headers: releaseHeaders }
-    )
+    const releaseUrl = 'https://api.github.com/repos/djnewage/Recrate/releases/latest'
+    let response = await ghFetch(releaseUrl, 'application/vnd.github+json')
+    if (!response.ok && token) {
+      useToken = false
+      response = await ghFetch(releaseUrl, 'application/vnd.github+json')
+    }
 
     if (!response.ok) {
       return new Response(JSON.stringify({ error: 'Failed to fetch release from GitHub' }), {
@@ -60,17 +69,12 @@ export default async function handler(req: Request) {
     }
 
     // Fetch the asset download URL — GitHub returns a 302 to a temporary S3 URL.
-    // Auth is optional for public-repo assets.
-    const assetHeaders: Record<string, string> = {
-      Accept: 'application/octet-stream',
-      'User-Agent': 'Recrate-Website',
-    }
-    if (token) assetHeaders.Authorization = `Bearer ${token}`
-
-    const downloadResponse = await fetch(asset.browser_download_url, {
-      headers: assetHeaders,
-      redirect: 'manual',
-    })
+    // Use whichever auth mode worked above.
+    const downloadResponse = await ghFetch(
+      asset.browser_download_url,
+      'application/octet-stream',
+      true
+    )
 
     // GitHub responds with 302 redirect to S3
     const redirectUrl = downloadResponse.headers.get('location')
