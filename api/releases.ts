@@ -19,21 +19,27 @@ export default async function handler(req: Request) {
     })
   }
 
-  // Recrate is a public repo, so the token is optional: use it when present
-  // (higher rate limit), otherwise fall back to unauthenticated requests so a
-  // missing/expired GITHUB_TOKEN doesn't take the download buttons offline.
+  // Recrate is a public repo, so the token is optional. Use it when present
+  // (higher rate limit), but if the authenticated call fails — e.g. the token
+  // is expired/invalid (401/403) — retry unauthenticated so a bad GITHUB_TOKEN
+  // can't take the download buttons offline.
   const token = process.env.GITHUB_TOKEN
-  const ghHeaders: Record<string, string> = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'Recrate-Website',
+  const releaseUrl = 'https://api.github.com/repos/djnewage/Recrate/releases/latest'
+
+  const ghFetch = (withToken: boolean) => {
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Recrate-Website',
+    }
+    if (withToken && token) headers.Authorization = `Bearer ${token}`
+    return fetch(releaseUrl, { headers })
   }
-  if (token) ghHeaders.Authorization = `Bearer ${token}`
 
   try {
-    const response = await fetch(
-      'https://api.github.com/repos/djnewage/Recrate/releases/latest',
-      { headers: ghHeaders }
-    )
+    let response = await ghFetch(true)
+    if (!response.ok && token) {
+      response = await ghFetch(false)
+    }
 
     if (!response.ok) {
       return new Response(JSON.stringify({ error: 'Failed to fetch release from GitHub' }), {
