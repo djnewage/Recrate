@@ -373,6 +373,17 @@ async function startServer() {
       log.info('Server node_modules found at:', nodeModulesPath);
     }
 
+    // Give the embedded server the proxy's HTTPS base URL so its AI feature can
+    // route Anthropic calls through the cloud proxy (which holds the org's key)
+    // instead of needing a key bundled in this packaged app.
+    let proxyHttpBase = PROXY_URL.replace('ws://', 'http://').replace('wss://', 'https://');
+    if (proxyHttpBase.includes('localhost') || proxyHttpBase.includes('127.0.0.1')) {
+      const localIP = getLocalIP();
+      proxyHttpBase = proxyHttpBase.replace('localhost', localIP).replace('127.0.0.1', localIP);
+    }
+    process.env.LLM_PROXY_URL = proxyHttpBase;
+    log.info('LLM proxy base URL set:', proxyHttpBase);
+
     // Set runtime config before requiring the server
     const serverConfig = require(configPath);
     serverConfig.setRuntimeConfig(userConfig);

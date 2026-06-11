@@ -9,6 +9,7 @@ const logger = require('./utils/logger');
 const { trackEvent } = require('./utils/analytics');
 const webhookRoutes = require('./routes/webhooks');
 const subscriptionRoutes = require('./routes/subscription');
+const llmRoutes = require('./routes/llm');
 
 // This will be injected by the main server
 let wsManager = null;
@@ -37,6 +38,10 @@ router.use('/webhooks', webhookRoutes());
 
 // Subscription routes (Firestore-backed, available without desktop connection)
 router.use('/subscription', subscriptionRoutes());
+
+// LLM routes (central Anthropic key; called by the desktop's ProxyLLMProvider).
+// Must be before the parameterized catch-all so "llm" isn't treated as a deviceId.
+router.use('/llm', llmRoutes());
 
 // Check if device is connected
 router.get('/device/:deviceId/status', async (req, res) => {

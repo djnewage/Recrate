@@ -167,9 +167,13 @@ const config = {
   // AI Configuration
   ai: {
     provider: process.env.AI_PROVIDER || "anthropic",
+    // Cloud proxy that holds the org's Anthropic key. Used when no local
+    // ANTHROPIC_API_KEY is set (i.e. the packaged desktop app), so AI works
+    // out of the box for entitled users without shipping a key in the binary.
+    proxyUrl: process.env.LLM_PROXY_URL || "https://steadfast-forgiveness-production.up.railway.app",
     anthropic: {
       apiKey: process.env.ANTHROPIC_API_KEY,
-      model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+      model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
     },
     openai: {
       apiKey: process.env.OPENAI_API_KEY,

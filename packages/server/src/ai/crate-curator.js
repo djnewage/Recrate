@@ -117,7 +117,7 @@ class CrateCurator {
    * @returns {Promise<Object>} Curation result
    */
   async curate(prompt, filters = {}, options = {}) {
-    const { userApiKey, ...curateOptions } = options;
+    const { userApiKey, auth, ...curateOptions } = options;
 
     // Get LLM service (either default or with user's key)
     const llmService = this.getLLMServiceForRequest(userApiKey);
@@ -169,6 +169,7 @@ class CrateCurator {
       const response = await llmService.complete(CURATION_SYSTEM_PROMPT, userPrompt, {
         maxTokens: 4096,
         temperature: 0.7,
+        auth, // forwarded to the proxy provider for entitlement checks (ignored by BYOK/direct)
       });
 
       // Parse and validate response
