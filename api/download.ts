@@ -27,24 +27,19 @@ export default async function handler(req: Request) {
     })
   }
 
+  // Public repo: token optional. Use it if present, otherwise call GitHub
+  // unauthenticated so an expired GITHUB_TOKEN doesn't break downloads.
   const token = process.env.GITHUB_TOKEN
-  if (!token) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+  const releaseHeaders: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'Recrate-Website',
   }
+  if (token) releaseHeaders.Authorization = `Bearer ${token}`
 
   try {
     const response = await fetch(
       'https://api.github.com/repos/djnewage/Recrate/releases/latest',
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'Recrate-Website',
-        },
-      }
+      { headers: releaseHeaders }
     )
 
     if (!response.ok) {
@@ -64,13 +59,16 @@ export default async function handler(req: Request) {
       })
     }
 
-    // Fetch the asset download URL with auth — GitHub returns a 302 to a temporary S3 URL
+    // Fetch the asset download URL — GitHub returns a 302 to a temporary S3 URL.
+    // Auth is optional for public-repo assets.
+    const assetHeaders: Record<string, string> = {
+      Accept: 'application/octet-stream',
+      'User-Agent': 'Recrate-Website',
+    }
+    if (token) assetHeaders.Authorization = `Bearer ${token}`
+
     const downloadResponse = await fetch(asset.browser_download_url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/octet-stream',
-        'User-Agent': 'Recrate-Website',
-      },
+      headers: assetHeaders,
       redirect: 'manual',
     })
 

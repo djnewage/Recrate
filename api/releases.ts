@@ -19,24 +19,20 @@ export default async function handler(req: Request) {
     })
   }
 
+  // Recrate is a public repo, so the token is optional: use it when present
+  // (higher rate limit), otherwise fall back to unauthenticated requests so a
+  // missing/expired GITHUB_TOKEN doesn't take the download buttons offline.
   const token = process.env.GITHUB_TOKEN
-  if (!token) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+  const ghHeaders: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'Recrate-Website',
   }
+  if (token) ghHeaders.Authorization = `Bearer ${token}`
 
   try {
     const response = await fetch(
       'https://api.github.com/repos/djnewage/Recrate/releases/latest',
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'Recrate-Website',
-        },
-      }
+      { headers: ghHeaders }
     )
 
     if (!response.ok) {
