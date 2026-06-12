@@ -5,10 +5,14 @@ const logger = require('./logger');
 let configCache = {};
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Default values (used if Remote Config fetch fails)
+// Default values (used if Remote Config fetch fails or the param is unset)
 const DEFAULTS = {
   beta_mode: false,
   trial_duration_days: 7,
+  // null = use the per-tier crate_builder limit from config/tiers.js.
+  // Set this Remote Config param to a number to apply a single flat monthly
+  // limit to ALL tiers (e.g. a flat-plan model).
+  crate_builder_monthly_limit: null,
 };
 
 /**
@@ -75,6 +79,14 @@ async function getTrialDurationDays() {
 }
 
 /**
+ * Get the flat monthly crate-builder limit override from Remote Config.
+ * @returns {Promise<number|null>} A flat limit for all tiers, or null to use per-tier limits.
+ */
+async function getCrateBuilderLimit() {
+  return getConfigValue('crate_builder_monthly_limit');
+}
+
+/**
  * Clear the config cache (useful for testing)
  */
 function clearCache() {
@@ -85,5 +97,6 @@ module.exports = {
   getConfigValue,
   getBetaMode,
   getTrialDurationDays,
+  getCrateBuilderLimit,
   clearCache,
 };
