@@ -20,7 +20,9 @@ const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
 const firestore = require('../utils/firestore');
 const logger = require('../utils/logger');
-const { getBetaMode } = require('../utils/remoteConfig');
+const usageTracker = require('../utils/usageTracker');
+const { getQuota } = require('../config/tiers');
+const { getBetaMode, getCrateBuilderLimit } = require('../utils/remoteConfig');
 
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const ENTITLED_TIERS = ['trial', 'pro'];
@@ -109,13 +111,37 @@ function createLLMRoutes() {
     }
 
     try {
-      // Beta testers always pass; otherwise require an active trial/pro user.
+      // Beta mode bypasses entitlement + quota (unlimited during beta). Otherwise
+      // require an active trial/pro user AND enforce the monthly crate-builder quota.
+      // (BYOK requests never reach this endpoint — they call Anthropic directly with
+      // the user's own key — so everything counted here is central-key usage.)
       const betaMode = await getBetaMode();
+      let entitledUser = null;
       if (!betaMode) {
-        const user = await resolveUser(firebaseUid, deviceId);
-        if (!isEntitled(user)) {
+        entitledUser = await resolveUser(firebaseUid, deviceId);
+        if (!isEntitled(entitledUser)) {
           return res.status(403).json({
             error: 'AI features require an active Free Trial or Pro subscription.',
+          });
+        }
+
+        // Monthly quota: a Remote Config override (crate_builder_monthly_limit) sets
+        // a single flat limit for all tiers; otherwise use the per-tier limit.
+        const userId = entitledUser.firebase_uid || entitledUser.id;
+        const override = await getCrateBuilderLimit();
+        const limit =
+          override != null && override !== ''
+            ? Number(override)
+            : getQuota(entitledUser.tier, 'crate_builder');
+        const used = (await usageTracker.getMonthlyUsage(userId, 'crate_builder')).included;
+
+        if (!(limit > 0) || used >= limit) {
+          return res.status(429).json({
+            error:
+              limit > 0
+                ? `You've reached your monthly limit of ${limit} AI crate builds. It resets at the start of next month.`
+                : 'AI crate builder is not available on your plan.',
+            quota: { feature: 'crate_builder', used, limit },
           });
         }
       }
@@ -151,6 +177,24 @@ function createLLMRoutes() {
       logger.info(
         `[LLM] ${identity} -> ${model}: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out in ${Date.now() - startedAt}ms`
       );
+
+      // Count this central-key build against the monthly quota (skipped in beta mode).
+      if (!betaMode && entitledUser) {
+        const userId = entitledUser.firebase_uid || entitledUser.id;
+        try {
+          await usageTracker.recordUsage({
+            userId,
+            deviceId,
+            feature: 'crate_builder',
+            tier: entitledUser.tier,
+            isByok: false,
+            tokensIn: response.usage.input_tokens,
+            tokensOut: response.usage.output_tokens,
+          });
+        } catch (e) {
+          logger.warn(`[LLM] Failed to record usage for ${userId}: ${e.message}`);
+        }
+      }
 
       return res.json({
         text,
