@@ -44,7 +44,13 @@ let anthropicClient = null;
 function getAnthropicClient() {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   if (!anthropicClient) {
-    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    anthropicClient = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      // Bound the call so the endpoint can't hang; stays under the 100s the
+      // desktop ProxyLLMProvider and 120s upstream chain allow.
+      timeout: 90000,
+      maxRetries: 1,
+    });
   }
   return anthropicClient;
 }
@@ -128,6 +134,9 @@ function createLLMRoutes() {
       const maxTokens = options.maxTokens || 4096;
       const temperature = options.temperature ?? 0.7;
 
+      logger.info(`[LLM] ${identity} -> ${model}: requesting completion`);
+      const startedAt = Date.now();
+
       const response = await client.messages.create({
         model,
         max_tokens: maxTokens,
@@ -140,7 +149,7 @@ function createLLMRoutes() {
       const text = textContent ? textContent.text : '';
 
       logger.info(
-        `[LLM] ${identity} -> ${model}: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out`
+        `[LLM] ${identity} -> ${model}: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out in ${Date.now() - startedAt}ms`
       );
 
       return res.json({

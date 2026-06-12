@@ -11,7 +11,12 @@
  * getInfo) so LLMService can use either interchangeably.
  */
 
+const axios = require("axios");
 const logger = require("../../utils/logger");
+
+// Under the 120s upstream budget (mobile + proxy WS forwarding) so a slow/hung
+// call fails with a clear error instead of a silent timeout shown as "Network Error".
+const REQUEST_TIMEOUT_MS = 100000;
 
 class ProxyLLMProvider {
   /**
@@ -40,38 +45,45 @@ class ProxyLLMProvider {
     const auth = options.auth || {};
 
     logger.info(`[ProxyLLM] Forwarding completion to ${this.endpoint}`);
+    const startedAt = Date.now();
 
+    // Use axios (not the global fetch) — fetch is unreliable in the packaged
+    // Electron main process; axios uses Node's http/https and is proven here.
     let response;
     try {
-      response = await fetch(this.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(auth.firebaseUid ? { "X-Firebase-UID": auth.firebaseUid } : {}),
-          ...(auth.deviceId ? { "X-Device-Id": auth.deviceId } : {}),
-        },
-        body: JSON.stringify({
+      response = await axios.post(
+        this.endpoint,
+        {
           systemPrompt,
           userPrompt,
           options: { maxTokens, temperature, model: this.model },
-        }),
-      });
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...(auth.firebaseUid ? { "X-Firebase-UID": auth.firebaseUid } : {}),
+            ...(auth.deviceId ? { "X-Device-Id": auth.deviceId } : {}),
+          },
+          timeout: REQUEST_TIMEOUT_MS,
+          validateStatus: () => true, // handle status codes ourselves
+        }
+      );
     } catch (error) {
-      logger.error(`[ProxyLLM] Network error: ${error.message}`);
-      const apiError = new Error(`Failed to reach AI service: ${error.message}`);
-      apiError.status = 503;
+      // No HTTP response (timeout, connection refused, DNS, etc.)
+      const timedOut = error.code === "ECONNABORTED";
+      const message = timedOut
+        ? "AI service timed out. Please try again."
+        : `Could not reach the AI service: ${error.message}`;
+      logger.error(`[ProxyLLM] Request failed: ${error.code || ""} ${error.message}`);
+      const apiError = new Error(message);
+      apiError.status = timedOut ? 504 : 503;
       apiError.provider = "proxy";
       throw apiError;
     }
 
-    if (!response.ok) {
-      let message = `AI service error (${response.status})`;
-      try {
-        const body = await response.json();
-        if (body && body.error) message = body.error;
-      } catch {
-        /* non-JSON error body */
-      }
+    if (response.status < 200 || response.status >= 300) {
+      const message =
+        (response.data && response.data.error) || `AI service error (${response.status})`;
       logger.error(`[ProxyLLM] Error ${response.status}: ${message}`);
       const apiError = new Error(message);
       apiError.status = response.status;
@@ -79,9 +91,9 @@ class ProxyLLMProvider {
       throw apiError;
     }
 
-    const data = await response.json();
+    const data = response.data || {};
     logger.info(
-      `[ProxyLLM] Response received - ${data.usage?.inputTokens ?? 0} in, ${data.usage?.outputTokens ?? 0} out`
+      `[ProxyLLM] Response received in ${Date.now() - startedAt}ms - ${data.usage?.inputTokens ?? 0} in, ${data.usage?.outputTokens ?? 0} out`
     );
 
     return {
