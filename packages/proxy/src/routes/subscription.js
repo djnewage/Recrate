@@ -271,6 +271,37 @@ function createSubscriptionRoutes() {
   });
 
   /**
+   * GET /api/subscription/tier
+   * Lightweight, side-effect-free tier lookup for the desktop server (which has
+   * no Firebase credentials in the packaged app). Returns { tier, betaMode } only
+   * — no login_count increment / analytics, unlike /status. Does NOT create users.
+   */
+  router.get('/tier', async (req, res) => {
+    try {
+      const firebaseUid = req.headers['x-firebase-uid'];
+      const deviceId = req.headers['x-device-id'];
+
+      if (!firebaseUid && !deviceId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const betaMode = await getBetaMode();
+
+      let user = await getUser(firebaseUid, deviceId);
+      if (!user) {
+        // Unknown user → treat as trial (don't create a record from this endpoint)
+        return res.json({ tier: 'trial', betaMode });
+      }
+
+      user = await checkExpiration(user);
+      res.json({ tier: user.tier, betaMode });
+    } catch (error) {
+      logger.error('[Subscription] Error getting tier:', error);
+      res.status(500).json({ error: 'Failed to get tier' });
+    }
+  });
+
+  /**
    * POST /api/subscription/start-trial
    * Start the free trial for a user (if not already started)
    */

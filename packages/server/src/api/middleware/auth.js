@@ -5,6 +5,46 @@ const { getTier, isByokAllowed } = require('../../config/tiers');
 const { verifyIdToken } = require('../../utils/firebase');
 const { getTrialDurationDays } = require('../../utils/remoteConfig');
 const { setUser: setSentryUser } = require('../../utils/sentry');
+const config = require('../../utils/config');
+
+// The packaged desktop app has no Firebase credentials, so it can't read Firestore
+// directly. The proxy is the subscription authority — ask it for the user's tier
+// instead of defaulting everyone to 'trial'. Cached briefly to avoid a per-request
+// round-trip. betaMode is treated as Pro (matches the mobile's behavior).
+const tierCache = new Map(); // identity -> { tier, ts }
+const TIER_CACHE_TTL_MS = 60 * 1000;
+
+async function resolveTierFromProxy(firebaseUid, deviceId) {
+  const identity = firebaseUid || deviceId;
+  const cached = tierCache.get(identity);
+  if (cached && Date.now() - cached.ts < TIER_CACHE_TTL_MS) {
+    return cached.tier;
+  }
+
+  try {
+    const axios = require('axios');
+    const base = (config.ai?.proxyUrl || '').replace(/\/+$/, '');
+    const resp = await axios.get(`${base}/api/subscription/tier`, {
+      headers: {
+        ...(firebaseUid ? { 'X-Firebase-UID': firebaseUid } : {}),
+        ...(deviceId ? { 'X-Device-Id': deviceId } : {}),
+      },
+      timeout: 8000,
+      validateStatus: () => true,
+    });
+
+    if (resp.status === 200 && resp.data) {
+      const tier = resp.data.betaMode ? 'pro' : (resp.data.tier || 'trial');
+      tierCache.set(identity, { tier, ts: Date.now() });
+      return tier;
+    }
+    logger.warn(`[Auth] Proxy tier lookup returned ${resp.status}; defaulting to trial`);
+  } catch (err) {
+    logger.warn(`[Auth] Proxy tier lookup failed: ${err.message}; defaulting to trial`);
+  }
+
+  return 'trial'; // last-resort fallback if the proxy is unreachable
+}
 
 /**
  * Require authentication - extracts user from Firebase ID token, Firebase UID header, or device ID
@@ -51,13 +91,14 @@ async function requireAuth(req, res, next) {
       });
     }
 
-    // Check if Firestore is available
+    // Check if Firestore is available. The packaged desktop has no Firebase creds,
+    // so it can't read Firestore — ask the proxy (the subscription authority) for
+    // the real tier instead of defaulting every user to 'trial'.
     if (!firestore.isAvailable()) {
-      // Allow requests without Firestore for development/testing
-      logger.warn('[Auth] Firestore not available, using default trial user');
+      const tier = await resolveTierFromProxy(firebaseUid, deviceId);
       req.user = {
         id: firebaseUid || deviceId || 'anonymous',
-        tier: 'trial',
+        tier,
         byokKeyHash: null,
         verifiedByToken,
       };
