@@ -270,9 +270,12 @@ function createWebhookRoutes() {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      // Get raw body and parse the JSON
-      const rawBody = req.body.toString('utf8');
-      const payload = JSON.parse(rawBody);
+      // The global express.json() middleware (index.js) parses the body before
+      // this route's express.raw() runs, so req.body is usually an already-parsed
+      // object; it's only a Buffer if raw() won. Handle both.
+      const payload = Buffer.isBuffer(req.body)
+        ? JSON.parse(req.body.toString('utf8'))
+        : req.body;
       const { event } = payload;
 
       if (!event) {
