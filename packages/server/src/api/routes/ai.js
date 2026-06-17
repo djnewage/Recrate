@@ -85,7 +85,7 @@ function createAIRoutes(parser, writer = null) {
   router.post(
     "/curate",
     aiRateLimiter,
-    requireTier(["trial", "pro"]), // Basic tier blocked
+    requireTier(["trial", "pro"]), // expired/lapsed blocked
     requireQuota("crate_builder"), // BYOK bypasses this for crate_builder
     async (req, res) => {
       try {

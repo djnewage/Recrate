@@ -228,7 +228,7 @@ async function requireAuth(req, res, next) {
 
 /**
  * Require specific tier(s) for route access
- * @param {string[]} allowedTiers - Array of allowed tiers ('trial', 'basic', 'pro')
+ * @param {string[]} allowedTiers - Array of allowed tiers ('trial', 'pro')
  */
 function requireTier(allowedTiers) {
   return (req, res, next) => {
@@ -237,7 +237,7 @@ function requireTier(allowedTiers) {
     }
 
     if (!allowedTiers.includes(req.user.tier)) {
-      const tierNames = { trial: 'Free Trial', basic: 'Basic', pro: 'Pro' };
+      const tierNames = { trial: 'Free Trial', pro: 'Pro' };
       return res.status(403).json({
         success: false,
         error: `This feature requires ${allowedTiers.map((t) => tierNames[t]).join(' or ')} subscription.`,

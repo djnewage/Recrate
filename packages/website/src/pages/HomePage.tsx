@@ -645,7 +645,7 @@ export default function HomePage() {
               },
               {
                 question: 'Is Recrate free?',
-                answer: 'Recrate offers a free 7-day trial with full access to all features. After the trial, a subscription is required to continue using the app.',
+                answer: 'Recrate offers a free 7-day trial with full access to all features, including 15 AI crate builds. After the trial, it’s a single $9.99/month plan that keeps everything unlocked.',
               },
               {
                 question: 'Does it work with Serato DJ Pro?',
