@@ -168,7 +168,7 @@ function createIdentifyRoutes() {
     '/',
     identifyLimiter,
     requireAuth,
-    requireTier(['trial', 'pro']), // Basic tier blocked
+    requireTier(['trial', 'pro']), // expired/lapsed blocked
     requireQuota('track_identification'), // BYOK does NOT bypass this (uses our ACRCloud)
     validateIdentifyPayload,
     async (req, res) => {
