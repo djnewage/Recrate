@@ -22,6 +22,21 @@ export const OPERATION_STATUS = {
 // Generate unique ID
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+/**
+ * Recover operations stranded mid-sync. If the app is killed after an op is flipped to
+ * SYNCING but before it is dequeued, the persisted op stays SYNCING — invisible to
+ * getPendingCount() and never retried (a silently lost change). Reset those back to
+ * PENDING so they are counted and synced again. Exported for direct testing.
+ * @param {Array} queue
+ * @returns {Array}
+ */
+export const recoverStrandedOperations = (queue) => {
+  if (!Array.isArray(queue)) return queue;
+  return queue.map((op) =>
+    op.status === OPERATION_STATUS.SYNCING ? { ...op, status: OPERATION_STATUS.PENDING } : op
+  );
+};
+
 // Generate temporary crate ID
 export const generateTempCrateId = () => `temp-${generateId()}`;
 
@@ -310,6 +325,8 @@ const useOfflineStore = create(
           if (state.isSyncing) {
             state.isSyncing = false;
           }
+          // Recover operations stranded mid-sync so they are retried instead of lost.
+          state.operationQueue = recoverStrandedOperations(state.operationQueue);
         }
       },
     }

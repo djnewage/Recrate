@@ -3,8 +3,12 @@
  * Tests sync queue processing, conflict detection, and resolution
  */
 
-import { syncQueue, isSyncNeeded } from '../../services/SyncService';
-import useOfflineStore, { OPERATION_TYPES, OPERATION_STATUS } from '../../store/offlineStore';
+import { syncQueue, isSyncNeeded, triggerSyncIfPending } from '../../services/SyncService';
+import useOfflineStore, {
+  OPERATION_TYPES,
+  OPERATION_STATUS,
+  recoverStrandedOperations,
+} from '../../store/offlineStore';
 import { useConnectionStore } from '../../store/connectionStore';
 
 // Mock the API service
@@ -284,6 +288,77 @@ describe('SyncService', () => {
         expect(progressUpdates[0]).toEqual({ current: 1, total: 2 });
         expect(progressUpdates[1]).toEqual({ current: 2, total: 2 });
       });
+
+      it('should reset isSyncing even if an unexpected error is thrown mid-sync', async () => {
+        const { enqueueOperation } = useOfflineStore.getState();
+        enqueueOperation(OPERATION_TYPES.CREATE_CRATE, { name: 'Test' });
+
+        // Force an unexpected throw inside the sync loop (not a normal API error, which is
+        // already caught per-operation). Without the try/finally this would leave isSyncing
+        // stuck true and permanently disable the manual sync button.
+        const original = useOfflineStore.getState().setSyncProgress;
+        useOfflineStore.setState({
+          setSyncProgress: () => {
+            throw new Error('boom');
+          },
+        });
+
+        try {
+          await expect(syncQueue()).rejects.toThrow('boom');
+          expect(useOfflineStore.getState().isSyncing).toBe(false);
+        } finally {
+          useOfflineStore.setState({ setSyncProgress: original });
+        }
+      });
+    });
+  });
+
+  describe('triggerSyncIfPending', () => {
+    it('runs sync when connected and there are pending operations', async () => {
+      useOfflineStore.getState().enqueueOperation(OPERATION_TYPES.CREATE_CRATE, { name: 'T' });
+      apiService.createCrate.mockResolvedValue({ crate: { id: 'server-1' } });
+
+      const result = await triggerSyncIfPending();
+
+      expect(apiService.createCrate).toHaveBeenCalled();
+      expect(result.synced).toBe(1);
+    });
+
+    it('skips (no sync) when the server is not connected', async () => {
+      useConnectionStore.setState({ isConnected: false });
+      useOfflineStore.getState().enqueueOperation(OPERATION_TYPES.CREATE_CRATE, { name: 'T' });
+
+      const result = await triggerSyncIfPending();
+
+      expect(apiService.createCrate).not.toHaveBeenCalled();
+      expect(result.skipped).toBe(true);
+    });
+
+    it('skips (no sync) when there are no pending operations', async () => {
+      const result = await triggerSyncIfPending();
+
+      expect(apiService.createCrate).not.toHaveBeenCalled();
+      expect(result.skipped).toBe(true);
+    });
+  });
+
+  describe('recoverStrandedOperations', () => {
+    it('resets SYNCING ops back to PENDING (app killed mid-sync) without touching others', () => {
+      const queue = [
+        { id: '1', status: OPERATION_STATUS.SYNCING, type: OPERATION_TYPES.CREATE_CRATE },
+        { id: '2', status: OPERATION_STATUS.PENDING, type: OPERATION_TYPES.ADD_TRACKS },
+        { id: '3', status: OPERATION_STATUS.FAILED, type: OPERATION_TYPES.DELETE_CRATE },
+      ];
+
+      const recovered = recoverStrandedOperations(queue);
+
+      expect(recovered[0].status).toBe(OPERATION_STATUS.PENDING);
+      expect(recovered[1].status).toBe(OPERATION_STATUS.PENDING);
+      expect(recovered[2].status).toBe(OPERATION_STATUS.FAILED);
+    });
+
+    it('handles a non-array queue safely', () => {
+      expect(recoverStrandedOperations(undefined)).toBeUndefined();
     });
   });
 
