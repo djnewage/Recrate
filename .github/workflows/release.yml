@@ -111,6 +111,8 @@ jobs:
             packages/desktop/dist/*.exe
             packages/desktop/dist/*.AppImage
             packages/desktop/dist/*.deb
+            packages/desktop/dist/*.yml
+            packages/desktop/dist/*.blockmap
           if-no-files-found: ignore
 
   release:
@@ -152,6 +154,8 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.AppImage
             artifacts/**/*.deb
+            artifacts/**/*.yml
+            artifacts/**/*.blockmap
           generate_release_notes: true
           draft: false
         env:

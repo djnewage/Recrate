@@ -26,6 +26,7 @@
     "dotenv": "^17.2.3",
     "electron-log": "^5.0.0",
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.3.9",
     "qrcode": "^1.5.3",
     "uuid": "^9.0.1",
     "ws": "^8.14.2"
@@ -41,6 +42,11 @@
     "appId": "com.recrate.desktop",
     "afterSign": "scripts/notarize.js",
     "productName": "Recrate",
+    "publish": {
+      "provider": "github",
+      "owner": "djnewage",
+      "repo": "Recrate"
+    },
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "main.js",
