@@ -9,6 +9,11 @@ const apiRouter = require('./api');
 const logger = require('./utils/logger');
 const { initSentry, captureError, flush: flushSentry } = require('./utils/sentry');
 const { initializeFirebase } = require('./utils/firebase');
+const { validateEnv } = require('./utils/validateEnv');
+const { getBetaMode } = require('./utils/remoteConfig');
+
+// Fail fast in production if required configuration is missing.
+validateEnv();
 
 // Initialize Sentry early
 initSentry();
@@ -19,9 +24,21 @@ initializeFirebase();
 const app = express();
 const server = createServer(app);
 
+// CORS: restrict to an explicit allowlist when ALLOWED_ORIGINS is set. Native
+// mobile/desktop clients send no Origin header and are unaffected; only browser
+// cross-origin callers are constrained. Empty allowlist (dev) stays permissive —
+// validateEnv requires ALLOWED_ORIGINS in production.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+const corsOptions = allowedOrigins.length
+  ? { origin: allowedOrigins, credentials: true }
+  : {};
+
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' })); // Increased for base64 audio uploads (track identification)
 
 // Initialize Binary WebSocket manager (desktop connects here)
@@ -52,6 +69,20 @@ server.listen(PORT, HOST, () => {
   logger.info(`🚀 Proxy server running on ${HOST}:${PORT}`);
   logger.info(`📱 Mobile API: http://localhost:${PORT}/api`);
   logger.info(`🖥️  Desktop Binary WebSocket: ws://localhost:${PORT}/ws/desktop`);
+
+  // Beta mode bypasses entitlement + quota (unlimited AI). Loudly warn if it is
+  // ever left on in production — it should only be enabled during the beta.
+  if (process.env.NODE_ENV === 'production') {
+    getBetaMode()
+      .then((beta) => {
+        if (beta) {
+          logger.warn(
+            '[Env] ⚠️  BETA MODE IS ENABLED IN PRODUCTION — AI entitlement and quota checks are bypassed.'
+          );
+        }
+      })
+      .catch(() => {});
+  }
 });
 
 // Graceful shutdown

@@ -49,4 +49,46 @@ function isInitialized() {
   return firebaseApp !== null;
 }
 
-module.exports = { initializeFirebase, isInitialized };
+/**
+ * Verify a Firebase ID token and return the decoded claims.
+ * Throws if the token is missing/invalid/expired, so callers can map it to a 401.
+ * @param {string} idToken
+ * @returns {Promise<admin.auth.DecodedIdToken>}
+ */
+async function verifyIdToken(idToken) {
+  if (!firebaseApp) {
+    throw new Error('Firebase not initialized');
+  }
+  return admin.auth().verifyIdToken(idToken);
+}
+
+/**
+ * Look up whether a UID corresponds to a real Firebase Auth user. Used to block
+ * fabricated identities from minting trials / spending the shared AI key on the
+ * desktop path (which forwards a UID string, not a verifiable token).
+ *
+ * Returns a conclusive status so callers can fail *closed* on a genuine
+ * "user does not exist" but fail *open* on a transient Auth error (so a Firebase
+ * outage never 403s a legitimate user):
+ *   'exists'    — the user is real
+ *   'not_found' — the user definitively does not exist (or uid invalid)
+ *   'error'     — lookup could not be completed (Firebase down, not initialized)
+ * @param {string} uid
+ * @returns {Promise<'exists'|'not_found'|'error'>}
+ */
+async function lookupFirebaseUser(uid) {
+  if (!firebaseApp) return 'error';
+  if (!uid) return 'not_found';
+  try {
+    await admin.auth().getUser(uid);
+    return 'exists';
+  } catch (error) {
+    if (error && (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-uid')) {
+      return 'not_found';
+    }
+    logger.warn(`[Firebase] User lookup error for ${uid}: ${error.message}`);
+    return 'error';
+  }
+}
+
+module.exports = { initializeFirebase, isInitialized, verifyIdToken, lookupFirebaseUser };

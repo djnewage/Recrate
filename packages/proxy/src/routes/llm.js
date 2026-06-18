@@ -23,9 +23,14 @@ const logger = require('../utils/logger');
 const usageTracker = require('../utils/usageTracker');
 const { getQuota } = require('../config/tiers');
 const { getBetaMode, getCrateBuilderLimit } = require('../utils/remoteConfig');
+const { requireAuth, requireRealIdentity } = require('../middleware/auth');
 
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const ENTITLED_TIERS = ['trial', 'pro'];
+
+// Upper bound on combined prompt size. Generous for crate-builder prompts but
+// cheaply rejects abusive/oversized payloads before they reach Anthropic.
+const MAX_PROMPT_CHARS = 32000;
 
 // Lightweight in-memory rate limit per identity (backstop against direct abuse).
 // Slightly above the desktop's 30/hour so it never double-blocks the legit path.
@@ -96,19 +101,17 @@ function createLLMRoutes() {
    * Body: { systemPrompt, userPrompt, options?: { maxTokens, temperature, model } }
    * Returns: { text, usage: { inputTokens, outputTokens, totalTokens }, model }
    */
-  router.post('/complete', async (req, res) => {
+  // requireAuth establishes req.auth (verified token preferred); requireRealIdentity
+  // ensures the identity is a real Firebase account before it can spend the shared
+  // Anthropic key — blocking fabricated device-ids.
+  router.post('/complete', requireAuth, requireRealIdentity, async (req, res) => {
     const client = getAnthropicClient();
     if (!client) {
       logger.error('[LLM] ANTHROPIC_API_KEY not set on proxy');
       return res.status(503).json({ error: 'AI service not configured' });
     }
 
-    const firebaseUid = req.headers['x-firebase-uid'];
-    const deviceId = req.headers['x-device-id'];
-
-    if (!firebaseUid && !deviceId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
+    const { firebaseUid, deviceId } = req.auth;
 
     try {
       // Beta mode bypasses entitlement + quota (unlimited during beta). Otherwise
@@ -154,6 +157,13 @@ function createLLMRoutes() {
       const { systemPrompt, userPrompt, options = {} } = req.body || {};
       if (!userPrompt || typeof userPrompt !== 'string') {
         return res.status(400).json({ error: 'userPrompt is required' });
+      }
+      if (systemPrompt != null && typeof systemPrompt !== 'string') {
+        return res.status(400).json({ error: 'systemPrompt must be a string' });
+      }
+      const promptChars = (systemPrompt ? systemPrompt.length : 0) + userPrompt.length;
+      if (promptChars > MAX_PROMPT_CHARS) {
+        return res.status(400).json({ error: 'Prompt is too large' });
       }
 
       const model = options.model || DEFAULT_MODEL;
