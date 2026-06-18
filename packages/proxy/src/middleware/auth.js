@@ -23,7 +23,7 @@
  * to forward a token.
  */
 
-const { verifyIdToken, firebaseUserExists, isInitialized } = require('../utils/firebase');
+const { verifyIdToken, lookupFirebaseUser, isInitialized } = require('../utils/firebase');
 const logger = require('../utils/logger');
 
 function getBearerToken(req) {
@@ -42,13 +42,7 @@ function getBearerToken(req) {
 async function requireAuth(req, res, next) {
   const token = getBearerToken(req);
 
-  if (token) {
-    // If Firebase isn't initialized we can't verify a supplied token. Fail closed
-    // rather than trusting it — boot-time env validation should prevent this in prod.
-    if (!isInitialized()) {
-      logger.error('[Auth] Bearer token supplied but Firebase is not initialized');
-      return res.status(503).json({ error: 'Auth service unavailable' });
-    }
+  if (token && isInitialized()) {
     try {
       const decoded = await verifyIdToken(token);
       req.auth = {
@@ -58,12 +52,19 @@ async function requireAuth(req, res, next) {
       };
       return next();
     } catch (error) {
-      logger.warn(`[Auth] ID token verification failed: ${error.message}`);
-      return res.status(401).json({ error: 'Invalid or expired authentication token' });
+      // A supplied token that won't verify (expired, clock skew, a transient Firebase
+      // outage) must NOT lock the user out — fall through to the legacy header identity.
+      // This grants an attacker nothing: the header path is reachable without a token
+      // anyway, and requireRealIdentity still gates trial-minting / key-spending routes.
+      logger.warn(`[Auth] ID token verification failed; using header identity: ${error.message}`);
     }
+  } else if (token) {
+    // Token present but Firebase isn't initialized — can't verify. Degrade to the
+    // header identity rather than hard-failing (boot env validation guards prod).
+    logger.warn('[Auth] Bearer token supplied but Firebase not initialized; using header identity');
   }
 
-  // No token — fall back to legacy identity headers (desktop / older clients).
+  // No usable token — fall back to legacy identity headers (desktop / older clients).
   const firebaseUid = req.headers['x-firebase-uid'] || null;
   const deviceId = req.headers['x-device-id'] || null;
   if (!firebaseUid && !deviceId) {
@@ -86,8 +87,19 @@ async function requireRealIdentity(req, res, next) {
   const auth = req.auth || {};
   if (auth.verified) return next();
 
-  if (auth.firebaseUid && (await firebaseUserExists(auth.firebaseUid))) {
-    return next();
+  // Unverified identity: only allow it through if it maps to a real Firebase user.
+  // Fail *closed* on a definitive "not found" (the abuse case); fail *open* on a
+  // transient lookup error so a Firebase blip doesn't block a legitimate user.
+  if (auth.firebaseUid) {
+    const status = await lookupFirebaseUser(auth.firebaseUid);
+    if (status === 'exists') return next();
+    if (status === 'error') {
+      logger.warn(
+        `[Auth] Could not verify identity ${auth.firebaseUid} (transient); allowing through`
+      );
+      return next();
+    }
+    // status === 'not_found' → fall through to 403
   }
 
   return res.status(403).json({
