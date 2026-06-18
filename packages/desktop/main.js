@@ -12,6 +12,7 @@ const os = require('os');
 const fs = require('fs');
 const BinaryProxyClient = require('./src/binaryProxyClient');
 const { initSentry, captureError, flush: flushSentry } = require('./src/sentry-main');
+const { initAutoUpdater, checkForUpdates } = require('./src/autoUpdater');
 
 // Initialize Sentry early for error tracking
 initSentry();
@@ -174,6 +175,11 @@ function updateTrayMenu() {
         mainWindow.show();
         mainWindow.webContents.send('navigate-to', 'settings');
       }
+    },
+    { type: 'separator' },
+    {
+      label: 'Check for Updates…',
+      click: () => checkForUpdates()
     },
     { type: 'separator' },
     {
@@ -742,6 +748,9 @@ ipcMain.handle('get-indexing-status', () => {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+
+  // Background auto-update (packaged builds only). Refresh the tray when state changes.
+  initAutoUpdater({ onStatus: () => updateTrayMenu() });
 
   // Auto-start server if configured
   const autoStart = store.get('autoStart', true);
