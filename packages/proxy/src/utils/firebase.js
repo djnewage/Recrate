@@ -49,4 +49,35 @@ function isInitialized() {
   return firebaseApp !== null;
 }
 
-module.exports = { initializeFirebase, isInitialized };
+/**
+ * Verify a Firebase ID token and return the decoded claims.
+ * Throws if the token is missing/invalid/expired, so callers can map it to a 401.
+ * @param {string} idToken
+ * @returns {Promise<admin.auth.DecodedIdToken>}
+ */
+async function verifyIdToken(idToken) {
+  if (!firebaseApp) {
+    throw new Error('Firebase not initialized');
+  }
+  return admin.auth().verifyIdToken(idToken);
+}
+
+/**
+ * Whether a UID corresponds to a real Firebase Auth user. Used to block
+ * fabricated identities from minting trials / spending the shared AI key on
+ * the desktop path (which forwards a UID string, not a verifiable token).
+ * Returns false on any lookup failure (unknown user, Firebase down, etc.).
+ * @param {string} uid
+ * @returns {Promise<boolean>}
+ */
+async function firebaseUserExists(uid) {
+  if (!firebaseApp || !uid) return false;
+  try {
+    await admin.auth().getUser(uid);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { initializeFirebase, isInitialized, verifyIdToken, firebaseUserExists };

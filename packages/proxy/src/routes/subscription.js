@@ -15,6 +15,7 @@ const { trackEvent } = require('../utils/analytics');
 const admin = require('firebase-admin');
 const { setUser: setSentryUser } = require('../utils/sentry');
 const { getBetaMode, getTrialDurationDays } = require('../utils/remoteConfig');
+const { requireAuth, requireRealIdentity } = require('../middleware/auth');
 
 /**
  * Get user by Firebase UID or device ID (for backwards compatibility)
@@ -140,21 +141,17 @@ function getDaysRemaining(endDateStr) {
 function createSubscriptionRoutes() {
   const router = express.Router();
 
+  // Establish verified identity (Bearer ID token preferred, legacy headers as
+  // fallback) on req.auth for every subscription route.
+  router.use(requireAuth);
+
   /**
    * GET /api/subscription/status
    * Get current subscription status for the authenticated user
    */
   router.get('/status', async (req, res) => {
     try {
-      const firebaseUid = req.headers['x-firebase-uid'];
-      const deviceId = req.headers['x-device-id'];
-
-      if (!firebaseUid && !deviceId) {
-        return res.status(401).json({
-          error: 'Authentication required',
-          message: 'Provide X-Firebase-UID or X-Device-Id header',
-        });
-      }
+      const { firebaseUid, deviceId } = req.auth;
 
       // Get or create user
       let user = await getOrCreateUser(firebaseUid, deviceId);
@@ -278,12 +275,7 @@ function createSubscriptionRoutes() {
    */
   router.get('/tier', async (req, res) => {
     try {
-      const firebaseUid = req.headers['x-firebase-uid'];
-      const deviceId = req.headers['x-device-id'];
-
-      if (!firebaseUid && !deviceId) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
+      const { firebaseUid, deviceId } = req.auth;
 
       const betaMode = await getBetaMode();
 
@@ -305,14 +297,9 @@ function createSubscriptionRoutes() {
    * POST /api/subscription/start-trial
    * Start the free trial for a user (if not already started)
    */
-  router.post('/start-trial', async (req, res) => {
+  router.post('/start-trial', requireRealIdentity, async (req, res) => {
     try {
-      const firebaseUid = req.headers['x-firebase-uid'];
-      const deviceId = req.headers['x-device-id'];
-
-      if (!firebaseUid && !deviceId) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
+      const { firebaseUid, deviceId } = req.auth;
 
       // Get or create user
       let user = await getOrCreateUser(firebaseUid, deviceId);
@@ -358,13 +345,12 @@ function createSubscriptionRoutes() {
    * POST /api/subscription/link-firebase
    * Link a Firebase UID to an existing device-based user
    */
-  router.post('/link-firebase', async (req, res) => {
+  router.post('/link-firebase', requireRealIdentity, async (req, res) => {
     try {
-      const firebaseUid = req.headers['x-firebase-uid'];
-      const deviceId = req.headers['x-device-id'];
+      const { firebaseUid, deviceId } = req.auth;
 
       if (!firebaseUid) {
-        return res.status(400).json({ error: 'X-Firebase-UID header required' });
+        return res.status(400).json({ error: 'A signed-in Firebase account is required' });
       }
 
       // Check if Firebase UID already has an account
