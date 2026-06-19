@@ -384,14 +384,46 @@ export default function App() {
   }, []);
 
   // Drain the queue when the app returns to the foreground (e.g. user reopens the app with
-  // the connection already up and edits still pending).
+  // the connection already up and edits still pending). Also probe for the server returning
+  // in case we dropped offline while backgrounded.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        useConnectionStore.getState().attemptReconnect();
         triggerSyncIfPending();
       }
     });
     return () => subscription.remove();
+  }, []);
+
+  // Active reconnection probe: once a write/read drops us to offline mode, nothing else
+  // detects the desktop server coming back (no NetInfo event fires if the phone's own
+  // network never changed). While offline with a known server, poll for it returning;
+  // the resulting isConnected false->true transition drains the queue via the subscription
+  // above. The interval only runs while offline and is cleared as soon as we reconnect.
+  useEffect(() => {
+    let intervalId = null;
+    const start = () => {
+      if (intervalId) return;
+      intervalId = setInterval(() => {
+        useConnectionStore.getState().attemptReconnect();
+      }, 10000);
+    };
+    const stop = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+    if (!useConnectionStore.getState().isConnected) start();
+    const unsubscribe = useConnectionStore.subscribe((state) => {
+      if (state.isConnected) stop();
+      else start();
+    });
+    return () => {
+      stop();
+      unsubscribe();
+    };
   }, []);
 
   return (

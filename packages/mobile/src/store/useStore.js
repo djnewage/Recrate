@@ -13,6 +13,13 @@ import { logEvent } from '../config/firebase';
 let lastSkipTime = 0;
 const SKIP_COOLDOWN = 800; // 800ms minimum between skips
 
+// A failed crate request means "server unreachable" when there's no HTTP response
+// (LAN-direct timeout/refused) OR the cloud proxy relayed a 502/503/504 — the desktop's
+// WebSocket is down ("Desktop not connected", proxy api.js). In those cases we drop to
+// offline mode and queue the write instead of surfacing an error to the user.
+const isServerUnreachable = (error) =>
+  !error?.response || [502, 503, 504].includes(error.response.status);
+
 /**
  * Pre-normalize tracks for faster search matching
  * Adds _normalizedTitle and _normalizedArtist fields
@@ -407,6 +414,10 @@ const useStore = create(
         isLoadingCrates: false,
       });
     } catch (error) {
+      // Server unreachable → flip to offline so writes queue and the offline UI shows.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+      }
       // If we have cached crates, don't show error - just use cached data
       if (cachedCrates.length > 0) {
         set({ isLoadingCrates: false, cratesError: null });
@@ -453,6 +464,10 @@ const useStore = create(
 
       set({ selectedCrate: crate, isLoadingCrates: false });
     } catch (error) {
+      // Server unreachable → flip to offline so writes queue and the offline UI shows.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+      }
       // If API fails and we have cached crate data, use it
       if (localCrate) {
         // Get cached track IDs (merges server cache + any tracks added while offline)
@@ -518,13 +533,22 @@ const useStore = create(
     // Online mode - original behavior
     try {
       await apiService.createCrate(name, color, resolvedParentId);
-      await get().loadCrates();
-      logEvent('crate_created');
-      return true;
     } catch (error) {
+      // Server unreachable mid-session → drop to offline and queue instead of failing.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+        return get().createCrate(name, color, parentId);
+      }
       set({ cratesError: error.message });
       return false;
     }
+    try {
+      await get().loadCrates();
+    } catch {
+      // best-effort refresh
+    }
+    logEvent('crate_created');
+    return true;
   },
 
   toggleCrateExpanded: (crateId) => {
@@ -610,14 +634,23 @@ const useStore = create(
     // Online mode - original behavior
     try {
       await apiService.addTracksToCrate(resolvedCrateId, trackIds);
-      await get().loadCrate(crateId);
-      await get().loadCrates(); // Refresh the crates list to update track counts
-      logEvent('tracks_added_to_crate', { count: trackIds.length });
-      return true;
     } catch (error) {
+      // Server unreachable mid-session → drop to offline and queue instead of failing.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+        return get().addTracksToCrate(crateId, trackIds);
+      }
       set({ cratesError: error.message });
       return false;
     }
+    try {
+      await get().loadCrate(crateId);
+      await get().loadCrates(); // Refresh the crates list to update track counts
+    } catch {
+      // best-effort refresh
+    }
+    logEvent('tracks_added_to_crate', { count: trackIds.length });
+    return true;
   },
 
   removeTrackFromCrate: async (crateId, trackId) => {
@@ -677,13 +710,22 @@ const useStore = create(
     // Online mode - original behavior
     try {
       await apiService.removeTrackFromCrate(resolvedCrateId, trackId);
-      await get().loadCrate(crateId);
-      await get().loadCrates(); // Refresh the crates list to update track counts
-      return true;
     } catch (error) {
+      // Server unreachable mid-session → drop to offline and queue instead of failing.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+        return get().removeTrackFromCrate(crateId, trackId);
+      }
       set({ cratesError: error.message });
       return false;
     }
+    try {
+      await get().loadCrate(crateId);
+      await get().loadCrates(); // Refresh the crates list to update track counts
+    } catch {
+      // best-effort refresh
+    }
+    return true;
   },
 
   deleteCrate: async (crateId) => {
@@ -731,13 +773,22 @@ const useStore = create(
     const resolvedCrateId = getServerId(crateId) || crateId;
     try {
       await apiService.deleteCrate(resolvedCrateId);
-      await get().loadCrates(); // Refresh the crates list
-      logEvent('crate_deleted');
-      return true;
     } catch (error) {
+      // Server unreachable mid-session → drop to offline and queue instead of failing.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+        return get().deleteCrate(crateId);
+      }
       set({ cratesError: error.message });
       return false;
     }
+    try {
+      await get().loadCrates(); // Refresh the crates list
+    } catch {
+      // best-effort refresh
+    }
+    logEvent('crate_deleted');
+    return true;
   },
 
   // Helper to check if a crate is locally created (pending sync)
@@ -791,6 +842,12 @@ const useStore = create(
 
   // Player actions
   playTrack: async (track) => {
+    // Streaming requires the desktop server. Don't attempt while offline — otherwise the
+    // PlaybackError handler cycles through tracks hunting for one that loads (looks broken).
+    if (!useConnectionStore.getState().isConnected) {
+      set({ playerError: 'Streaming isn’t available offline.', isBuffering: false, isPlaying: false });
+      return;
+    }
     try {
       set({ playerError: null, isBuffering: true });
 
@@ -848,6 +905,10 @@ const useStore = create(
   },
 
   resumeTrack: async () => {
+    if (!useConnectionStore.getState().isConnected) {
+      set({ playerError: 'Streaming isn’t available offline.', isPlaying: false });
+      return;
+    }
     try {
       await TrackPlayer.play();
       set({ isPlaying: true });

@@ -6,6 +6,7 @@ import TrackPlayer, {
   State,
 } from 'react-native-track-player';
 import apiService from './api';
+import { useConnectionStore } from '../store/connectionStore';
 
 // Debounce lock for error recovery to prevent race conditions
 let isRecoveringFromError = false;
@@ -280,6 +281,20 @@ export function setupEventHandlers(store) {
 
   // Playback error - try to recover by skipping to next working track
   TrackPlayer.addEventListener(Event.PlaybackError, async ({ error }) => {
+    // Offline: every stream fails because the desktop server is unreachable. Don't run
+    // the skip-recovery loop below (it would rapidly cycle through tracks and look broken)
+    // — just stop and surface a clear message.
+    if (!useConnectionStore.getState().isConnected) {
+      isRecoveringFromError = false;
+      try {
+        await TrackPlayer.pause();
+      } catch {
+        // ignore
+      }
+      store.setState({ playerError: 'Streaming isn’t available offline.', isPlaying: false });
+      return;
+    }
+
     // Debounce: prevent multiple concurrent recovery attempts
     const now = Date.now();
     if (isRecoveringFromError) {

@@ -126,6 +126,21 @@ export const useConnectionStore = create((set, get) => ({
     }
   },
 
+  // Lightweight recovery probe: while offline, check whether the known server is reachable
+  // again and, if so, flip back online. App.js polls this on an interval / on foreground;
+  // the resulting isConnected false->true transition triggers the offline-queue sync.
+  attemptReconnect: async () => {
+    const { isConnected, serverURL, lastSuccessfulIP, quickTestConnection } = get();
+    if (isConnected) return true;
+    const url = serverURL || lastSuccessfulIP;
+    if (!url) return false;
+    if (await quickTestConnection(url)) {
+      set({ isConnected: true, serverURL: serverURL || url });
+      return true;
+    }
+    return false;
+  },
+
   // Smart connection detection
   findServer: async () => {
     set({ isSearching: true });
