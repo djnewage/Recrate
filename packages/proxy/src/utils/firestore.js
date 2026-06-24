@@ -253,6 +253,18 @@ async function cleanupOldRecords(monthsToKeep = 3) {
   logger.info(`[Firestore] Cleaned up ${allDocs.length} old records (cutoff: ${cutoffMonth})`);
 }
 
+/**
+ * Permanently delete a user's data: the users/{docId} document AND all of its
+ * subcollections (monthly_quotas, ai_usage). recursiveDelete handles the subcollections
+ * that a plain doc delete would orphan. Used by account deletion.
+ * @param {string} docId
+ */
+async function deleteUserData(docId) {
+  const db = getDb();
+  if (!db) return;
+  await db.recursiveDelete(db.collection('users').doc(docId));
+}
+
 function isAvailable() {
   return getDb() !== null;
 }
@@ -271,5 +283,6 @@ module.exports = {
   getAllMonthlyQuotas,
   recordAiUsage,
   cleanupOldRecords,
+  deleteUserData,
   isAvailable,
 };

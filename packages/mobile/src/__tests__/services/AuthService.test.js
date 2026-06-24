@@ -19,6 +19,13 @@ jest.mock('react-native', () => ({
   },
 }));
 
+// Mock the proxy API client (account deletion goes through it)
+jest.mock('../../services/api', () => ({
+  __esModule: true,
+  default: { deleteAccount: jest.fn() },
+}));
+const apiService = require('../../services/api').default;
+
 describe('AuthService', () => {
   beforeEach(() => {
     // Reset all mocks before each test
@@ -428,37 +435,43 @@ describe('AuthService', () => {
   });
 
   describe('deleteAccount', () => {
-    it('should return success on successful deletion', async () => {
+    beforeEach(() => {
+      apiService.deleteAccount.mockReset();
+    });
+
+    it('deletes server-side then returns success', async () => {
       const mockUser = createMockUser();
       authMockHelpers.setCurrentUser(mockUser);
+      apiService.deleteAccount.mockResolvedValueOnce({ success: true });
 
       const result = await AuthService.deleteAccount();
 
+      // Deletion is delegated to the proxy (Firestore data + Auth user, server-side).
+      expect(apiService.deleteAccount).toHaveBeenCalled();
       expect(result.success).toBe(true);
-      expect(mockUser.delete).toHaveBeenCalled();
     });
 
-    it('should return error when no user is signed in', async () => {
+    it('returns error when no user is signed in (and does not call the server)', async () => {
       authMockHelpers.setCurrentUser(null);
 
       const result = await AuthService.deleteAccount();
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('No user signed in.');
+      expect(apiService.deleteAccount).not.toHaveBeenCalled();
     });
 
-    it('should return requiresReauth on requires-recent-login error', async () => {
+    it('surfaces the server error message when deletion fails', async () => {
       const mockUser = createMockUser();
-      const error = new Error('Requires recent login');
-      error.code = 'auth/requires-recent-login';
-      mockUser.delete.mockRejectedValueOnce(error);
       authMockHelpers.setCurrentUser(mockUser);
+      const err = new Error('Request failed');
+      err.response = { data: { error: 'Failed to delete account' } };
+      apiService.deleteAccount.mockRejectedValueOnce(err);
 
       const result = await AuthService.deleteAccount();
 
       expect(result.success).toBe(false);
-      expect(result.requiresReauth).toBe(true);
-      expect(result.error).toBe('Please sign out and sign in again to delete your account.');
+      expect(result.error).toBe('Failed to delete account');
     });
   });
 

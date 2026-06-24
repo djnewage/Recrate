@@ -16,6 +16,7 @@ const admin = require('firebase-admin');
 const { setUser: setSentryUser } = require('../utils/sentry');
 const { getBetaMode, getTrialDurationDays } = require('../utils/remoteConfig');
 const { requireAuth, requireRealIdentity } = require('../middleware/auth');
+const { deleteAuthUser } = require('../utils/firebase');
 
 /**
  * Get user by Firebase UID or device ID (for backwards compatibility)
@@ -401,6 +402,36 @@ function createSubscriptionRoutes() {
     } catch (error) {
       logger.error('[Subscription] Error linking Firebase:', error);
       res.status(500).json({ error: 'Failed to link Firebase account' });
+    }
+  });
+
+  /**
+   * DELETE /api/subscription/account
+   * Permanently delete the authenticated user's account: Firestore user doc +
+   * subcollections (monthly_quotas, ai_usage) AND the Firebase Auth user.
+   *
+   * Destructive and irreversible, so it requires a VERIFIED ID token (not the legacy
+   * header-identity fallback) — a user can only ever delete their own account, and a
+   * spoofed X-Firebase-UID header can't trigger it. Deletion runs server-side via the
+   * Admin SDK, so the client doesn't need a recent re-authentication.
+   */
+  router.delete('/account', async (req, res) => {
+    if (!req.auth.verified || !req.auth.firebaseUid) {
+      return res.status(403).json({
+        error: 'A verified sign-in is required to delete your account.',
+      });
+    }
+
+    const uid = req.auth.firebaseUid;
+    try {
+      await firestore.deleteUserData(uid); // user doc + monthly_quotas + ai_usage
+      await deleteAuthUser(uid); // Firebase Auth user
+      logger.info(`[Subscription] Account deleted for ${uid}`);
+      trackEvent(uid, 'account_deleted', {}, uid);
+      return res.json({ success: true });
+    } catch (error) {
+      logger.error('[Subscription] Account deletion failed:', error);
+      return res.status(500).json({ error: 'Failed to delete account' });
     }
   });
 

@@ -8,6 +8,7 @@ import auth from '@react-native-firebase/auth';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import apiService from './api';
 
 // Configure Google Sign-In
 // The webClientId is the OAuth 2.0 Client ID from Firebase Console
@@ -364,26 +365,34 @@ const AuthService = {
         return { success: false, error: 'No user signed in.' };
       }
 
-      await user.delete();
+      // Delete server-side: the proxy removes the Firestore user doc + subcollections AND
+      // the Firebase Auth user (Admin SDK). Done while still signed in so the current ID
+      // token authenticates the request — and avoids the client-side recent-login re-auth
+      // requirement that user.delete() imposes.
+      await apiService.deleteAccount();
+
+      // The Auth user no longer exists server-side; clear the local session so the app
+      // returns to the sign-in screen.
+      try {
+        if (await GoogleSignin.isSignedIn()) {
+          await GoogleSignin.signOut();
+        }
+      } catch {
+        // ignore Google sign-out errors
+      }
+      try {
+        await auth().signOut();
+      } catch {
+        // ignore — server already deleted the user
+      }
 
       console.log('[AuthService] Account deleted');
-
       return { success: true };
     } catch (error) {
       console.error('[AuthService] Delete account error:', error);
-
-      // Handle re-authentication requirement
-      if (error.code === 'auth/requires-recent-login') {
-        return {
-          success: false,
-          error: 'Please sign out and sign in again to delete your account.',
-          requiresReauth: true,
-        };
-      }
-
       return {
         success: false,
-        error: getErrorMessage(error),
+        error: error.response?.data?.error || getErrorMessage(error),
       };
     }
   },
