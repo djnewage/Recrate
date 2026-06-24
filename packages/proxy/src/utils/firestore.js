@@ -40,6 +40,7 @@ function docToUser(doc) {
     app_version: data.app_version || null,
     platform: data.platform || null,
     last_active_at: toISOString(data.last_active_at),
+    last_signed_in_at: toISOString(data.last_signed_in_at),
     sign_in_method: data.sign_in_method || null,
     login_count: data.login_count || 0,
     created_at: toISOString(data.created_at),
