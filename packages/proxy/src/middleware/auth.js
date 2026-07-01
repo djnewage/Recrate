@@ -49,6 +49,9 @@ async function requireAuth(req, res, next) {
         firebaseUid: decoded.uid,
         deviceId: req.headers['x-device-id'] || null,
         verified: true,
+        // auth_time = epoch seconds of the user's last actual sign-in (changes only on
+        // re-authentication, not token refresh). Used to record last_signed_in_at.
+        authTime: decoded.auth_time || null,
       };
       return next();
     } catch (error) {

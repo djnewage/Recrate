@@ -178,6 +178,11 @@ function createSubscriptionRoutes() {
       if (appVersion) metadataUpdate.app_version = appVersion;
       if (platform) metadataUpdate.platform = platform;
       if (signInMethod) metadataUpdate.sign_in_method = signInMethod;
+      // Record the user's last actual sign-in (from the verified token's auth_time),
+      // distinct from last_active_at which updates on every request.
+      if (req.auth.authTime) {
+        metadataUpdate.last_signed_in_at = new Date(req.auth.authTime * 1000).toISOString();
+      }
 
       firestore.updateUser(user.id, metadataUpdate).catch(() => {});
 
