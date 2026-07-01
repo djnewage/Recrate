@@ -43,45 +43,50 @@ export async function syncQueue() {
   let failedCount = 0;
   let cratesModified = false;
 
-  // Process operations in order (FIFO)
-  // Note: CREATE_CRATE operations should naturally come before ADD_TRACKS for the same crate
-  for (let i = 0; i < pendingOps.length; i++) {
-    setSyncProgress(i + 1, pendingOps.length);
+  // try/finally guarantees completeSync() runs even if an unexpected error is thrown,
+  // so isSyncing can never get stuck true (which would permanently disable the manual
+  // sync button via its `if (isSyncing) return` guard).
+  try {
+    // Process operations in order (FIFO)
+    // Note: CREATE_CRATE operations should naturally come before ADD_TRACKS for the same crate
+    for (let i = 0; i < pendingOps.length; i++) {
+      setSyncProgress(i + 1, pendingOps.length);
 
-    const result = await processOperation(pendingOps[i]);
+      const result = await processOperation(pendingOps[i]);
 
-    if (result.success) {
-      syncedCount++;
-      // Track if any crate operations succeeded (need to refresh crate list after)
-      const opType = pendingOps[i].type;
-      if (opType === OPERATION_TYPES.CREATE_CRATE ||
-          opType === OPERATION_TYPES.ADD_TRACKS ||
-          opType === OPERATION_TYPES.REMOVE_TRACK ||
-          opType === OPERATION_TYPES.DELETE_CRATE) {
-        cratesModified = true;
+      if (result.success) {
+        syncedCount++;
+        // Track if any crate operations succeeded (need to refresh crate list after)
+        const opType = pendingOps[i].type;
+        if (opType === OPERATION_TYPES.CREATE_CRATE ||
+            opType === OPERATION_TYPES.ADD_TRACKS ||
+            opType === OPERATION_TYPES.REMOVE_TRACK ||
+            opType === OPERATION_TYPES.DELETE_CRATE) {
+          cratesModified = true;
+        }
+      } else if (result.conflict) {
+        conflictCount++;
+      } else {
+        failedCount++;
       }
-    } else if (result.conflict) {
-      conflictCount++;
-    } else {
-      failedCount++;
+
+      // If we hit a conflict, stop processing to let user resolve it
+      if (result.conflict) {
+        break;
+      }
     }
 
-    // If we hit a conflict, stop processing to let user resolve it
-    if (result.conflict) {
-      break;
+    // Refresh crates from server to get updated track counts after modifications
+    if (cratesModified) {
+      try {
+        await useStore.getState().loadCrates();
+      } catch (error) {
+        // Error refreshing crates after sync
+      }
     }
+  } finally {
+    completeSync();
   }
-
-  // Refresh crates from server to get updated track counts after modifications
-  if (cratesModified) {
-    try {
-      await useStore.getState().loadCrates();
-    } catch (error) {
-      // Error refreshing crates after sync
-    }
-  }
-
-  completeSync();
 
   return {
     success: conflictCount === 0 && failedCount === 0,
@@ -422,9 +427,30 @@ export function isSyncNeeded() {
   return operationQueue.some((op) => op.status === OPERATION_STATUS.PENDING);
 }
 
+/**
+ * Trigger a sync only when it can actually do work: the desktop server is connected
+ * and there are pending operations. This is the shared entry point for every sync
+ * trigger (server reconnect, app foreground, NetInfo) so the "drain the queue when we
+ * can reach the server" decision lives in one tested place rather than being bolted
+ * onto a single event. syncQueue() itself also guards these conditions, so a redundant
+ * call is a cheap no-op.
+ *
+ * @returns {Promise<Object>} the syncQueue result, or a skipped result if preconditions fail
+ */
+export function triggerSyncIfPending() {
+  const { isConnected, serverURL } = useConnectionStore.getState();
+  const hasPending = useOfflineStore.getState().hasPendingOperations();
+
+  if (isConnected && serverURL && hasPending) {
+    return syncQueue();
+  }
+  return Promise.resolve({ success: true, synced: 0, skipped: true });
+}
+
 export default {
   syncQueue,
   applyConflictResolution,
   syncSingleOperation,
   isSyncNeeded,
+  triggerSyncIfPending,
 };

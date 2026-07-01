@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { StatusBar, StyleSheet, View, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StatusBar, StyleSheet, View, TouchableOpacity, ActivityIndicator, AppState } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
@@ -16,7 +16,7 @@ import useOfflineStore from './src/store/offlineStore';
 import { useSubscriptionStore } from './src/store/subscriptionStore';
 import { useAuthStore } from './src/store/authStore';
 import * as TrackPlayerService from './src/services/TrackPlayerService';
-import { syncQueue } from './src/services/SyncService';
+import { syncQueue, triggerSyncIfPending } from './src/services/SyncService';
 import { initSentry, setUser } from './src/utils/sentry';
 import { logEvent } from './src/config/firebase';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -364,6 +364,66 @@ export default function App() {
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Drain the offline queue whenever the desktop server becomes reachable — via ANY path
+  // (app launch, ConnectionScreen, manual reconnect, LAN scan, NetInfo). Previously sync
+  // was only triggered from the NetInfo internet-reconnect handler above, so reconnecting
+  // to the server while the phone's network never changed left changes stuck as "N pending"
+  // forever. Subscribing to the connection store catches every reconnect path.
+  useEffect(() => {
+    let wasConnected = useConnectionStore.getState().isConnected;
+    const unsubscribe = useConnectionStore.subscribe((state) => {
+      const nowConnected = state.isConnected;
+      if (nowConnected && !wasConnected) {
+        triggerSyncIfPending();
+      }
+      wasConnected = nowConnected;
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Drain the queue when the app returns to the foreground (e.g. user reopens the app with
+  // the connection already up and edits still pending). Also probe for the server returning
+  // in case we dropped offline while backgrounded.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        useConnectionStore.getState().attemptReconnect();
+        triggerSyncIfPending();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  // Active reconnection probe: once a write/read drops us to offline mode, nothing else
+  // detects the desktop server coming back (no NetInfo event fires if the phone's own
+  // network never changed). While offline with a known server, poll for it returning;
+  // the resulting isConnected false->true transition drains the queue via the subscription
+  // above. The interval only runs while offline and is cleared as soon as we reconnect.
+  useEffect(() => {
+    let intervalId = null;
+    const start = () => {
+      if (intervalId) return;
+      intervalId = setInterval(() => {
+        useConnectionStore.getState().attemptReconnect();
+      }, 10000);
+    };
+    const stop = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+    if (!useConnectionStore.getState().isConnected) start();
+    const unsubscribe = useConnectionStore.subscribe((state) => {
+      if (state.isConnected) stop();
+      else start();
+    });
+    return () => {
+      stop();
+      unsubscribe();
+    };
   }, []);
 
   return (

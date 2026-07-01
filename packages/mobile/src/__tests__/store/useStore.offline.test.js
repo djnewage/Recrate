@@ -413,4 +413,112 @@ describe('useStore - Offline Functionality', () => {
       });
     });
   });
+
+  describe('server unreachable fallback (stale isConnected)', () => {
+    beforeEach(() => {
+      // Simulate the bug condition: app thinks it's online, but the desktop server is gone.
+      useConnectionStore.setState({ isConnected: true, serverURL: 'http://localhost:3000' });
+      useStore.setState({ crates: [{ id: 'crate-1', name: 'Test', trackCount: 0 }] });
+    });
+    afterEach(() => {
+      useConnectionStore.setState({ isConnected: false });
+    });
+
+    it('queues the add and goes offline when the API fails with a network error', async () => {
+      apiService.addTracksToCrate.mockRejectedValue(new Error('Network Error')); // no .response
+
+      const result = await useStore.getState().addTracksToCrate('crate-1', ['track-1']);
+
+      expect(result).toBe(true); // no error alert — captured offline
+      expect(useConnectionStore.getState().isConnected).toBe(false);
+      const ops = useOfflineStore
+        .getState()
+        .operationQueue.filter((o) => o.type === OPERATION_TYPES.ADD_TRACKS);
+      expect(ops).toHaveLength(1);
+      expect(ops[0].status).toBe(OPERATION_STATUS.PENDING);
+    });
+
+    it('queues the add and goes offline when the proxy returns 503 (Desktop not connected)', async () => {
+      const err = new Error('Request failed with status code 503');
+      err.response = { status: 503 };
+      apiService.addTracksToCrate.mockRejectedValue(err);
+
+      const result = await useStore.getState().addTracksToCrate('crate-1', ['track-1']);
+
+      expect(result).toBe(true);
+      expect(useConnectionStore.getState().isConnected).toBe(false);
+      expect(
+        useOfflineStore.getState().operationQueue.some((o) => o.type === OPERATION_TYPES.ADD_TRACKS)
+      ).toBe(true);
+    });
+
+    it('surfaces a real error (no queue, stays online) on a genuine 500', async () => {
+      const err = new Error('Server error');
+      err.response = { status: 500 };
+      apiService.addTracksToCrate.mockRejectedValue(err);
+
+      const result = await useStore.getState().addTracksToCrate('crate-1', ['track-1']);
+
+      expect(result).toBe(false);
+      expect(useConnectionStore.getState().isConnected).toBe(true);
+      expect(
+        useOfflineStore.getState().operationQueue.filter((o) => o.type === OPERATION_TYPES.ADD_TRACKS)
+      ).toHaveLength(0);
+      expect(useStore.getState().cratesError).toBe('Server error');
+    });
+  });
+
+  describe('attemptReconnect', () => {
+    afterEach(() => {
+      useConnectionStore.setState({ isConnected: false, serverURL: null, lastSuccessfulIP: null });
+    });
+
+    it('flips online when the probe succeeds', async () => {
+      useConnectionStore.setState({
+        isConnected: false,
+        serverURL: 'http://localhost:3000',
+        quickTestConnection: jest.fn().mockResolvedValue(true),
+      });
+
+      const ok = await useConnectionStore.getState().attemptReconnect();
+
+      expect(ok).toBe(true);
+      expect(useConnectionStore.getState().isConnected).toBe(true);
+    });
+
+    it('stays offline when the probe fails', async () => {
+      useConnectionStore.setState({
+        isConnected: false,
+        serverURL: 'http://localhost:3000',
+        quickTestConnection: jest.fn().mockResolvedValue(false),
+      });
+
+      const ok = await useConnectionStore.getState().attemptReconnect();
+
+      expect(ok).toBe(false);
+      expect(useConnectionStore.getState().isConnected).toBe(false);
+    });
+
+    it('returns false when there is no known server URL', async () => {
+      useConnectionStore.setState({ isConnected: false, serverURL: null, lastSuccessfulIP: null });
+
+      const ok = await useConnectionStore.getState().attemptReconnect();
+
+      expect(ok).toBe(false);
+    });
+  });
+
+  describe('playTrack offline guard', () => {
+    it('does not attempt playback when offline', async () => {
+      useConnectionStore.setState({ isConnected: false });
+
+      await useStore.getState().playTrack({ id: 'track-1', title: 'T' });
+
+      expect(useStore.getState().isPlaying).toBe(false);
+      expect(useStore.getState().playerError).toMatch(/offline/i);
+      const TrackPlayer = require('react-native-track-player').default;
+      expect(TrackPlayer.add).not.toHaveBeenCalled();
+      expect(TrackPlayer.play).not.toHaveBeenCalled();
+    });
+  });
 });
