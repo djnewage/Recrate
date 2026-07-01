@@ -51,6 +51,7 @@ const SettingsScreen = ({ navigation }) => {
     displayName,
     email,
     signOut,
+    deleteAccount,
     getDisplayName,
     isLoading: isAuthLoading,
   } = useAuthStore();
@@ -102,6 +103,27 @@ const SettingsScreen = ({ navigation }) => {
             if (!result.success) {
               Alert.alert('Error', result.error || 'Failed to sign out');
             }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This permanently deletes your account and all of your data (crates synced here, AI usage, subscription record). This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await deleteAccount();
+            if (!result.success) {
+              Alert.alert('Error', result.error || 'Failed to delete account');
+            }
+            // On success the auth state clears and the app returns to the sign-in screen.
           },
         },
       ]
@@ -411,6 +433,14 @@ const SettingsScreen = ({ navigation }) => {
                   <Text style={styles.signOutButtonText}>Sign Out</Text>
                 </>
               )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.deleteAccountButton}
+              onPress={handleDeleteAccount}
+              disabled={isAuthLoading}
+            >
+              <Ionicons name="trash-outline" size={16} color={COLORS.textSecondary} />
+              <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -844,6 +874,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
     color: COLORS.error,
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  deleteAccountButtonText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
   },
   libraryHeader: {
     marginBottom: SPACING.md,

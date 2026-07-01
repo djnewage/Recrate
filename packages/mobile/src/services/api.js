@@ -367,6 +367,16 @@ export const apiService = {
     const response = await proxyApi.post('/api/subscription/link-firebase');
     return response.data;
   },
+
+  /**
+   * Permanently delete the authenticated user's account (Firestore data + Firebase Auth
+   * user). Server-side via the proxy; must be called while still signed in (uses the
+   * current ID token to authenticate).
+   */
+  deleteAccount: async () => {
+    const response = await proxyApi.delete('/api/subscription/account');
+    return response.data;
+  },
 };
 
 export default apiService;

@@ -91,4 +91,26 @@ async function lookupFirebaseUser(uid) {
   }
 }
 
-module.exports = { initializeFirebase, isInitialized, verifyIdToken, lookupFirebaseUser };
+/**
+ * Delete a Firebase Auth user by UID (Admin SDK — does NOT require the client to have
+ * recently signed in, unlike client-side user.delete()). Used by account deletion.
+ * Treats an already-absent user as success (idempotent).
+ * @param {string} uid
+ */
+async function deleteAuthUser(uid) {
+  if (!firebaseApp) throw new Error('Firebase not initialized');
+  try {
+    await admin.auth().deleteUser(uid);
+  } catch (error) {
+    if (error && error.code === 'auth/user-not-found') return; // already gone
+    throw error;
+  }
+}
+
+module.exports = {
+  initializeFirebase,
+  isInitialized,
+  verifyIdToken,
+  lookupFirebaseUser,
+  deleteAuthUser,
+};
