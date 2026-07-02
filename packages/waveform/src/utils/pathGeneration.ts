@@ -91,6 +91,47 @@ export function generatePlayedClipRect(
 }
 
 /**
+ * Generate Serato-style colored bars: one vertical bar per sample, each bar assigned
+ * to its DOMINANT frequency band (bass/mids/highs) and sized by the loudest band at
+ * that slice. Returns three paths (one per band color) so the whole waveform draws in
+ * just 3 fills — each vertical slice appears in the color of its strongest frequency,
+ * matching Serato's colored overview. Works at any width (pass totalWaveformWidth for
+ * the scrolling waveform).
+ */
+export function generateColoredBarPaths(
+  data: SpectralWaveformData,
+  width: number,
+  height: number,
+  barSpacing: number = 0.2
+): { bass: SkPath; mids: SkPath; highs: SkPath } {
+  const { bands } = data;
+  const n = Math.min(bands.bass.length, bands.mids.length, bands.highs.length);
+  const slot = width / Math.max(1, n);
+  const barWidth = slot * (1 - barSpacing);
+  const gap = slot * barSpacing;
+  const centerY = height / 2;
+  const maxAmplitude = (height / 2) * 0.9;
+
+  const bass = Skia.Path.Make();
+  const mids = Skia.Path.Make();
+  const highs = Skia.Path.Make();
+
+  for (let i = 0; i < n; i++) {
+    const b = bands.bass[i] || 0;
+    const m = bands.mids[i] || 0;
+    const h = bands.highs[i] || 0;
+    const peak = Math.max(0.02, b, m, h); // loudest band drives bar height
+    // Dominant band → determines the bar's color path
+    const target = b >= m && b >= h ? bass : m >= h ? mids : highs;
+    const amplitude = peak * maxAmplitude;
+    const x = i * (barWidth + gap);
+    target.addRect({ x, y: centerY - amplitude, width: barWidth, height: amplitude * 2 });
+  }
+
+  return { bass, mids, highs };
+}
+
+/**
  * Generate vertical bars instead of smooth waveform
  * More like traditional Serato visualization
  */

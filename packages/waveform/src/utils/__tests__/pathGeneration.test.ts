@@ -4,6 +4,7 @@ import {
   generateStackedPaths,
   generatePlayedClipRect,
   generateBarPaths,
+  generateColoredBarPaths,
 } from '../pathGeneration';
 import { SpectralWaveformData } from '../../types';
 
@@ -277,6 +278,43 @@ describe('pathGeneration utilities', () => {
         const centerY = rect.y + rect.height / 2;
         expect(centerY).toBe(50);
       });
+    });
+  });
+
+  describe('generateColoredBarPaths', () => {
+    const mk = (bands: SpectralWaveformData['bands']): SpectralWaveformData => ({
+      trackId: 't',
+      duration: 10,
+      sampleCount: bands.bass.length,
+      bands,
+      peaks: [],
+    });
+
+    it('returns three band paths', () => {
+      const p = generateColoredBarPaths(mk({ bass: [0.5], mids: [0.5], highs: [0.5] }), 300, 60);
+      expect(p.bass).toBeDefined();
+      expect(p.mids).toBeDefined();
+      expect(p.highs).toBeDefined();
+    });
+
+    it('assigns each slice to its dominant band (one bar per sample)', () => {
+      const p = generateColoredBarPaths(
+        mk({ bass: [0.9, 0.1, 0.1], mids: [0.1, 0.9, 0.1], highs: [0.1, 0.1, 0.9] }),
+        300,
+        60
+      );
+      const rects = (path: unknown) =>
+        (path as unknown as { addRect: jest.Mock }).addRect.mock.calls.length;
+      // Sample 0 → bass dominant, sample 1 → mids, sample 2 → highs
+      expect(rects(p.bass)).toBe(1);
+      expect(rects(p.mids)).toBe(1);
+      expect(rects(p.highs)).toBe(1);
+    });
+
+    it('handles empty bands without throwing', () => {
+      expect(() =>
+        generateColoredBarPaths(mk({ bass: [], mids: [], highs: [] }), 300, 60)
+      ).not.toThrow();
     });
   });
 });
