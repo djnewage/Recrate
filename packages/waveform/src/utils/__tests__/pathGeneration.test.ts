@@ -4,9 +4,9 @@ import {
   generateStackedPaths,
   generatePlayedClipRect,
   generateBarPaths,
-  generateColoredBarPaths,
+  generateBlendedBarPaths,
 } from '../pathGeneration';
-import { SpectralWaveformData } from '../../types';
+import { SpectralWaveformData, DEFAULT_COLORS } from '../../types';
 
 // Helper to access mock path methods
 const getPathMock = () => {
@@ -281,7 +281,7 @@ describe('pathGeneration utilities', () => {
     });
   });
 
-  describe('generateColoredBarPaths', () => {
+  describe('generateBlendedBarPaths', () => {
     const mk = (bands: SpectralWaveformData['bands']): SpectralWaveformData => ({
       trackId: 't',
       duration: 10,
@@ -290,30 +290,57 @@ describe('pathGeneration utilities', () => {
       peaks: [],
     });
 
-    it('returns three band paths', () => {
-      const p = generateColoredBarPaths(mk({ bass: [0.5], mids: [0.5], highs: [0.5] }), 300, 60);
-      expect(p.bass).toBeDefined();
-      expect(p.mids).toBeDefined();
-      expect(p.highs).toBeDefined();
-    });
+    // Total bars drawn across every color bucket.
+    const totalRects = (result: { path: unknown }[]) =>
+      result.reduce(
+        (sum, { path }) =>
+          sum + (path as unknown as { addRect: jest.Mock }).addRect.mock.calls.length,
+        0
+      );
 
-    it('assigns each slice to its dominant band (one bar per sample)', () => {
-      const p = generateColoredBarPaths(
+    it('returns {path, color} buckets, one bar per sample in total', () => {
+      const result = generateBlendedBarPaths(
         mk({ bass: [0.9, 0.1, 0.1], mids: [0.1, 0.9, 0.1], highs: [0.1, 0.1, 0.9] }),
         300,
-        60
+        60,
+        DEFAULT_COLORS
       );
-      const rects = (path: unknown) =>
-        (path as unknown as { addRect: jest.Mock }).addRect.mock.calls.length;
-      // Sample 0 → bass dominant, sample 1 → mids, sample 2 → highs
-      expect(rects(p.bass)).toBe(1);
-      expect(rects(p.mids)).toBe(1);
-      expect(rects(p.highs)).toBe(1);
+      // Each entry carries a Skia path + an rgb() blend color
+      expect(result.length).toBeGreaterThan(0);
+      result.forEach((entry) => {
+        expect(entry.path).toBeDefined();
+        expect(entry.color).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
+      });
+      // One bar per sample, distributed across buckets
+      expect(totalRects(result)).toBe(3);
+    });
+
+    it('colors each slice by a BLEND of all bands (distinct content → distinct buckets)', () => {
+      const result = generateBlendedBarPaths(
+        mk({ bass: [0.9, 0.1, 0.1], mids: [0.1, 0.9, 0.1], highs: [0.1, 0.1, 0.9] }),
+        300,
+        60,
+        DEFAULT_COLORS
+      );
+      // Three spectrally-different slices → three different blend colors → three buckets
+      expect(result.length).toBe(3);
+    });
+
+    it('merges identical slices into a single color bucket', () => {
+      const result = generateBlendedBarPaths(
+        mk({ bass: [0.5, 0.5, 0.5], mids: [0.5, 0.5, 0.5], highs: [0.5, 0.5, 0.5] }),
+        300,
+        60,
+        DEFAULT_COLORS
+      );
+      // All three slices blend to the same color → one bucket holding all three bars
+      expect(result.length).toBe(1);
+      expect(totalRects(result)).toBe(3);
     });
 
     it('handles empty bands without throwing', () => {
       expect(() =>
-        generateColoredBarPaths(mk({ bass: [], mids: [], highs: [] }), 300, 60)
+        generateBlendedBarPaths(mk({ bass: [], mids: [], highs: [] }), 300, 60, DEFAULT_COLORS)
       ).not.toThrow();
     });
   });

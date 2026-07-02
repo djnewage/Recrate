@@ -9,7 +9,7 @@ import {
   SkPath,
 } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS, useSharedValue, useDerivedValue } from 'react-native-reanimated';
+import { runOnJS, useSharedValue } from 'react-native-reanimated';
 
 import {
   SpectralWaveformData,
@@ -18,8 +18,7 @@ import {
   DEFAULT_COLORS,
 } from '../types';
 import { mergeColors } from '../utils/colorMapping';
-import { generateColoredBarPaths } from '../utils/pathGeneration';
-import { useScrollingAnimation } from '../hooks/useScrollingAnimation';
+import { generateBlendedBarPaths, BlendedBarPath } from '../utils/pathGeneration';
 
 export interface ScrollingWaveformProps {
   /** Spectral waveform data with frequency bands */
@@ -159,24 +158,25 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
 }) => {
   const colors = useMemo(() => mergeColors(customColors), [customColors]);
 
-  // Smooth 60fps scroll: the hook drives scrollX as a Reanimated shared value with
-  // useFrameCallback frame-prediction between the ~20fps position polls, so the scroll
-  // animates on the UI thread without a React re-render per tick.
-  const {
-    scrollX,
-    currentPosition,
-    pixelsPerSecond,
-    totalWaveformWidth,
-    playheadX,
-    isScrubbing,
-  } = useScrollingAnimation({
-    position,
-    duration,
-    isPlaying,
-    visibleSeconds,
-    playheadRatio: playheadPosition,
-    containerWidth: width,
-  });
+  // Layout math derived from props. The scroll is driven by React re-renders: the parent
+  // polls playback position (~60fps via useProgress) and passes it as `position`, so each
+  // new position recomputes scrollX and repaints the Canvas. (An earlier shared-value +
+  // useFrameCallback approach animated on the UI thread without a re-render, but Skia 2.2
+  // doesn't repaint the Canvas on shared-value changes under Reanimated 4 — the waveform
+  // froze during playback. Driving the transform from props is what reliably repaints.)
+  const pixelsPerSecond = width / visibleSeconds;
+  const totalWaveformWidth = duration * pixelsPerSecond;
+  const playheadX = width * playheadPosition;
+  const scrollX = playheadX - position * pixelsPerSecond;
+
+  // Plain-value transform → recomputed every render, so the Canvas repaints with the scroll.
+  const scrollTransform = useMemo(() => [{ translateX: scrollX }], [scrollX]);
+
+  // Current position as a shared value for gesture worklets (kept in sync with the prop).
+  const currentPosition = useSharedValue(position);
+  useEffect(() => {
+    currentPosition.value = position;
+  }, [position]);
 
   // Shared values for gesture calculations (accessible in worklets)
   const scrubStartPosition = useSharedValue(0);
@@ -188,9 +188,7 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
   const currentMaxVisibleSeconds = useSharedValue(maxVisibleSeconds);
   const currentMinVisibleSeconds = useSharedValue(minVisibleSeconds);
 
-  // Keep gesture shared values in sync with props/layout. NOTE: position/scroll is owned
-  // by useScrollingAnimation (currentPosition + scrollX) — do not sync it here or it would
-  // fight the frame prediction.
+  // Keep gesture shared values in sync with props/layout.
   useEffect(() => {
     currentPixelsPerSecond.value = pixelsPerSecond;
   }, [pixelsPerSecond]);
@@ -215,25 +213,44 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     currentMinVisibleSeconds.value = minVisibleSeconds;
   }, [minVisibleSeconds]);
 
-  // Scroll transform driven by the shared value → updates on the UI thread at 60fps
-  // without re-rendering React.
-  const scrollTransform = useDerivedValue(() => [{ translateX: scrollX.value }]);
-
   // Generate paths for the full waveform (memoized - only changes when data/size changes).
-  // 'bars' = Serato-style colored bars (each slice in its dominant frequency's color);
-  // 'filled' = the original mirror shape.
-  const paths = useMemo(() => {
+  // 'bars' = Serato-style colored bars, each slice a BLEND of all three bands (spanning the
+  // full spectrum); 'filled' = the original per-band mirror shapes.
+  const paths = useMemo(():
+    | { kind: 'bars'; bars: BlendedBarPath[] }
+    | { kind: 'filled'; bass: SkPath; mids: SkPath; highs: SkPath }
+    | null => {
     if (!data || !data.bands || duration <= 0) return null;
 
     if (barStyle === 'bars') {
-      return generateColoredBarPaths(data, totalWaveformWidth, height);
+      return { kind: 'bars', bars: generateBlendedBarPaths(data, totalWaveformWidth, height, colors) };
     }
     return {
+      kind: 'filled',
       bass: generateScrollingPath(data.bands.bass, totalWaveformWidth, height, mirror),
       mids: generateScrollingPath(data.bands.mids, totalWaveformWidth, height, mirror),
       highs: generateScrollingPath(data.bands.highs, totalWaveformWidth, height, mirror),
     };
-  }, [data, totalWaveformWidth, height, mirror, duration, barStyle]);
+  }, [data, totalWaveformWidth, height, mirror, duration, barStyle, colors]);
+
+  // Render the waveform paths for one section (played/future). Opacity is applied by the
+  // wrapping <Group>, so this only emits the fills. Blended bars → one <Path> per color
+  // bucket; filled → the three band shapes.
+  const renderWaveformPaths = () => {
+    if (!paths) return null;
+    if (paths.kind === 'bars') {
+      return paths.bars.map((bar, i) => (
+        <Path key={i} path={bar.path} color={bar.color} />
+      ));
+    }
+    return (
+      <>
+        <Path path={paths.bass} color={colors.bass} />
+        <Path path={paths.mids} color={colors.mids} />
+        <Path path={paths.highs} color={colors.highs} />
+      </>
+    );
+  };
 
   // Clip rects for played/future sections (in container coordinates)
   const playedClip = useMemo(() => {
@@ -282,8 +299,6 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
       const secondsDelta = pixelDelta / currentPixelsPerSecond.value;
       const newPos = currentPosition.value + secondsDelta;
       const clamped = Math.max(0, Math.min(currentDuration.value, newPos));
-      // Snap the scroll immediately; the seek + hook sync will confirm it.
-      scrollX.value = currentPlayheadX.value - clamped * currentPixelsPerSecond.value;
       runOnJS(handleSeek)(clamped);
     });
 
@@ -292,7 +307,6 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     .enabled(interactive)
     .onStart(() => {
       'worklet';
-      isScrubbing.value = true; // pause frame prediction; the gesture drives scrollX
       scrubStartPosition.value = currentPosition.value;
       if (onScrubStart) {
         runOnJS(onScrubStart)();
@@ -305,14 +319,10 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
       const secondsDelta = pixelDelta / currentPixelsPerSecond.value;
       const newPos = scrubStartPosition.value + secondsDelta;
       const clamped = Math.max(0, Math.min(currentDuration.value, newPos));
-      // Move the waveform under the finger immediately.
-      currentPosition.value = clamped;
-      scrollX.value = currentPlayheadX.value - clamped * currentPixelsPerSecond.value;
       runOnJS(handleSeek)(clamped);
     })
     .onEnd(() => {
       'worklet';
-      isScrubbing.value = false; // resume frame prediction
       if (onScrubEnd) {
         runOnJS(onScrubEnd)();
       }
@@ -360,18 +370,14 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
           {/* Played portion (dimmed) - clipped to left of playhead */}
           <Group clip={playedClip}>
             <Group transform={scrollTransform} opacity={playedOpacity}>
-              <Path path={paths.bass} color={colors.bass} />
-              <Path path={paths.mids} color={colors.mids} />
-              <Path path={paths.highs} color={colors.highs} />
+              {renderWaveformPaths()}
             </Group>
           </Group>
 
           {/* Future portion (bright) - clipped to right of playhead */}
           <Group clip={futureClip}>
             <Group transform={scrollTransform} opacity={futureOpacity}>
-              <Path path={paths.bass} color={colors.bass} />
-              <Path path={paths.mids} color={colors.mids} />
-              <Path path={paths.highs} color={colors.highs} />
+              {renderWaveformPaths()}
             </Group>
           </Group>
 

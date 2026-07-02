@@ -71,15 +71,17 @@ export interface SpectralWaveformProps {
 }
 
 /**
- * Default colors matching Serato DJ visual style
- * Based on research of actual Serato waveform appearance:
- * - Bass (< 200 Hz): Warm red/magenta
- * - Mids (200 Hz - 1.5 kHz): Purple (blend appearance)
- * - Highs (> 1.5 kHz): Cyan/light blue
+ * Default colors matching Serato DJ's classic three-band waveform.
+ * These are an additive R/G/B triad so per-slice BLENDS span the full spectrum
+ * (reds → oranges → yellows → greens → blues), the way Serato colors its overview.
+ * A red/purple/cyan set can't produce greens or yellows, so blends looked flat.
+ * - Bass (< 250 Hz): Red (kicks, bass lines)
+ * - Mids (250 Hz - 4 kHz): Green (snares, vocals, synths)
+ * - Highs (> 4 kHz): Blue (hi-hats, cymbals, crashes)
  */
 export const DEFAULT_COLORS: WaveformColors = {
-  bass: '#E84855',    // Warm Red (kicks, bass lines)
-  mids: '#9B5DE5',    // Purple (snares, vocals, synths)
-  highs: '#00BBF9',   // Cyan (hi-hats, cymbals, crashes)
+  bass: '#EF4444',    // Red (kicks, bass lines)
+  mids: '#22C55E',    // Green (snares, vocals, synths)
+  highs: '#3B82F6',   // Blue (hi-hats, cymbals, crashes)
   playhead: '#FFFFFF',
 };

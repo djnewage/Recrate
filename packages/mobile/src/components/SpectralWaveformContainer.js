@@ -29,8 +29,10 @@ const SpectralWaveformContainer = ({
   // Local state for pinch-to-zoom
   const [visibleSeconds, setVisibleSeconds] = useState(initialVisibleSeconds);
 
-  // Fast updates (50ms = ~20fps) for smooth scrolling animation
-  const { position } = useProgress(50);
+  // Fast updates (~16ms ≈ 60fps): the scrolling waveform is driven by React re-renders on
+  // each new position, so a faster poll = smoother scroll. (Paths are memoized, so per-tick
+  // cost is just the transform recompute + Canvas repaint. Dial back to 33ms if any device janks.)
+  const { position } = useProgress(16);
 
   // Get isPlaying state from store for animation sync
   const isPlaying = useStore((state) => state.isPlaying);
