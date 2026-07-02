@@ -265,6 +265,18 @@ export const apiService = {
     }
   },
 
+  // Beat grid endpoint (Serato beat positions for the waveform overlay)
+  getBeatGrid: async (trackId) => {
+    try {
+      const response = await api.get(`/api/beatgrid/${trackId}`, { timeout: 30000 });
+      return response.data; // { trackId, bpm, firstBeatSec, beats: number[] }
+    } catch (error) {
+      // Beat grid is optional — never block the waveform on it.
+      console.warn(`Failed to get beat grid for track ${trackId}:`, error.message);
+      return null;
+    }
+  },
+
   // AI Crate Builder endpoints
   getAIStatus: async () => {
     const response = await api.get(`${ENDPOINTS.AI}/status`);
