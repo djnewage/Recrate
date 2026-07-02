@@ -16,6 +16,13 @@
  *
  * Only ID3 GEOB (MP3/AIFF) is handled here; FLAC (Vorbis SERATO_BEATGRID) and
  * MP4/M4A atoms are a follow-up — for those we return an empty grid gracefully.
+ *
+ * FALLBACK — Mixed In Key: many libraries are tagged by Mixed In Key, which writes a
+ * `BeatGrid` GEOB (no "Serato " prefix) whose payload is a base64-encoded JSON blob:
+ *   { "source":"mixedinkey", "tempo":<bpm>, "algorithm":<n>, "beats":[<sec>, ...] }
+ * The `beats` array is an EXPLICIT list of every beat timestamp — richer than Serato's
+ * marker format — so when there's no `Serato BeatGrid` frame we read the grid straight
+ * from it. See parseMixedInKeyBeatGrid.
  */
 
 const path = require('path');
@@ -111,8 +118,57 @@ function computeBeats(parsed, duration) {
 }
 
 /**
- * Read + parse the Serato beat grid for a file and expand it to beat timestamps.
- * Returns an empty grid (never throws) when there's no grid or on unsupported formats.
+ * Parse a Mixed In Key `BeatGrid` GEOB payload into an explicit beat list.
+ * The payload is a base64-encoded JSON object `{tempo, beats:[sec,...]}`, usually with a
+ * few bytes of leftover description ("...eatGrid\0") before the base64 — so we locate the
+ * JSON by its base64 prefix `eyJ` (== `{"`), strip non-base64 chars (newline wraps), decode,
+ * and tolerate trailing junk by trimming to the last closing brace.
+ * @param {Buffer|Uint8Array} data
+ * @returns {{ tempo: number|null, beats: number[] } | null}
+ */
+function parseMixedInKeyBeatGrid(data) {
+  try {
+    if (!data) return null;
+    const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+    const ascii = buf.toString('latin1');
+    const start = ascii.indexOf('eyJ'); // base64 for `{"`
+    if (start < 0) return null;
+
+    const b64 = ascii.slice(start).replace(/[^A-Za-z0-9+/=]/g, '');
+    const decoded = Buffer.from(b64, 'base64').toString('utf8');
+
+    let json = null;
+    try {
+      json = JSON.parse(decoded);
+    } catch {
+      const end = decoded.lastIndexOf('}'); // drop trailing bytes past the JSON object
+      if (end > 0) {
+        try {
+          json = JSON.parse(decoded.slice(0, end + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+    if (!json || !Array.isArray(json.beats)) return null;
+
+    const beats = json.beats
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n >= 0)
+      .sort((a, b) => a - b);
+    if (!beats.length) return null;
+
+    return { tempo: typeof json.tempo === 'number' ? json.tempo : null, beats };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read + parse a beat grid for a file and expand it to beat timestamps. Prefers Serato's
+ * native `Serato BeatGrid` GEOB; falls back to a Mixed In Key `BeatGrid` GEOB (explicit
+ * beats). Returns an empty grid (never throws) when there's no grid or on unsupported
+ * formats.
  * @param {string} filePath
  * @param {number} duration - track duration in seconds (bounds the beat list)
  * @returns {Promise<{ bpm: number|null, firstBeatSec: number|null, beats: number[] }>}
@@ -125,31 +181,45 @@ async function readBeatGrid(filePath, duration = 0) {
     const nativeFrames = metadata.native?.['ID3v2.4'] || metadata.native?.['ID3v2.3'];
     const native = Array.isArray(nativeFrames) ? nativeFrames : [];
 
-    const geob = native.find(
+    // 1. Prefer Serato's native binary beat grid when present.
+    const seratoGeob = native.find(
       (f) => f.id === 'GEOB' && f.value?.description === 'Serato BeatGrid'
     );
-    if (!geob || !geob.value?.data) {
-      logger.debug(`[BEATGRID] No Serato BeatGrid in: ${path.basename(filePath)}`);
-      return empty;
+    if (seratoGeob?.value?.data) {
+      const buffer = Buffer.isBuffer(seratoGeob.value.data)
+        ? seratoGeob.value.data
+        : Buffer.from(seratoGeob.value.data);
+      const parsed = parseBeatGridBuffer(buffer);
+      if (parsed) {
+        const beats = computeBeats(parsed, duration);
+        const terminal = parsed.markers[parsed.markers.length - 1];
+        return {
+          bpm: terminal && typeof terminal.bpm === 'number' ? terminal.bpm : null,
+          firstBeatSec: parsed.markers[0].positionSec,
+          beats,
+        };
+      }
     }
 
-    const buffer = Buffer.isBuffer(geob.value.data)
-      ? geob.value.data
-      : Buffer.from(geob.value.data);
-    const parsed = parseBeatGridBuffer(buffer);
-    if (!parsed) return empty;
+    // 2. Fall back to Mixed In Key's `BeatGrid` GEOB (explicit beats[]).
+    const mikGeob = native.find(
+      (f) => f.id === 'GEOB' && f.value?.description === 'BeatGrid'
+    );
+    if (mikGeob?.value?.data) {
+      const mik = parseMixedInKeyBeatGrid(mikGeob.value.data);
+      if (mik?.beats?.length) {
+        // Bound to the track duration when known (MIK grids run to the end already).
+        const beats = duration > 0 ? mik.beats.filter((t) => t <= duration + 1e-6) : mik.beats;
+        return { bpm: mik.tempo, firstBeatSec: beats[0] ?? null, beats };
+      }
+    }
 
-    const beats = computeBeats(parsed, duration);
-    const terminal = parsed.markers[parsed.markers.length - 1];
-    return {
-      bpm: terminal && typeof terminal.bpm === 'number' ? terminal.bpm : null,
-      firstBeatSec: parsed.markers[0].positionSec,
-      beats,
-    };
+    logger.debug(`[BEATGRID] No beat grid (Serato or MIK) in: ${path.basename(filePath)}`);
+    return empty;
   } catch (error) {
     logger.warn(`[BEATGRID] Failed to read beat grid for ${path.basename(filePath || '')}: ${error.message}`);
     return empty;
   }
 }
 
-module.exports = { parseBeatGridBuffer, computeBeats, readBeatGrid };
+module.exports = { parseBeatGridBuffer, computeBeats, parseMixedInKeyBeatGrid, readBeatGrid };

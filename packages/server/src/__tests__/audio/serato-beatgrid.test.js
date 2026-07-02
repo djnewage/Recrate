@@ -1,8 +1,16 @@
 const {
   parseBeatGridBuffer,
   computeBeats,
+  parseMixedInKeyBeatGrid,
   readBeatGrid,
 } = require('../../audio/serato-beatgrid');
+
+/** Build a Mixed In Key `BeatGrid` GEOB payload: leftover description bytes + base64 JSON. */
+function mikBuffer(tempo, beats, { prefix = 'eatGrid\0', trailing = '' } = {}) {
+  const json = JSON.stringify({ source: 'mixedinkey', tempo, algorithm: 12, beats });
+  const b64 = Buffer.from(json, 'utf8').toString('base64');
+  return Buffer.from(prefix + b64 + trailing, 'latin1');
+}
 
 /** Build a single terminal-marker (constant tempo) BeatGrid buffer. */
 function singleTempoBuffer(positionSec, bpm) {
@@ -78,6 +86,30 @@ describe('serato-beatgrid', () => {
 
     it('returns [] for no markers', () => {
       expect(computeBeats({ markers: [] }, 10)).toEqual([]);
+    });
+  });
+
+  describe('parseMixedInKeyBeatGrid', () => {
+    it('decodes base64 JSON beats, skipping leftover description bytes', () => {
+      const r = parseMixedInKeyBeatGrid(mikBuffer(128, [0.01, 0.48, 0.95]));
+      expect(r).not.toBeNull();
+      expect(r.tempo).toBeCloseTo(128, 3);
+      expect(r.beats).toEqual([0.01, 0.48, 0.95].map((n) => expect.closeTo(n, 5)));
+    });
+
+    it('sorts beats and drops non-finite/negative values', () => {
+      const r = parseMixedInKeyBeatGrid(mikBuffer(120, [1.0, 0.5, -0.2, 0]));
+      expect(r.beats).toEqual([0, 0.5, 1.0].map((n) => expect.closeTo(n, 5)));
+    });
+
+    it('tolerates trailing junk after the JSON object', () => {
+      const r = parseMixedInKeyBeatGrid(mikBuffer(120, [0, 0.5], { trailing: 'AAAA' }));
+      expect(r?.beats).toHaveLength(2);
+    });
+
+    it('returns null when there is no base64 JSON payload', () => {
+      expect(parseMixedInKeyBeatGrid(Buffer.from('no grid here', 'latin1'))).toBeNull();
+      expect(parseMixedInKeyBeatGrid(null)).toBeNull();
     });
   });
 
