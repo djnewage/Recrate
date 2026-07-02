@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect } from 'react';
+import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   Canvas,
@@ -167,16 +167,37 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
   const pixelsPerSecond = width / visibleSeconds;
   const totalWaveformWidth = duration * pixelsPerSecond;
   const playheadX = width * playheadPosition;
-  const scrollX = playheadX - position * pixelsPerSecond;
+
+  // While the user scrubs, the waveform must follow the finger INSTANTLY rather than wait
+  // for the seek to round-trip back through the position prop (which felt laggy). So during
+  // a scrub we drive the scroll from a local `scrubPosition` (React state → repaints), and
+  // fall back to the real `position` otherwise. The audio seek is throttled separately.
+  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
+  const isScrubbingRef = useRef(false);
+  const scrubTargetRef = useRef(0);
+  const lastSeekAtRef = useRef(0);
+
+  const activePosition = scrubPosition ?? position;
+  const scrollX = playheadX - activePosition * pixelsPerSecond;
 
   // Plain-value transform → recomputed every render, so the Canvas repaints with the scroll.
   const scrollTransform = useMemo(() => [{ translateX: scrollX }], [scrollX]);
 
-  // Current position as a shared value for gesture worklets (kept in sync with the prop).
+  // After the finger lifts, keep showing the scrubbed spot until the real position catches
+  // up to it, then release local control — avoids a one-frame snap back to the old position.
+  useEffect(() => {
+    if (scrubPosition == null || isScrubbingRef.current) return;
+    if (Math.abs(position - scrubPosition) < 0.25) {
+      setScrubPosition(null);
+    }
+  }, [position, scrubPosition]);
+
+  // Current on-screen position as a shared value for gesture worklets (tracks the scrub
+  // override while scrubbing, the real position otherwise).
   const currentPosition = useSharedValue(position);
   useEffect(() => {
-    currentPosition.value = position;
-  }, [position]);
+    currentPosition.value = activePosition;
+  }, [activePosition]);
 
   // Shared values for gesture calculations (accessible in worklets)
   const scrubStartPosition = useSharedValue(0);
@@ -290,6 +311,35 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     [onSeek, interactive, duration]
   );
 
+  // Scrub lifecycle (called from the pan worklet via runOnJS). The waveform follows the
+  // finger immediately via `scrubPosition`; the real audio seek is throttled to ~every
+  // 90ms during the drag (so it previews without flooding TrackPlayer), then a final,
+  // precise seek fires on release.
+  const beginScrub = useCallback((pos: number) => {
+    isScrubbingRef.current = true;
+    scrubTargetRef.current = pos;
+    lastSeekAtRef.current = 0;
+    setScrubPosition(pos);
+  }, []);
+
+  const updateScrub = useCallback(
+    (pos: number) => {
+      scrubTargetRef.current = pos;
+      setScrubPosition(pos); // instant visual follow
+      const now = Date.now();
+      if (now - lastSeekAtRef.current > 90) {
+        lastSeekAtRef.current = now;
+        handleSeek(pos); // throttled audio preview
+      }
+    },
+    [handleSeek]
+  );
+
+  const endScrub = useCallback(() => {
+    isScrubbingRef.current = false;
+    handleSeek(scrubTargetRef.current); // final precise seek
+  }, [handleSeek]);
+
   // Tap gesture for quick seek
   const tapGesture = Gesture.Tap()
     .enabled(interactive)
@@ -308,6 +358,7 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     .onStart(() => {
       'worklet';
       scrubStartPosition.value = currentPosition.value;
+      runOnJS(beginScrub)(currentPosition.value);
       if (onScrubStart) {
         runOnJS(onScrubStart)();
       }
@@ -319,10 +370,11 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
       const secondsDelta = pixelDelta / currentPixelsPerSecond.value;
       const newPos = scrubStartPosition.value + secondsDelta;
       const clamped = Math.max(0, Math.min(currentDuration.value, newPos));
-      runOnJS(handleSeek)(clamped);
+      runOnJS(updateScrub)(clamped);
     })
     .onEnd(() => {
       'worklet';
+      runOnJS(endScrub)();
       if (onScrubEnd) {
         runOnJS(onScrubEnd)();
       }
