@@ -105,6 +105,9 @@ const useStore = create(
   spectralWaveformCache: {}, // { [trackId]: { bands, peaks, duration, fetchedAt } }
   isLoadingSpectralWaveform: false,
 
+  // Beat grid state (Serato beat positions for the waveform overlay)
+  beatGridCache: {}, // { [trackId]: { bpm, firstBeatSec, beats: number[], fetchedAt } }
+
   // Cue points state
   cuePointsCache: {}, // { [trackId]: { 1: {position, color}, 2: {...}, ... } }
   isLoadingCuePoints: false,
@@ -1363,6 +1366,31 @@ const useStore = create(
     } else {
       // Clear all
       set({ spectralWaveformCache: {} });
+    }
+  },
+
+  // Beat grid actions
+  loadBeatGrid: async (trackId) => {
+    const { beatGridCache } = get();
+    if (beatGridCache[trackId]) {
+      return beatGridCache[trackId];
+    }
+
+    try {
+      const data = await apiService.getBeatGrid(trackId);
+      // Cache even an empty grid so we don't refetch tracks that have none.
+      const entry = {
+        bpm: data?.bpm ?? null,
+        firstBeatSec: data?.firstBeatSec ?? null,
+        beats: Array.isArray(data?.beats) ? data.beats : [],
+        fetchedAt: Date.now(),
+      };
+      const { beatGridCache: currentCache } = get();
+      set({ beatGridCache: { ...currentCache, [trackId]: entry } });
+      return entry;
+    } catch (error) {
+      console.warn(`Failed to load beat grid for ${trackId}:`, error);
+      return null;
     }
   },
 

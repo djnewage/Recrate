@@ -17,6 +17,7 @@ const createConfigRoutes = require('./routes/config');
 const createIdentifyRoutes = require('./routes/identify');
 const createAIRoutes = require('./routes/ai');
 const createCuePointsRoutes = require('./routes/cuepoints');
+const createBeatgridRoutes = require('./routes/beatgrid');
 const createWebhookRoutes = require('./routes/webhooks');
 const createSubscriptionRoutes = require('./routes/subscription');
 const AudioWebSocketServer = require('./websocket-server');
@@ -74,6 +75,7 @@ class APIServer {
     this.app.use('/api/identify', createIdentifyRoutes());
     this.app.use('/api/ai', createAIRoutes(this.parser, this.writer));
     this.app.use('/api/cuepoints', createCuePointsRoutes(this.parser));
+    this.app.use('/api/beatgrid', createBeatgridRoutes(this.parser));
     this.app.use('/api/subscription', createSubscriptionRoutes());
 
     // Waveform routes (optional - requires FFmpeg)

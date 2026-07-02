@@ -29,8 +29,10 @@ const SpectralWaveformContainer = ({
   // Local state for pinch-to-zoom
   const [visibleSeconds, setVisibleSeconds] = useState(initialVisibleSeconds);
 
-  // Fast updates (50ms = ~20fps) for smooth scrolling animation
-  const { position } = useProgress(50);
+  // Fast updates (~16ms ≈ 60fps): the scrolling waveform is driven by React re-renders on
+  // each new position, so a faster poll = smoother scroll. (Paths are memoized, so per-tick
+  // cost is just the transform recompute + Canvas repaint. Dial back to 33ms if any device janks.)
+  const { position } = useProgress(16);
 
   // Get isPlaying state from store for animation sync
   const isPlaying = useStore((state) => state.isPlaying);
@@ -40,11 +42,18 @@ const SpectralWaveformContainer = ({
   const isLoadingSpectralWaveform = useStore((state) => state.isLoadingSpectralWaveform);
   const loadSpectralWaveform = useStore((state) => state.loadSpectralWaveform);
 
+  // Beat grid (Serato) state + loader
+  const beatGridCache = useStore((state) => state.beatGridCache);
+  const loadBeatGrid = useStore((state) => state.loadBeatGrid);
+
   // Get cached spectral data
   const spectralData = trackId ? spectralWaveformCache[trackId] : null;
+  const beatGrid = trackId ? beatGridCache[trackId] : null;
+  const beats = beatGrid?.beats || [];
 
   // Track IDs that failed to load to prevent infinite retry loops
   const failedTrackIds = useRef(new Set());
+  const requestedBeats = useRef(new Set());
 
   // Load spectral waveform when track changes
   useEffect(() => {
@@ -56,6 +65,14 @@ const SpectralWaveformContainer = ({
       });
     }
   }, [trackId, spectralData, isLoadingSpectralWaveform, loadSpectralWaveform]);
+
+  // Load the beat grid when track changes (fetched once; empty grids are cached too)
+  useEffect(() => {
+    if (trackId && !beatGrid && !requestedBeats.current.has(trackId)) {
+      requestedBeats.current.add(trackId);
+      loadBeatGrid(trackId);
+    }
+  }, [trackId, beatGrid, loadBeatGrid]);
 
   // Calculate progress (0-1) for fallback progress bar
   const progress = duration > 0 ? position / duration : 0;
@@ -138,7 +155,10 @@ const SpectralWaveformContainer = ({
         interactive={true}
         showPlayhead={true}
         mirror={true}
+        barStyle="bars"
         cuePoints={cuePointsArray}
+        beats={beats}
+        showBeatGrid={true}
       />
     </View>
   );

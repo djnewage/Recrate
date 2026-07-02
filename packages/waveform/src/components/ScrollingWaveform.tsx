@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect } from 'react';
+import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   Canvas,
@@ -18,6 +18,7 @@ import {
   DEFAULT_COLORS,
 } from '../types';
 import { mergeColors } from '../utils/colorMapping';
+import { generateBlendedBarPaths, BlendedBarPath } from '../utils/pathGeneration';
 
 export interface ScrollingWaveformProps {
   /** Spectral waveform data with frequency bands */
@@ -62,6 +63,14 @@ export interface ScrollingWaveformProps {
   minVisibleSeconds?: number;
   /** Maximum visible seconds for pinch zoom (default: 60) */
   maxVisibleSeconds?: number;
+  /** Beat positions in seconds (Serato beat grid). Rendered as vertical grid lines. */
+  beats?: number[];
+  /** Show the beat grid overlay (default: true when beats provided) */
+  showBeatGrid?: boolean;
+  /** Beats per bar — every Nth beat is drawn as an emphasized downbeat line (default: 4) */
+  beatsPerBar?: number;
+  /** Waveform style: 'bars' (Serato-style colored bars) or 'filled' (mirror shape). Default 'bars'. */
+  barStyle?: 'bars' | 'filled';
 }
 
 /**
@@ -142,21 +151,55 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
   onVisibleSecondsChange,
   minVisibleSeconds = 5,
   maxVisibleSeconds = 60,
+  beats = [],
+  showBeatGrid = true,
+  beatsPerBar = 4,
+  barStyle = 'bars',
 }) => {
   const colors = useMemo(() => mergeColors(customColors), [customColors]);
 
-  // Calculate layout values directly from props
+  // Layout math derived from props. The scroll is driven by React re-renders: the parent
+  // polls playback position (~60fps via useProgress) and passes it as `position`, so each
+  // new position recomputes scrollX and repaints the Canvas. (An earlier shared-value +
+  // useFrameCallback approach animated on the UI thread without a re-render, but Skia 2.2
+  // doesn't repaint the Canvas on shared-value changes under Reanimated 4 — the waveform
+  // froze during playback. Driving the transform from props is what reliably repaints.)
   const pixelsPerSecond = width / visibleSeconds;
   const totalWaveformWidth = duration * pixelsPerSecond;
   const playheadX = width * playheadPosition;
 
-  // Calculate scroll offset: playhead stays fixed, waveform moves
-  // At position=0, waveform start should be at playheadX
-  // As position increases, waveform moves left (negative translateX)
-  const scrollX = playheadX - position * pixelsPerSecond;
+  // While the user scrubs, the waveform must follow the finger INSTANTLY rather than wait
+  // for the seek to round-trip back through the position prop (which felt laggy). So during
+  // a scrub we drive the scroll from a local `scrubPosition` (React state → repaints), and
+  // fall back to the real `position` otherwise. The audio seek is throttled separately.
+  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
+  const isScrubbingRef = useRef(false);
+  const scrubTargetRef = useRef(0);
+  const lastSeekAtRef = useRef(0);
+
+  const activePosition = scrubPosition ?? position;
+  const scrollX = playheadX - activePosition * pixelsPerSecond;
+
+  // Plain-value transform → recomputed every render, so the Canvas repaints with the scroll.
+  const scrollTransform = useMemo(() => [{ translateX: scrollX }], [scrollX]);
+
+  // After the finger lifts, keep showing the scrubbed spot until the real position catches
+  // up to it, then release local control — avoids a one-frame snap back to the old position.
+  useEffect(() => {
+    if (scrubPosition == null || isScrubbingRef.current) return;
+    if (Math.abs(position - scrubPosition) < 0.25) {
+      setScrubPosition(null);
+    }
+  }, [position, scrubPosition]);
+
+  // Current on-screen position as a shared value for gesture worklets (tracks the scrub
+  // override while scrubbing, the real position otherwise).
+  const currentPosition = useSharedValue(position);
+  useEffect(() => {
+    currentPosition.value = activePosition;
+  }, [activePosition]);
 
   // Shared values for gesture calculations (accessible in worklets)
-  const currentPosition = useSharedValue(position);
   const scrubStartPosition = useSharedValue(0);
   const pinchStartSecondsValue = useSharedValue(visibleSeconds);
   const currentPixelsPerSecond = useSharedValue(pixelsPerSecond);
@@ -166,11 +209,7 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
   const currentMaxVisibleSeconds = useSharedValue(maxVisibleSeconds);
   const currentMinVisibleSeconds = useSharedValue(minVisibleSeconds);
 
-  // Keep shared values in sync with props
-  useEffect(() => {
-    currentPosition.value = position;
-  }, [position]);
-
+  // Keep gesture shared values in sync with props/layout.
   useEffect(() => {
     currentPixelsPerSecond.value = pixelsPerSecond;
   }, [pixelsPerSecond]);
@@ -195,22 +234,44 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     currentMinVisibleSeconds.value = minVisibleSeconds;
   }, [minVisibleSeconds]);
 
-  // Memoize transform to avoid object recreation
-  const scrollTransform = useMemo(
-    () => [{ translateX: scrollX }],
-    [scrollX]
-  );
-
-  // Generate paths for the full waveform (memoized - only changes when data changes)
-  const paths = useMemo(() => {
+  // Generate paths for the full waveform (memoized - only changes when data/size changes).
+  // 'bars' = Serato-style colored bars, each slice a BLEND of all three bands (spanning the
+  // full spectrum); 'filled' = the original per-band mirror shapes.
+  const paths = useMemo(():
+    | { kind: 'bars'; bars: BlendedBarPath[] }
+    | { kind: 'filled'; bass: SkPath; mids: SkPath; highs: SkPath }
+    | null => {
     if (!data || !data.bands || duration <= 0) return null;
 
+    if (barStyle === 'bars') {
+      return { kind: 'bars', bars: generateBlendedBarPaths(data, totalWaveformWidth, height, colors) };
+    }
     return {
+      kind: 'filled',
       bass: generateScrollingPath(data.bands.bass, totalWaveformWidth, height, mirror),
       mids: generateScrollingPath(data.bands.mids, totalWaveformWidth, height, mirror),
       highs: generateScrollingPath(data.bands.highs, totalWaveformWidth, height, mirror),
     };
-  }, [data, totalWaveformWidth, height, mirror, duration]);
+  }, [data, totalWaveformWidth, height, mirror, duration, barStyle, colors]);
+
+  // Render the waveform paths for one section (played/future). Opacity is applied by the
+  // wrapping <Group>, so this only emits the fills. Blended bars → one <Path> per color
+  // bucket; filled → the three band shapes.
+  const renderWaveformPaths = () => {
+    if (!paths) return null;
+    if (paths.kind === 'bars') {
+      return paths.bars.map((bar, i) => (
+        <Path key={i} path={bar.path} color={bar.color} />
+      ));
+    }
+    return (
+      <>
+        <Path path={paths.bass} color={colors.bass} />
+        <Path path={paths.mids} color={colors.mids} />
+        <Path path={paths.highs} color={colors.highs} />
+      </>
+    );
+  };
 
   // Clip rects for played/future sections (in container coordinates)
   const playedClip = useMemo(() => {
@@ -225,6 +286,21 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     return path;
   }, [playheadX, width, height]);
 
+  // Beat grid: two memoized paths (thin beat lines + emphasized downbeat/bar lines) so the
+  // whole grid draws in 2 fills regardless of beat count. Positioned in scroll coordinates.
+  const beatGridPaths = useMemo(() => {
+    if (!showBeatGrid || !beats || beats.length === 0 || duration <= 0) return null;
+    const beatLines = Skia.Path.Make();
+    const barLines = Skia.Path.Make();
+    for (let i = 0; i < beats.length; i++) {
+      const x = beats[i] * pixelsPerSecond;
+      const isDownbeat = i % beatsPerBar === 0;
+      const w = isDownbeat ? 1.5 : 1;
+      (isDownbeat ? barLines : beatLines).addRect({ x: x - w / 2, y: 0, width: w, height });
+    }
+    return { beatLines, barLines };
+  }, [beats, pixelsPerSecond, height, beatsPerBar, showBeatGrid, duration]);
+
   // Unified seek handler for both tap and scrub
   const handleSeek = useCallback(
     (newPosition: number) => {
@@ -234,6 +310,35 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     },
     [onSeek, interactive, duration]
   );
+
+  // Scrub lifecycle (called from the pan worklet via runOnJS). The waveform follows the
+  // finger immediately via `scrubPosition`; the real audio seek is throttled to ~every
+  // 90ms during the drag (so it previews without flooding TrackPlayer), then a final,
+  // precise seek fires on release.
+  const beginScrub = useCallback((pos: number) => {
+    isScrubbingRef.current = true;
+    scrubTargetRef.current = pos;
+    lastSeekAtRef.current = 0;
+    setScrubPosition(pos);
+  }, []);
+
+  const updateScrub = useCallback(
+    (pos: number) => {
+      scrubTargetRef.current = pos;
+      setScrubPosition(pos); // instant visual follow
+      const now = Date.now();
+      if (now - lastSeekAtRef.current > 90) {
+        lastSeekAtRef.current = now;
+        handleSeek(pos); // throttled audio preview
+      }
+    },
+    [handleSeek]
+  );
+
+  const endScrub = useCallback(() => {
+    isScrubbingRef.current = false;
+    handleSeek(scrubTargetRef.current); // final precise seek
+  }, [handleSeek]);
 
   // Tap gesture for quick seek
   const tapGesture = Gesture.Tap()
@@ -253,6 +358,7 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
     .onStart(() => {
       'worklet';
       scrubStartPosition.value = currentPosition.value;
+      runOnJS(beginScrub)(currentPosition.value);
       if (onScrubStart) {
         runOnJS(onScrubStart)();
       }
@@ -264,10 +370,11 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
       const secondsDelta = pixelDelta / currentPixelsPerSecond.value;
       const newPos = scrubStartPosition.value + secondsDelta;
       const clamped = Math.max(0, Math.min(currentDuration.value, newPos));
-      runOnJS(handleSeek)(clamped);
+      runOnJS(updateScrub)(clamped);
     })
     .onEnd(() => {
       'worklet';
+      runOnJS(endScrub)();
       if (onScrubEnd) {
         runOnJS(onScrubEnd)();
       }
@@ -315,20 +422,24 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
           {/* Played portion (dimmed) - clipped to left of playhead */}
           <Group clip={playedClip}>
             <Group transform={scrollTransform} opacity={playedOpacity}>
-              <Path path={paths.bass} color={colors.bass} />
-              <Path path={paths.mids} color={colors.mids} />
-              <Path path={paths.highs} color={colors.highs} />
+              {renderWaveformPaths()}
             </Group>
           </Group>
 
           {/* Future portion (bright) - clipped to right of playhead */}
           <Group clip={futureClip}>
             <Group transform={scrollTransform} opacity={futureOpacity}>
-              <Path path={paths.bass} color={colors.bass} />
-              <Path path={paths.mids} color={colors.mids} />
-              <Path path={paths.highs} color={colors.highs} />
+              {renderWaveformPaths()}
             </Group>
           </Group>
+
+          {/* Beat grid (Serato) — thin beat lines + brighter downbeat/bar lines */}
+          {beatGridPaths && (
+            <Group transform={scrollTransform}>
+              <Path path={beatGridPaths.beatLines} color={colors.playhead} opacity={0.15} />
+              <Path path={beatGridPaths.barLines} color={colors.playhead} opacity={0.45} />
+            </Group>
+          )}
 
           {/* Cue point markers (in scrolling coordinate system) */}
           <Group transform={scrollTransform}>
@@ -358,15 +469,25 @@ export const ScrollingWaveform: React.FC<ScrollingWaveformProps> = ({
             })}
           </Group>
 
-          {/* Fixed playhead indicator (NOT in scrolling group) */}
+          {/* Fixed playhead indicator (NOT in scrolling group): soft glow + crisp line */}
           {showPlayhead && (
-            <Rect
-              x={playheadX - 1}
-              y={0}
-              width={2}
-              height={height}
-              color={colors.playhead}
-            />
+            <Group>
+              <Rect
+                x={playheadX - 4}
+                y={0}
+                width={8}
+                height={height}
+                color={colors.playhead}
+                opacity={0.18}
+              />
+              <Rect
+                x={playheadX - 1}
+                y={0}
+                width={2}
+                height={height}
+                color={colors.playhead}
+              />
+            </Group>
           )}
         </Canvas>
       </View>
