@@ -12,9 +12,9 @@
     "prebuild:win": "node scripts/bundle-server.js",
     "prebuild:linux": "node scripts/bundle-server.js",
     "build": "electron-builder",
-    "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win",
-    "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac --publish never",
+    "build:win": "electron-builder --win --publish never",
+    "build:linux": "electron-builder --linux --publish never",
     "generate-icons": "node scripts/generate-icons.js",
     "kill-server": "lsof -ti :3000 | xargs kill -9 || echo 'No server running on port 3000'",
     "setup:ffmpeg": "node scripts/download-ffmpeg.js --output server-bundle/ffmpeg"
