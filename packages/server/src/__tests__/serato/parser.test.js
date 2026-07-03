@@ -137,6 +137,40 @@ describe('SeratoParser', () => {
     });
   });
 
+  describe('indexing failure handling (anti-hang)', () => {
+    it('_waitForIndexing resolves when indexing:complete fires', async () => {
+      const p = parser._waitForIndexing('library_key');
+      parser.emit('indexing:complete', [{ id: 't1' }]);
+      await expect(p).resolves.toEqual([]); // cache is mocked → resolves cached-or-empty
+    });
+
+    it('_waitForIndexing resolves (does NOT hang) when indexing:error fires', async () => {
+      const p = parser._waitForIndexing('library_key');
+      parser.emit('indexing:error', new Error('boom'));
+      await expect(p).resolves.toEqual([]);
+    });
+
+    it('_waitForIndexing resolves via the timeout backstop when no event fires', async () => {
+      const p = parser._waitForIndexing('library_key', 20); // 20ms backstop
+      await expect(p).resolves.toEqual([]);
+    });
+
+    it('_waitForIndexing removes its listeners on settle (no leaks)', async () => {
+      const p = parser._waitForIndexing('library_key', 1000);
+      parser.emit('indexing:complete', []);
+      await p;
+      expect(parser.listenerCount('indexing:complete')).toBe(0);
+      expect(parser.listenerCount('indexing:error')).toBe(0);
+    });
+
+    it('a parked parseLibrary() call resolves (not hangs) when the in-flight index fails', async () => {
+      parser.indexingStatus.isIndexing = true; // simulate an index already in flight
+      const parked = parser.parseLibrary(); // takes the wait-for-indexing branch
+      parser.emit('indexing:error', new Error('serato blew up')); // index then fails
+      await expect(parked).resolves.toEqual([]);
+    });
+  });
+
   describe('invalidateCache', () => {
     it('should clear specific cache item', () => {
       parser.cache.delete = jest.fn();
