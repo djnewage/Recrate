@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Mail, Smartphone, Download, ChevronDown, HelpCircle, ScanLine } from 'lucide-react'
 import { trackEvent } from '../utils/metaPixel'
@@ -604,6 +605,16 @@ export default function HomePage() {
                 <p className="text-gray-400 text-sm">{item.description}</p>
               </motion.div>
             ))}
+          </div>
+
+          {/* Link to the full step-by-step guide */}
+          <div className="text-center mt-12">
+            <Link
+              to="/guide"
+              className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300 font-semibold transition-colors"
+            >
+              See the full step-by-step guide &rarr;
+            </Link>
           </div>
         </div>
       </section>
