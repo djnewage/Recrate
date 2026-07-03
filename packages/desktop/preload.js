@@ -33,6 +33,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),
   validatePath: (path) => ipcRenderer.invoke('validate-path', path),
 
+  // Setup wizard: Serato auto-detect + structural validation
+  detectSeratoInstallations: () => ipcRenderer.invoke('detect-serato-installations'),
+  validateSeratoPath: (path) => ipcRenderer.invoke('validate-serato-path', path),
+
   // Proxy
   getProxyStatus: () => ipcRenderer.invoke('get-proxy-status'),
   onProxyStatus: (callback) => {

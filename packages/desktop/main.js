@@ -68,6 +68,19 @@ function detectSeratoPath() {
   return path.join(homeDir, 'Music', '_Serato_');
 }
 
+// Lazily load the server's VolumeDiscovery singleton (works in dev + packaged). Lets the
+// setup wizard auto-detect + structurally validate Serato installs across ALL volumes
+// before the HTTP server is running (so we don't need to start the server to use it).
+let _volumeDiscovery = null;
+function getVolumeDiscovery() {
+  if (_volumeDiscovery) return _volumeDiscovery;
+  const serverBasePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'server', 'src')
+    : path.join(__dirname, '../server/src');
+  _volumeDiscovery = require(path.join(serverBasePath, 'utils', 'volumeDiscovery.js'));
+  return _volumeDiscovery;
+}
+
 // Create main window
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -594,6 +607,30 @@ ipcMain.handle('validate-path', async (event, pathToCheck) => {
   } catch {
     log.info(`Validating path: ${pathToCheck} - exists: false`);
     return false;
+  }
+});
+
+// Scan all mounted volumes for Serato installations (setup-wizard auto-detect).
+// Returns [] on failure so the wizard just falls back to manual Browse.
+ipcMain.handle('detect-serato-installations', async () => {
+  try {
+    const installs = await getVolumeDiscovery().findSeratoInstallations();
+    log.info(`Detected ${installs.length} Serato installation(s)`);
+    return installs;
+  } catch (error) {
+    log.error('Failed to detect Serato installations:', error.message);
+    return [];
+  }
+});
+
+// Structurally validate a Serato folder (has `database V2` and/or `.crate` files).
+// Returns { valid, hasDatabase, trackCount, crateCount, lastModified }.
+ipcMain.handle('validate-serato-path', async (event, seratoPath) => {
+  try {
+    return await getVolumeDiscovery().validateSeratoPath(seratoPath);
+  } catch (error) {
+    log.error('Failed to validate Serato path:', error.message);
+    return { valid: false };
   }
 });
 
