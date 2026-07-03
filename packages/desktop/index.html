@@ -527,6 +527,47 @@
       border: 1px solid rgba(255, 59, 48, 0.2);
     }
 
+    /* Green per-step confirmation (mirrors .setup-error, success variant) */
+    .setup-confirm {
+      background: rgba(52, 199, 89, 0.1);
+      color: var(--accent-green);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-top: 12px;
+      border: 1px solid rgba(52, 199, 89, 0.2);
+    }
+
+    /* Auto-detected Serato installations list */
+    .setup-detected {
+      margin-bottom: 16px;
+    }
+    .setup-detected-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    .setup-detected-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 100%;
+      text-align: left;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      background: var(--card-bg, rgba(255,255,255,0.04));
+      border: 1px solid var(--separator);
+      cursor: pointer;
+      transition: border-color 0.15s ease;
+    }
+    .setup-detected-item:hover,
+    .setup-detected-item.selected {
+      border-color: var(--accent-green);
+    }
+    .setup-detected-item .name { font-size: 13px; font-weight: 600; }
+    .setup-detected-item .meta { font-size: 11px; color: var(--text-secondary); }
+
     /* Setup Wizard Screen */
     #setup-screen {
       display: none;
@@ -846,10 +887,14 @@
             Where is your <code>_Serato_</code> folder located?<br>
             This contains your crates, playlists, and track analysis data.
           </p>
+          <!-- Auto-detected installs (populated by JS; hidden when none found) -->
+          <div id="setup-serato-detected" class="setup-detected hidden"></div>
           <div class="setup-path-group">
             <input type="text" id="setup-serato-path" readonly placeholder="Select your Serato folder...">
             <button class="btn btn-secondary" onclick="browseSetupSerato()">Browse</button>
           </div>
+          <!-- Green confirmation once a valid Serato folder is chosen -->
+          <div id="setup-serato-confirm" class="setup-confirm hidden"></div>
           <div class="step-actions">
             <button id="setup-next-1" class="btn btn-primary" onclick="validateAndGoToStep2()">Next →</button>
           </div>
@@ -1122,19 +1167,95 @@
       document.getElementById('setup-error').classList.add('hidden');
     }
 
+    let detectedInstalls = [];
+
     async function showSetupWizard() {
       // Hide other screens
       document.getElementById('status-screen').style.display = 'none';
       document.getElementById('settings-screen').classList.remove('active');
       document.getElementById('setup-screen').classList.add('active');
 
-      // Clear any previous errors
+      // Clear any previous errors / confirmation
       hideSetupError();
+      hideSeratoConfirm();
 
-      // Load auto-detected paths
+      // Prefill music path; only prefill the Serato path if it's actually a valid library
+      // (don't drop a non-existent default into the field like the old flow did).
       const config = await api.getConfig();
-      document.getElementById('setup-serato-path').value = config.seratoPath || '';
       document.getElementById('setup-music-path').value = config.musicPath || '';
+      const seratoInput = document.getElementById('setup-serato-path');
+      seratoInput.value = '';
+      if (config.seratoPath) {
+        const v = await api.validateSeratoPath(config.seratoPath);
+        if (v && v.valid) {
+          seratoInput.value = config.seratoPath;
+          showSeratoConfirm(v);
+        }
+      }
+
+      // Auto-detect Serato installs across ALL volumes (external drives included).
+      renderDetectedInstalls([]);
+      try {
+        const installs = await api.detectSeratoInstallations();
+        renderDetectedInstalls(installs || []);
+      } catch {
+        renderDetectedInstalls([]);
+      }
+    }
+
+    // Render the auto-detected Serato installs as a pickable list (hidden when none).
+    function renderDetectedInstalls(installs) {
+      detectedInstalls = Array.isArray(installs) ? installs : [];
+      const container = document.getElementById('setup-serato-detected');
+      const selected = document.getElementById('setup-serato-path').value;
+      if (!detectedInstalls.length) {
+        container.classList.add('hidden');
+        container.innerHTML = '';
+        return;
+      }
+      const items = detectedInstalls.map((inst, i) => {
+        const isSel = inst.seratoPath === selected ? ' selected' : '';
+        const crates = (inst.crateCount || 0).toLocaleString();
+        const tracks = (inst.trackCount || 0).toLocaleString();
+        return `
+          <div class="setup-detected-item${isSel}" onclick="selectDetectedInstall(${i})">
+            <span class="name">${escapeHtml(inst.name || inst.volume || 'Serato Library')}</span>
+            <span class="meta">${escapeHtml(inst.volume || '')} · ${crates} crates · ${tracks} tracks</span>
+          </div>`;
+      }).join('');
+      container.innerHTML =
+        `<div class="setup-detected-label">We found these Serato libraries — pick one, or Browse below:</div>${items}`;
+      container.classList.remove('hidden');
+    }
+
+    // Pick an auto-detected install: fills Serato + music paths and confirms.
+    function selectDetectedInstall(index) {
+      const inst = detectedInstalls[index];
+      if (!inst) return;
+      document.getElementById('setup-serato-path').value = inst.seratoPath;
+      if (inst.musicPaths && inst.musicPaths.length) {
+        document.getElementById('setup-music-path').value = inst.musicPaths[0];
+      }
+      hideSetupError();
+      showSeratoConfirm({ valid: true, crateCount: inst.crateCount, trackCount: inst.trackCount });
+      renderDetectedInstalls(detectedInstalls); // re-render to highlight the selection
+    }
+
+    function showSeratoConfirm(v) {
+      const el = document.getElementById('setup-serato-confirm');
+      const crates = (v.crateCount || 0).toLocaleString();
+      const tracks = (v.trackCount || 0).toLocaleString();
+      el.textContent = `✓ Serato library found — ${crates} crates, ${tracks} tracks`;
+      el.classList.remove('hidden');
+    }
+
+    function hideSeratoConfirm() {
+      document.getElementById('setup-serato-confirm').classList.add('hidden');
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     function goToStep(stepNum) {
@@ -1149,7 +1270,7 @@
       hideSetupError();
     }
 
-    // Validate Serato path before going to step 2
+    // Validate Serato path (structurally) before going to step 2
     async function validateAndGoToStep2() {
       const seratoPath = document.getElementById('setup-serato-path').value;
 
@@ -1158,13 +1279,14 @@
         return;
       }
 
-      const exists = await api.validatePath(seratoPath);
-      if (!exists) {
-        showSetupError('Serato folder not found at this location. Please select a valid _Serato_ folder.');
+      const v = await api.validateSeratoPath(seratoPath);
+      if (!v || !v.valid) {
+        showSetupError('That folder isn’t a Serato library (no “database V2” or crates found). Select your _Serato_ folder.');
         return;
       }
 
       hideSetupError();
+      showSeratoConfirm(v);
       goToStep(2);
     }
 
@@ -1172,7 +1294,15 @@
       const path = await api.selectDirectory('Select Serato Library Folder');
       if (path) {
         document.getElementById('setup-serato-path').value = path;
-        hideSetupError(); // Clear error when user selects a new path
+        hideSetupError();
+        hideSeratoConfirm();
+        const v = await api.validateSeratoPath(path);
+        if (v && v.valid) {
+          showSeratoConfirm(v);
+        } else {
+          showSetupError('That folder isn’t a Serato library (no “database V2” or crates found). Select your _Serato_ folder.');
+        }
+        renderDetectedInstalls(detectedInstalls); // refresh selection highlight
       }
     }
 
