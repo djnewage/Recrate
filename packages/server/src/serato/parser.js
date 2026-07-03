@@ -163,6 +163,34 @@ class SeratoParser extends EventEmitter {
   }
 
   /**
+   * Wait for an in-flight index to finish without ever hanging. Settles on success
+   * (`indexing:complete`) OR failure (`indexing:error`), plus a timeout backstop, always
+   * resolving with the freshly-cached list (or `[]`). This mirrors the previous park
+   * behavior for the success case but adds failure/timeout so callers can't deadlock if
+   * indexing throws. Listeners are removed on settle to avoid leaks across failed runs.
+   * @param {string} cacheKey
+   * @param {number} timeoutMs
+   * @returns {Promise<Array>}
+   */
+  _waitForIndexing(cacheKey, timeoutMs = 60000) {
+    return new Promise((resolve) => {
+      let timer = null;
+      const settle = () => {
+        clearTimeout(timer);
+        this.removeListener('indexing:complete', settle);
+        this.removeListener('indexing:error', settle);
+        resolve(this.cache.get(cacheKey) || []);
+      };
+      timer = setTimeout(() => {
+        logger.warn('Timed out waiting for library indexing; resolving with cached/empty result');
+        settle();
+      }, timeoutMs);
+      this.once('indexing:complete', settle);
+      this.once('indexing:error', settle);
+    });
+  }
+
+  /**
    * Parse library - Extract tracks from Serato database or scan directory
    * Returns array of track objects
    */
@@ -181,15 +209,16 @@ class SeratoParser extends EventEmitter {
       return cached;
     }
 
-    // If already indexing, wait for it to complete using events
+    // If already indexing, wait for it to finish. Settles on success OR failure (plus a
+    // timeout backstop) so callers can never hang if indexing errors out.
     if (this.indexingStatus.isIndexing) {
       logger.debug('Indexing already in progress, waiting for completion...');
-      return new Promise((resolve) => {
-        this.once('indexing:complete', () => {
-          resolve(this.cache.get(cacheKey) || []);
-        });
-      });
+      return this._waitForIndexing(cacheKey);
     }
+
+    // Claim the indexing slot synchronously (before any await below) so a concurrent
+    // parseLibrary() call parks above instead of racing into a second full index.
+    this.indexingStatus.isIndexing = true;
 
     // Try to load from persistent file cache (fast cold start)
     if (this.fileCache) {
@@ -216,11 +245,15 @@ class SeratoParser extends EventEmitter {
           }
 
           // Mark as complete
+          this.indexingStatus.isIndexing = false;
           this.indexingStatus.isComplete = true;
+          this.indexingStatus.endTime = Date.now();
           this.indexingStatus.progress.phase = 'complete';
           this.indexingStatus.progress.tracksFound = fileCached.data.length;
           this.indexingStatus.progress.message = `Loaded ${fileCached.data.length} tracks from cache`;
 
+          // Release any caller parked in _waitForIndexing.
+          this.emit('indexing:complete', fileCached.data);
           return fileCached.data;
         }
       } catch (error) {
@@ -502,9 +535,12 @@ class SeratoParser extends EventEmitter {
     } catch (error) {
       logger.error('Error parsing library:', error.message);
       this.indexingStatus.isIndexing = false;
+      this.indexingStatus.endTime = Date.now();
       this.indexingStatus.progress.phase = 'error';
       this.indexingStatus.progress.message = `Error: ${error.message}`;
       this._emitProgress({ phase: 'error', message: `Error: ${error.message}` });
+      // Release any callers parked in _waitForIndexing so they don't hang forever.
+      this.emit('indexing:error', error);
       throw new ParseError(`Failed to parse library: ${error.message}`);
     }
   }

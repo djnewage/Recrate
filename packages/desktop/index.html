@@ -1027,18 +1027,18 @@
         if (progress) {
           const tracksFound = progress.tracksFound || 0;
 
-          // Estimate progress based on phase
+          // Estimate progress based on the phases the parser actually emits
+          // (indexing → parsing_database → scanning → complete).
           let progressPercent = 0;
           switch (progress.phase) {
-            case 'building_index': progressPercent = 10; break;
-            case 'parsing_database': progressPercent = 30; break;
-            case 'resolving': progressPercent = 50; break;
-            case 'scanning': progressPercent = 70; break;
-            case 'calculating_plays': progressPercent = 90; break;
+            case 'indexing': progressPercent = 10; break;
+            case 'parsing_database': progressPercent = 40; break;
+            case 'scanning': progressPercent = 75; break;
             case 'complete': progressPercent = 100; break;
             default: progressPercent = 5;
           }
 
+          progressBar.style.background = ''; // reset any prior error styling
           progressBar.style.width = `${progressPercent}%`;
           statusText.textContent = progress.message || 'Indexing...';
           tracksCount.textContent = tracksFound.toLocaleString();
@@ -1073,6 +1073,20 @@
         setTimeout(() => {
           indexingSection.classList.add('hidden');
         }, 3000);
+      } else if (progress && progress.phase === 'error') {
+        // Indexing failed — surface the error instead of silently hiding with a stuck bar.
+        indexingSection.classList.remove('hidden');
+        indexingBadge.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          Failed
+        `;
+        indexingBadge.style.background = 'var(--accent-red, #EF4444)';
+        progressBar.style.width = '100%';
+        progressBar.style.background = 'var(--accent-red, #EF4444)';
+        statusText.textContent = progress.message || 'Indexing failed. Check your Serato folder and re-index.';
+        phaseText.textContent = 'Error';
       } else {
         indexingSection.classList.add('hidden');
       }
@@ -1082,6 +1096,7 @@
     function formatPhase(phase) {
       const phases = {
         'idle': 'Ready',
+        'indexing': 'Indexing library',
         'building_index': 'Building file index',
         'parsing_database': 'Parsing Serato database',
         'resolving': 'Resolving track paths',
