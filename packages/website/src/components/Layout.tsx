@@ -41,6 +41,7 @@ export default function Layout({ children }: LayoutProps) {
                 <a href="#contact" className="text-gray-300 hover:text-white transition-colors">Contact</a>
               </>
             )}
+            <Link to="/guide" className="text-gray-300 hover:text-white transition-colors">Guide</Link>
             <Link to="/cleanse" className="text-gray-300 hover:text-white transition-colors">Cleanse</Link>
           </div>
           {/* Mobile hamburger button */}
@@ -66,6 +67,7 @@ export default function Layout({ children }: LayoutProps) {
                   <a href="#contact" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Contact</a>
                 </>
               )}
+              <Link to="/guide" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Guide</Link>
               <Link to="/cleanse" onClick={handleMobileNavClick} className="text-gray-300 hover:text-white transition-colors">Cleanse</Link>
             </div>
           </div>
@@ -88,6 +90,9 @@ export default function Layout({ children }: LayoutProps) {
             &copy; {new Date().getFullYear()} Recrate. All rights reserved.
           </p>
           <div className="flex items-center gap-6">
+            <Link to="/guide" className="text-gray-400 hover:text-white transition-colors text-sm">
+              Guide
+            </Link>
             <Link to="/cleanse" className="text-gray-400 hover:text-white transition-colors text-sm">
               Cleanse
             </Link>
