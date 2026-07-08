@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Mail, Smartphone, Download, ChevronDown, HelpCircle, ScanLine } from 'lucide-react'
+import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Smartphone, Download, ChevronDown, HelpCircle, ScanLine } from 'lucide-react'
 import { trackEvent } from '../utils/metaPixel'
+
+const APP_STORE_URL = 'https://apps.apple.com/us/app/recrate/id6756329199'
 
 interface ProxyAsset {
   name: string
@@ -93,10 +95,6 @@ export default function HomePage() {
   // Contact form state
   const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' })
   const [contactStatus, setContactStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
-
-  // Waitlist form state
-  const [waitlistEmail, setWaitlistEmail] = useState('')
-  const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
 
   // FAQ accordion state
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null)
@@ -205,31 +203,6 @@ export default function HomePage() {
     }
   }, [contactForm])
 
-  const handleWaitlistSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault()
-    setWaitlistStatus('sending')
-
-    try {
-      const response = await fetch('https://formspree.io/f/xwkzbkkl', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: waitlistEmail }),
-      })
-
-      if (response.ok) {
-        setWaitlistStatus('success')
-        setWaitlistEmail('')
-        trackEvent('Lead', { content_name: 'Recrate', content_category: 'mobile_waitlist' })
-      } else {
-        setWaitlistStatus('error')
-        setTimeout(() => setWaitlistStatus('idle'), 5000)
-      }
-    } catch {
-      setWaitlistStatus('error')
-      setTimeout(() => setWaitlistStatus('idle'), 5000)
-    }
-  }, [waitlistEmail])
-
   return (
     <>
       {/* Hero Section with Video Background */}
@@ -295,63 +268,17 @@ export default function HomePage() {
             transition={{ duration: 0.8, delay: 0.6 }}
             className="flex flex-col items-center gap-6"
           >
-            {/* Desktop Download CTA - Hidden for pre-launch */}
-            {/* <a
-              href="#download"
+            {/* Mobile App Download CTA */}
+            <a
+              href={APP_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => trackEvent('Lead', { content_name: 'Recrate', content_category: 'app_store_click' })}
               className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold text-lg hover:from-purple-600 hover:to-pink-600 transition-all btn-glow"
             >
-              <Download size={20} />
-              Download for Mac
-            </a> */}
-
-            {/* Mobile App Waitlist */}
-            <div className="w-full max-w-md">
-              <p className="text-gray-400 text-sm mb-3 text-center">
-                Launching soon — be the first to know
-              </p>
-              {waitlistStatus === 'success' ? (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="flex items-center justify-center gap-2 px-6 py-3 bg-green-500/20 border border-green-500/30 rounded-full text-green-400"
-                >
-                  <Check size={18} />
-                  You're on the list!
-                </motion.div>
-              ) : (
-                <form onSubmit={handleWaitlistSubmit} className="flex gap-2">
-                  <input
-                    type="email"
-                    required
-                    value={waitlistEmail}
-                    onChange={(e) => setWaitlistEmail(e.target.value)}
-                    placeholder="Enter your email"
-                    className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-full text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
-                  />
-                  <button
-                    type="submit"
-                    disabled={waitlistStatus === 'sending'}
-                    className="px-6 py-3 bg-white/10 border border-white/20 rounded-full font-semibold hover:bg-white/20 transition-all disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {waitlistStatus === 'sending' ? (
-                      <Loader2 size={18} className="animate-spin" />
-                    ) : (
-                      <Mail size={18} />
-                    )}
-                    <span className="hidden sm:inline">Join Waitlist</span>
-                  </button>
-                </form>
-              )}
-              {waitlistStatus === 'error' && (
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-red-400 text-sm mt-2 text-center"
-                >
-                  Something went wrong. Please try again.
-                </motion.p>
-              )}
-            </div>
+              <Apple size={20} />
+              Download on the App Store
+            </a>
 
             {/* Pricing highlight */}
             <motion.div
@@ -896,8 +823,13 @@ export default function HomePage() {
             className="mt-8 text-gray-500 text-sm"
           >
             Requires the Recrate mobile app to connect.{' '}
-            <a href="#" className="text-purple-400 hover:text-purple-300 transition-colors">
-              Available on iOS and Android
+            <a
+              href={APP_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              Download it on the App Store
             </a>
           </motion.p>
         </div>
