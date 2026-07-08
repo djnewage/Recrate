@@ -292,7 +292,7 @@ export default function HomePage() {
                 Free 7-day trial
               </p>
               <p className="mt-1">
-                Available on Mac, Windows, iOS & Android
+                Available on Mac, Windows & iOS — Android coming soon
               </p>
             </motion.div>
           </motion.div>
@@ -579,7 +579,7 @@ export default function HomePage() {
               },
               {
                 question: 'What devices are supported?',
-                answer: 'Desktop: macOS 12+ and Windows 10/11. Mobile: iOS and Android.',
+                answer: 'Desktop: macOS 12+ and Windows 10/11. Mobile: iOS (Android coming soon).',
               },
               {
                 question: 'Is Recrate free?',
