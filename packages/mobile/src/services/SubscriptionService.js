@@ -178,8 +178,9 @@ const SubscriptionService = {
         return SUBSCRIPTION_TIERS.EXPIRED;
       }
 
-      // New user - treat as pre-trial (will show trial screen)
-      return SUBSCRIPTION_TIERS.TRIAL;
+      // New user - pre-trial; the trialGate keeps them on TrialStartScreen
+      // until the server confirms, so NEW never grants feature access.
+      return SUBSCRIPTION_TIERS.NEW;
     } catch (error) {
       console.error('[SubscriptionService] Failed to get current tier:', error);
       // Fallback to cached tier

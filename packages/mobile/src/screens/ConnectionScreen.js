@@ -15,7 +15,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConnectionStore, CONNECTION_TYPES } from '../store/connectionStore';
 import useStore from '../store/useStore';
-import { useSubscriptionStore } from '../store/subscriptionStore';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import QRScanner from '../components/QRScanner';
 
@@ -48,16 +47,12 @@ const ConnectionScreen = ({ navigation }) => {
     }
   }, []);
 
-  // Navigate to main app when connected (or to trial screen if first time)
+  // Navigate to main app when connected (TrialStart now happens before this
+  // screen, gated by the trialGate in RootNavigator)
   useEffect(() => {
     if (isConnected) {
       setTimeout(() => {
-        const { hasSeenTrialStartScreen } = useSubscriptionStore.getState();
-        if (!hasSeenTrialStartScreen) {
-          navigation.replace('TrialStart');
-        } else {
-          navigation.replace('Main');
-        }
+        navigation.replace('Main');
       }, 1000);
     }
   }, [isConnected, navigation]);

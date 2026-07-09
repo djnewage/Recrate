@@ -11,6 +11,7 @@ import {
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
 import useStore from '../store/useStore';
@@ -743,6 +744,39 @@ const SettingsScreen = ({ navigation }) => {
                 >
                   <Ionicons name="refresh" size={16} color={COLORS.warning} />
                   <Text style={styles.debugResetButtonText}>Reset All Data</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.debugResetButton}
+                  onPress={() => {
+                    Alert.alert(
+                      'Reset ALL Local Data?',
+                      'Clears Keychain trial data, all AsyncStorage (library cache, device ID, disclaimer, saved server), and signs out. Simulates a fresh install.\n\nNote: the server still remembers this account — to re-test the full new-user flow, sign up with a fresh email.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Reset',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              // Keychain trial keys + subscription store state
+                              await useSubscriptionStore.getState().clearSubscriptionData();
+                              // All zustand caches, device id, lastServerIP, disclaimer flag
+                              await AsyncStorage.clear();
+                              await signOut();
+                            } catch (error) {
+                              Alert.alert('Reset failed', error.message);
+                            }
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                >
+                  <Ionicons name="trash" size={16} color={COLORS.error} />
+                  <Text style={[styles.debugResetButtonText, { color: COLORS.error }]}>
+                    Reset ALL Local Data (fresh install)
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity

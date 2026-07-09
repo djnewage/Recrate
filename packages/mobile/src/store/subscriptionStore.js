@@ -9,6 +9,20 @@ import {
   TRIAL_DURATION_DAYS,
 } from '../constants/subscription';
 
+// Bounds how long the navigation gate can stay 'unknown' waiting on the server.
+// Falling back to 'needsTrial' is safe: TrialStartScreen's button requires the
+// server anyway and errors with a Retry, and startTrialOnServer treats
+// "already started" as success.
+const TRIAL_GATE_TIMEOUT_MS = 8000;
+let trialGateTimeout = null;
+
+function clearTrialGateTimeout() {
+  if (trialGateTimeout) {
+    clearTimeout(trialGateTimeout);
+    trialGateTimeout = null;
+  }
+}
+
 export const useSubscriptionStore = create(
   persist(
     (set, get) => ({
@@ -22,6 +36,30 @@ export const useSubscriptionStore = create(
       trialStartDate: null,
       trialEndDate: null,
       hasSeenTrialStartScreen: false,
+
+      // Navigation gate: has this account started (or moved past) the trial?
+      // 'unknown' -> spinner, 'needsTrial' -> TrialStartScreen, 'ready' -> Connection.
+      // Never persisted — re-derived from the server each session.
+      trialGate: 'unknown',
+
+      // Reset the gate (on sign-in/sign-out) and arm a timeout so navigation
+      // can't hang forever if the server sync never resolves it.
+      resetTrialGate: () => {
+        clearTrialGateTimeout();
+        set({ trialGate: 'unknown' });
+        trialGateTimeout = setTimeout(() => {
+          trialGateTimeout = null;
+          if (get().trialGate === 'unknown') {
+            // Offline/timeout fallback: local evidence of a past trial means an
+            // existing user (e.g. offline cold start) — don't strand them on
+            // TrialStartScreen. Only true fresh installs fall to 'needsTrial'.
+            const { trialStartDate, hasSeenTrialStartScreen } = get();
+            const fallback = trialStartDate || hasSeenTrialStartScreen ? 'ready' : 'needsTrial';
+            console.warn(`[SubscriptionStore] Trial gate timed out, defaulting to ${fallback}`);
+            set({ trialGate: fallback });
+          }
+        }, TRIAL_GATE_TIMEOUT_MS);
+      },
 
       // Usage tracking (for trial/pro limits)
       aiCrateBuildCount: 0,
@@ -92,6 +130,16 @@ export const useSubscriptionStore = create(
             isLoading: false,
           });
 
+          // Pre-resolve the navigation gate from local evidence so existing
+          // users never wait on the network. New installs stay 'unknown' until
+          // syncWithServer resolves it (bounded by the resetTrialGate timeout).
+          if (trialStartDate || hasSeenTrialStartScreen) {
+            clearTrialGateTimeout();
+            set({ trialGate: 'ready' });
+          } else if (get().trialGate === 'unknown' && !trialGateTimeout) {
+            get().resetTrialGate();
+          }
+
           // Sync with server (source of truth) in background
           // This updates quotas and ensures trial/subscription state is accurate
           // Don't await - let it happen in background to not block UI
@@ -102,12 +150,19 @@ export const useSubscriptionStore = create(
           return tier;
         } catch (error) {
           console.error('[SubscriptionStore] Init error:', error);
+          // Only assume EXPIRED if a trial was actually started at some point;
+          // a fresh install with an init error must not get the blocking paywall.
+          const hadTrial = !!get().trialStartDate;
+          const fallbackTier = hadTrial ? SUBSCRIPTION_TIERS.EXPIRED : SUBSCRIPTION_TIERS.NEW;
           set({
             error: error.message,
             isLoading: false,
-            currentTier: SUBSCRIPTION_TIERS.EXPIRED,
+            currentTier: fallbackTier,
           });
-          return SUBSCRIPTION_TIERS.EXPIRED;
+          if (get().trialGate === 'unknown' && !trialGateTimeout) {
+            get().resetTrialGate();
+          }
+          return fallbackTier;
         }
       },
 
@@ -157,6 +212,10 @@ export const useSubscriptionStore = create(
               localTier = SUBSCRIPTION_TIERS.PRO;
             } else if (localTier === 'trial') {
               localTier = SUBSCRIPTION_TIERS.TRIAL;
+            } else if (localTier === 'new') {
+              // Signed up but trial not started yet — must not fall through to
+              // EXPIRED or the blocking paywall would show for brand-new users.
+              localTier = SUBSCRIPTION_TIERS.NEW;
             } else {
               localTier = SUBSCRIPTION_TIERS.EXPIRED;
             }
@@ -166,9 +225,15 @@ export const useSubscriptionStore = create(
               localTier = SUBSCRIPTION_TIERS.PRO;
             }
 
+            // Server is the source of truth for the navigation gate
+            clearTrialGateTimeout();
+            const trialGate =
+              serverStatus.tier === 'new' && !serverStatus.betaMode ? 'needsTrial' : 'ready';
+
             // Update local state with server values
             set({
               currentTier: localTier,
+              trialGate,
               betaMode: !!serverStatus.betaMode,
               // Trial info from server
               trialStartDate: serverStatus.trial?.startedAt || null,
@@ -193,7 +258,16 @@ export const useSubscriptionStore = create(
         } catch (error) {
           // Don't fail silently - log for debugging
           console.warn('[SubscriptionStore] Server sync failed (using local state):', error.message);
-          // Continue using local state - server may not be connected
+          // Continue using local state - server may not be connected.
+          // If local evidence shows a past trial, resolve the gate now instead
+          // of stranding an offline existing user on the spinner/timeout.
+          if (get().trialGate === 'unknown') {
+            const { trialStartDate, hasSeenTrialStartScreen } = get();
+            if (trialStartDate || hasSeenTrialStartScreen) {
+              clearTrialGateTimeout();
+              set({ trialGate: 'ready' });
+            }
+          }
         }
 
         return null;
@@ -209,8 +283,10 @@ export const useSubscriptionStore = create(
           const result = await apiService.startTrial();
 
           if (result.success) {
+            clearTrialGateTimeout();
             set({
               currentTier: SUBSCRIPTION_TIERS.TRIAL,
+              trialGate: 'ready',
               trialStartDate: result.trialStartedAt,
               trialEndDate: result.trialEndsAt,
               hasSeenTrialStartScreen: true,
@@ -230,9 +306,22 @@ export const useSubscriptionStore = create(
 
           return false;
         } catch (error) {
+          // Server already has a trial for this account (e.g. existing account
+          // on a wiped device) — sync the real state and proceed.
+          if (error.response?.status === 400) {
+            console.log('[SubscriptionStore] Trial already started on server, syncing');
+            await SubscriptionService.markTrialScreenSeen();
+            set({ hasSeenTrialStartScreen: true });
+            await get().syncWithServer();
+            clearTrialGateTimeout();
+            set({ trialGate: 'ready' });
+            return true;
+          }
+
+          // No local fallback: the server is the only trial-minting authority.
           console.error('[SubscriptionStore] Failed to start trial on server:', error);
-          // Fall back to local trial start
-          return get().startTrial();
+          set({ error: error.message });
+          return false;
         }
       },
 
@@ -455,8 +544,10 @@ export const useSubscriptionStore = create(
       // Clear all subscription data (for testing/logout)
       clearSubscriptionData: async () => {
         await SubscriptionService.clearAllData();
+        clearTrialGateTimeout();
         set({
           currentTier: null,
+          trialGate: 'unknown',
           trialStartDate: null,
           trialEndDate: null,
           hasSeenTrialStartScreen: false,

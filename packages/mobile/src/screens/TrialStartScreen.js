@@ -8,6 +8,7 @@ import {
   Image,
   Linking,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,19 +22,30 @@ const TrialStartScreen = ({ navigation }) => {
   const [isStarting, setIsStarting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
-  const { startTrial, restorePurchases, markTrialScreenSeen } = useSubscriptionStore();
+  const { startTrialOnServer, restorePurchases, markTrialScreenSeen, syncWithServer } =
+    useSubscriptionStore();
 
   const trialFeatures = TIER_FEATURES[SUBSCRIPTION_TIERS.TRIAL];
 
   const handleStartTrial = async () => {
     setIsStarting(true);
 
-    const success = await startTrial();
+    // Server mints the trial — this requires a connection by design
+    const success = await startTrialOnServer();
 
     setIsStarting(false);
 
     if (success) {
-      navigation.replace('Main');
+      navigation.replace('Connection');
+    } else {
+      Alert.alert(
+        'Connection Required',
+        'Starting your free trial needs an internet connection. Please check your connection and try again.',
+        [
+          { text: 'Retry', onPress: handleStartTrial },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
     }
   };
 
@@ -45,9 +57,10 @@ const TrialStartScreen = ({ navigation }) => {
     setIsRestoring(false);
 
     if (result.success) {
-      // Successfully restored - go to main app
+      // Successfully restored - sync server state and continue to connect
       await markTrialScreenSeen();
-      navigation.replace('Main');
+      await syncWithServer();
+      navigation.replace('Connection');
     }
   };
 

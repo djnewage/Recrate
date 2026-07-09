@@ -67,6 +67,11 @@ export const useAuthStore = create(
               provider: AuthService.getProvider(),
             });
 
+            // Re-resolve the trial gate for this account (the post-sign-in
+            // server sync below settles it) so a device-level gate result
+            // can't leak across accounts.
+            useSubscriptionStore.getState().resetTrialGate();
+
             // Update external services with user context
             await get().updateExternalServices(userData);
 
@@ -84,6 +89,9 @@ export const useAuthStore = create(
               photoURL: null,
               provider: null,
             });
+
+            // Gate must be re-derived for whoever signs in next
+            useSubscriptionStore.getState().resetTrialGate();
 
             // Clear external service user context
             await get().clearExternalServices();

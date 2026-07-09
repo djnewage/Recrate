@@ -45,7 +45,8 @@ async function getUser(firebaseUid, deviceId) {
 }
 
 /**
- * Create or get user, starting trial if new
+ * Create or get user. New users start as tier 'new' (no trial dates) —
+ * the trial is only minted by POST /start-trial when the user explicitly opts in.
  * @param {string} firebaseUid - Firebase UID
  * @param {string} deviceId - Device ID
  * @returns {Promise<Object>} User record
@@ -54,23 +55,17 @@ async function getOrCreateUser(firebaseUid, deviceId) {
   let user = await getUser(firebaseUid, deviceId);
 
   if (!user) {
-    // Create new user with trial
     const id = firebaseUid || deviceId || `user-${Date.now()}`;
-    const trialDays = await getTrialDurationDays();
-    const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate() + trialDays);
 
     await firestore.createUser(id, {
       firebase_uid: firebaseUid || null,
       device_id: deviceId || null,
-      tier: 'trial',
-      trial_started_at: new Date().toISOString(),
-      trial_ends_at: trialEnd.toISOString(),
+      tier: 'new',
     });
 
     user = await firestore.getUser(id);
 
-    logger.info(`[Subscription] Created new trial user: ${id}`);
+    logger.info(`[Subscription] Created new user (pre-trial): ${id}`);
   }
 
   // Link Firebase UID to existing device-only user if needed
@@ -89,6 +84,7 @@ async function getOrCreateUser(firebaseUid, deviceId) {
  * @returns {Promise<Object>} Updated user record
  */
 async function checkExpiration(user) {
+  // Tier 'new' (trial never started) has no dates and is never downgraded here.
   const now = new Date();
   let needsUpdate = false;
   let newTier = user.tier;

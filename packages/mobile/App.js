@@ -145,6 +145,7 @@ function TabNavigator({ navigation }) {
 // Root navigator with auth and connection screens
 function RootNavigator() {
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
+  const trialGate = useSubscriptionStore((state) => state.trialGate);
 
   // Show loading screen while checking auth state
   if (authLoading) {
@@ -155,8 +156,25 @@ function RootNavigator() {
     );
   }
 
+  // Hold until the trial gate resolves so new users land on TrialStart
+  // (bounded by the store's gate timeout)
+  if (isAuthenticated && trialGate === 'unknown') {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
   return (
     <RootStack.Navigator
+      // Remount on auth transitions so initialRouteName is honored; this also
+      // latches the gate result for the session (initialRouteName is
+      // mount-time only, so later gate changes don't yank navigation).
+      key={isAuthenticated ? 'app' : 'auth'}
+      initialRouteName={
+        !isAuthenticated ? 'Auth' : trialGate === 'needsTrial' ? 'TrialStart' : 'Connection'
+      }
       screenOptions={{
         headerShown: false,
       }}

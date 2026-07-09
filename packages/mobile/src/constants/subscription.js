@@ -14,6 +14,7 @@ export const PRODUCT_IDS = {
 
 // Subscription tier identifiers
 export const SUBSCRIPTION_TIERS = {
+  NEW: 'new', // Signed up, trial not started yet
   TRIAL: 'trial',
   PRO: 'pro',
   EXPIRED: 'expired',
@@ -24,6 +25,18 @@ export const TRIAL_DURATION_DAYS = 7;
 
 // Feature limits and descriptions per tier
 export const TIER_FEATURES = {
+  [SUBSCRIPTION_TIERS.NEW]: {
+    name: 'Free Trial Available',
+    aiCrateBuilds: 0,
+    trackIdentifications: 0,
+    hasAIAccess: false,
+    price: 'Free',
+    priceValue: 0,
+    description: 'Start your 7-day trial',
+    features: [
+      'Start your free trial to unlock features',
+    ],
+  },
   [SUBSCRIPTION_TIERS.TRIAL]: {
     name: 'Free Trial',
     aiCrateBuilds: 15,

@@ -51,6 +51,7 @@ jest.mock('../../store/subscriptionStore', () => ({
   useSubscriptionStore: {
     getState: jest.fn(() => ({
       linkToFirebaseUser: jest.fn().mockResolvedValue(undefined),
+      resetTrialGate: jest.fn(),
     })),
   },
 }));

@@ -16,6 +16,23 @@
  */
 
 const TIERS = {
+  new: {
+    // Signed up but hasn't started the free trial yet (POST /start-trial mints it)
+    name: 'New',
+    price: 0,
+    features: {
+      crateManagement: true,  // Allow basic browsing
+      audioStreaming: false,
+      remoteAccess: false,
+      aiCrateBuilder: false,
+      trackIdentification: false,
+    },
+    aiQuotas: {
+      crate_builder: 0,
+      track_identification: 0,
+    },
+    byokAllowed: false,
+  },
   trial: {
     name: 'Free Trial',
     price: 0,
