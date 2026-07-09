@@ -166,7 +166,12 @@ export const useSubscriptionStore = create(
         }
       },
 
-      // Refresh subscription status from RevenueCat
+      // Refresh subscription status from RevenueCat.
+      // WARNING: this derives the tier from LOCAL evidence (RevenueCat
+      // entitlements + Keychain trial dates) and overwrites currentTier.
+      // Never call it right after syncWithServer — the server tier is the
+      // source of truth. Use it only where RevenueCat is authoritative
+      // (purchases/restores) or in dev tooling.
       refreshSubscription: async () => {
         set({ isLoading: true });
 
@@ -360,8 +365,14 @@ export const useSubscriptionStore = create(
             // Link on server to merge any device-based data
             await get().linkFirebaseOnServer(firebaseUid);
 
-            // Refresh subscription data after linking
-            await get().refreshSubscription();
+            // Refresh RevenueCat customer info for the newly-linked identity,
+            // but do NOT recompute the tier locally (refreshSubscription would
+            // overwrite the server-synced tier with a Keychain-derived guess —
+            // e.g. clobbering 'expired' so the paywall never shows).
+            const customerInfo = await SubscriptionService.getCustomerInfo(true);
+            if (customerInfo) {
+              set({ customerInfo });
+            }
           }
           return success;
         } catch (error) {
