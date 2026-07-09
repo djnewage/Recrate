@@ -44,28 +44,75 @@ async function getUser(firebaseUid, deviceId) {
   return null;
 }
 
+// App versions >= this get the explicit-opt-in trial flow (tier 'new' until
+// POST /start-trial). Older clients don't know the 'new' tier — they'd map it
+// to 'expired' and show the blocking paywall — so they keep the legacy
+// auto-mint-on-first-status behavior.
+const TRIAL_GATE_MIN_APP_VERSION = '1.7.0';
+
 /**
- * Create or get user. New users start as tier 'new' (no trial dates) —
- * the trial is only minted by POST /start-trial when the user explicitly opts in.
+ * True when the client predates the trial-gate flow (or didn't identify
+ * itself). Missing/malformed versions are treated as legacy — that just
+ * reproduces the pre-gate behavior, which is the safe default.
+ */
+function isLegacyTrialClient(appVersion) {
+  if (!appVersion) return true;
+
+  const parse = (v) => String(v).split('.').map((n) => parseInt(n, 10));
+  const client = parse(appVersion);
+  const min = parse(TRIAL_GATE_MIN_APP_VERSION);
+
+  for (let i = 0; i < min.length; i++) {
+    const c = client[i];
+    if (!Number.isFinite(c)) return true; // malformed → legacy
+    if (c > min[i]) return false;
+    if (c < min[i]) return true;
+  }
+  return false; // equal to minimum
+}
+
+/**
+ * Create or get user. On app versions >= TRIAL_GATE_MIN_APP_VERSION new users
+ * start as tier 'new' (no trial dates) and the trial is only minted by
+ * POST /start-trial when the user explicitly opts in; legacy clients get the
+ * old auto-started trial.
  * @param {string} firebaseUid - Firebase UID
  * @param {string} deviceId - Device ID
+ * @param {string} [appVersion] - X-App-Version header from the client
  * @returns {Promise<Object>} User record
  */
-async function getOrCreateUser(firebaseUid, deviceId) {
+async function getOrCreateUser(firebaseUid, deviceId, appVersion) {
   let user = await getUser(firebaseUid, deviceId);
 
   if (!user) {
     const id = firebaseUid || deviceId || `user-${Date.now()}`;
 
-    await firestore.createUser(id, {
-      firebase_uid: firebaseUid || null,
-      device_id: deviceId || null,
-      tier: 'new',
-    });
+    if (isLegacyTrialClient(appVersion)) {
+      // Legacy client: auto-start the trial as the old flow did
+      const trialDays = await getTrialDurationDays();
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + trialDays);
+
+      await firestore.createUser(id, {
+        firebase_uid: firebaseUid || null,
+        device_id: deviceId || null,
+        tier: 'trial',
+        trial_started_at: new Date().toISOString(),
+        trial_ends_at: trialEnd.toISOString(),
+      });
+
+      logger.info(`[Subscription] Created new trial user (legacy client ${appVersion || 'unknown'}): ${id}`);
+    } else {
+      await firestore.createUser(id, {
+        firebase_uid: firebaseUid || null,
+        device_id: deviceId || null,
+        tier: 'new',
+      });
+
+      logger.info(`[Subscription] Created new user (pre-trial): ${id}`);
+    }
 
     user = await firestore.getUser(id);
-
-    logger.info(`[Subscription] Created new user (pre-trial): ${id}`);
   }
 
   // Link Firebase UID to existing device-only user if needed
@@ -151,7 +198,7 @@ function createSubscriptionRoutes() {
       const { firebaseUid, deviceId } = req.auth;
 
       // Get or create user
-      let user = await getOrCreateUser(firebaseUid, deviceId);
+      let user = await getOrCreateUser(firebaseUid, deviceId, req.headers['x-app-version']);
 
       // Set Sentry user context for error tracking
       setSentryUser({
@@ -304,7 +351,7 @@ function createSubscriptionRoutes() {
       const { firebaseUid, deviceId } = req.auth;
 
       // Get or create user
-      let user = await getOrCreateUser(firebaseUid, deviceId);
+      let user = await getOrCreateUser(firebaseUid, deviceId, req.headers['x-app-version']);
 
       // Check if trial already started
       if (user.trial_started_at) {
@@ -390,7 +437,7 @@ function createSubscriptionRoutes() {
       }
 
       // No existing account - create new one
-      const user = await getOrCreateUser(firebaseUid, deviceId);
+      const user = await getOrCreateUser(firebaseUid, deviceId, req.headers['x-app-version']);
       trackEvent(firebaseUid, 'firebase_linked', { user_id: firebaseUid, merged: 'false' }, firebaseUid);
 
       res.json({
