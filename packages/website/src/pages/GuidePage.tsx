@@ -249,7 +249,7 @@ export default function GuidePage() {
                   </div>
 
                   {step.image && (
-                    <div className="md:w-64 shrink-0">
+                    <div className="md:w-52 shrink-0">
                       <img
                         src={step.image}
                         alt={step.title}
@@ -304,7 +304,7 @@ export default function GuidePage() {
                   src={feature.image}
                   alt={feature.title}
                   loading="lazy"
-                  className="w-full rounded-xl border border-white/10 shadow-lg"
+                  className="w-full max-w-[240px] mx-auto rounded-xl border border-white/10 shadow-lg"
                 />
               </motion.div>
             ))}

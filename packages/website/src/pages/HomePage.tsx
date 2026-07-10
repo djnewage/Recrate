@@ -251,7 +251,7 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="text-5xl md:text-7xl font-extrabold mb-6"
+            className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-6"
           >
             Your Serato Library,{' '}
             <span className="gradient-text">Anywhere</span>
@@ -261,7 +261,7 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
-            className="text-xl md:text-2xl text-gray-300 mb-10 max-w-xl mx-auto lg:mx-0"
+            className="text-lg md:text-xl text-gray-300 mb-10 max-w-xl mx-auto lg:mx-0"
           >
             Stream your entire DJ library to your phone. Browse tracks, manage crates,
             and preview music — all from your mobile device.
@@ -280,7 +280,7 @@ export default function HomePage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => trackEvent('Lead', { content_name: 'Recrate', content_category: 'app_store_click' })}
-                className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold text-lg hover:from-purple-600 hover:to-pink-600 transition-all btn-glow"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold text-base hover:from-purple-600 hover:to-pink-600 transition-all btn-glow"
               >
                 <Apple size={20} />
                 Download on the App Store
@@ -288,7 +288,7 @@ export default function HomePage() {
               <a
                 href="#download"
                 onClick={() => trackEvent('Lead', { content_name: 'Recrate', content_category: 'hero_desktop_scroll' })}
-                className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full font-semibold text-lg border border-white/20 hover:bg-white/10 transition-all"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full font-semibold text-base border border-white/20 hover:bg-white/10 transition-all"
               >
                 <Monitor size={20} />
                 Download for Mac
@@ -324,7 +324,7 @@ export default function HomePage() {
             className="flex justify-center"
           >
             <Slideshow
-              className="w-full max-w-[300px] rounded-[2rem] overflow-hidden border border-white/[0.08] shadow-2xl shadow-purple-500/20"
+              className="w-full max-w-[230px] rounded-[2rem] overflow-hidden border border-white/[0.08] shadow-2xl shadow-purple-500/20"
               images={[
                 { src: '/screenshots/library.png', alt: 'Recrate library view on iPhone' },
                 { src: '/screenshots/crates.png', alt: 'Crate management on iPhone' },
