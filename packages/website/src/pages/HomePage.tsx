@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Apple, Monitor, Music, Loader2, Check, AlertCircle, Play, SlidersHorizontal, FolderOpen, ListChecks, Wifi, AudioWaveform, Send, Sparkles, Brain, Smartphone, Download, ChevronDown, HelpCircle, ScanLine } from 'lucide-react'
 import { trackEvent } from '../utils/metaPixel'
+import Slideshow from '../components/Slideshow'
 
 const APP_STORE_URL = 'https://apps.apple.com/us/app/recrate/id6756329199'
 
@@ -229,17 +230,21 @@ export default function HomePage() {
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/30 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-500/30 rounded-full blur-3xl animate-pulse delay-1000" />
 
-        <div className="relative z-10 text-center px-6 max-w-5xl mx-auto pt-20">
+        <div className="relative z-10 w-full px-6 max-w-6xl mx-auto pt-28 pb-20 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* Left: copy + CTAs */}
+          <div className="text-center lg:text-left">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
+            className="flex items-center justify-center lg:justify-start gap-3 mb-8"
           >
             <img
               src="/logo.png"
               alt="Recrate Logo"
-              className="w-32 h-32 mx-auto mb-8 rounded-3xl glow"
+              className="w-12 h-12 rounded-xl glow"
             />
+            <span className="text-lg font-semibold text-gray-200">Recrate</span>
           </motion.div>
 
           <motion.h1
@@ -256,7 +261,7 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
-            className="text-xl md:text-2xl text-gray-300 mb-10 max-w-3xl mx-auto"
+            className="text-xl md:text-2xl text-gray-300 mb-10 max-w-xl mx-auto lg:mx-0"
           >
             Stream your entire DJ library to your phone. Browse tracks, manage crates,
             and preview music — all from your mobile device.
@@ -266,10 +271,10 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.6 }}
-            className="flex flex-col items-center gap-6"
+            className="flex flex-col items-center lg:items-start gap-6"
           >
             {/* App Download CTAs */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
               <a
                 href={APP_STORE_URL}
                 target="_blank"
@@ -295,9 +300,9 @@ export default function HomePage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.8, delay: 0.8 }}
-              className="mt-6 mb-16 text-center text-sm text-gray-400"
+              className="mt-6 text-center lg:text-left text-sm text-gray-400"
             >
-              <p className="flex items-center justify-center gap-2">
+              <p className="flex items-center justify-center lg:justify-start gap-2">
                 <Check size={16} className="text-green-400" />
                 Free 7-day trial
               </p>
@@ -308,6 +313,26 @@ export default function HomePage() {
                 Available on Mac, Windows & iOS — Android coming soon
               </p>
             </motion.div>
+          </motion.div>
+          </div>
+
+          {/* Right: app screenshot slideshow */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.15 }}
+            className="flex justify-center"
+          >
+            <Slideshow
+              className="w-full max-w-[300px] rounded-[2rem] overflow-hidden border border-white/[0.08] shadow-2xl shadow-purple-500/20"
+              images={[
+                { src: '/screenshots/library.png', alt: 'Recrate library view on iPhone' },
+                { src: '/screenshots/crates.png', alt: 'Crate management on iPhone' },
+                { src: '/screenshots/player.png', alt: 'Track player with streaming preview' },
+                { src: '/screenshots/recrate-builder.png', alt: 'AI crate builder' },
+                { src: '/screenshots/track-identify.png', alt: 'Track identification' },
+              ]}
+            />
           </motion.div>
         </div>
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Loader2, Check, Monitor } from 'lucide-react';
 import { trackEvent } from '../utils/metaPixel';
+import Slideshow from '../components/Slideshow';
 
 interface ReleaseAsset {
   name: string;
@@ -177,10 +178,11 @@ export default function CleansePage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.15 }}
           >
-            <img
-              src="/screenshots/cleanse-queue.png"
-              alt="Cleanse batch queue with vocal separation processing"
-              className="w-full h-auto"
+            <Slideshow
+              images={[
+                { src: '/screenshots/cleanse-queue.png', alt: 'Cleanse batch queue with vocal separation processing' },
+                { src: '/screenshots/cleanse-editor.png', alt: 'Cleanse waveform editor with censor controls' },
+              ]}
             />
           </motion.div>
         </div>
