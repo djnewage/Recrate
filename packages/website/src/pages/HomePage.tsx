@@ -268,17 +268,27 @@ export default function HomePage() {
             transition={{ duration: 0.8, delay: 0.6 }}
             className="flex flex-col items-center gap-6"
           >
-            {/* Mobile App Download CTA */}
-            <a
-              href={APP_STORE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => trackEvent('Lead', { content_name: 'Recrate', content_category: 'app_store_click' })}
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold text-lg hover:from-purple-600 hover:to-pink-600 transition-all btn-glow"
-            >
-              <Apple size={20} />
-              Download on the App Store
-            </a>
+            {/* App Download CTAs */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <a
+                href={APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackEvent('Lead', { content_name: 'Recrate', content_category: 'app_store_click' })}
+                className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold text-lg hover:from-purple-600 hover:to-pink-600 transition-all btn-glow"
+              >
+                <Apple size={20} />
+                Download on the App Store
+              </a>
+              <a
+                href="#download"
+                onClick={() => trackEvent('Lead', { content_name: 'Recrate', content_category: 'hero_desktop_scroll' })}
+                className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full font-semibold text-lg border border-white/20 hover:bg-white/10 transition-all"
+              >
+                <Monitor size={20} />
+                Download for Mac
+              </a>
+            </div>
 
             {/* Pricing highlight */}
             <motion.div
@@ -290,6 +300,9 @@ export default function HomePage() {
               <p className="flex items-center justify-center gap-2">
                 <Check size={16} className="text-green-400" />
                 Free 7-day trial
+              </p>
+              <p className="mt-1 text-gray-300">
+                Recrate works as a pair — the desktop app reads your Serato library, the phone app streams it. You'll need both.
               </p>
               <p className="mt-1">
                 Available on Mac, Windows & iOS — Android coming soon
