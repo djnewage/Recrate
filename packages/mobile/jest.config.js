@@ -17,11 +17,14 @@ module.exports = {
       '<rootDir>/src/__tests__/__mocks__/apple-authentication.js',
     '^expo-crypto$':
       '<rootDir>/src/__tests__/__mocks__/expo-crypto.js',
+    '^expo-file-system$':
+      '<rootDir>/src/__tests__/__mocks__/expo-file-system.js',
   },
   collectCoverageFrom: [
     'src/store/**/*.js',
     'src/services/SyncService.js',
     'src/services/AuthService.js',
+    'src/services/DownloadService.js',
     '!src/**/*.test.js',
   ],
   coverageDirectory: 'coverage',

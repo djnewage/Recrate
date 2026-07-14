@@ -11,21 +11,10 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import TrackPlayer from 'react-native-track-player';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
+import { CUE_COLORS } from '../constants/config';
 import useStore from '../store/useStore';
 
 const { width } = Dimensions.get('window');
-
-// Cue point colors (Serato-inspired, fixed per bank)
-const CUE_COLORS = {
-  1: '#EF4444', // Red
-  2: '#F97316', // Orange
-  3: '#EAB308', // Yellow
-  4: '#22C55E', // Green
-  5: '#06B6D4', // Cyan
-  6: '#3B82F6', // Blue
-  7: '#A855F7', // Purple
-  8: '#EC4899', // Pink
-};
 
 // Button dimensions
 const CONTAINER_PADDING = SPACING.xl;

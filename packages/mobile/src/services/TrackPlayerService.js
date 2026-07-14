@@ -113,14 +113,62 @@ export async function setupPlayer() {
 }
 
 /**
- * Convert Recrate track object to TrackPlayer track format
+ * Local file URI for a downloaded track, or null. Lazy-required (same pattern as
+ * api.js) to avoid a require cycle: useStore → TrackPlayerService → downloadStore.
+ * Gated on the subscription tier so a downgrade reverts playback to streaming
+ * without deleting the files (they reactivate on resubscribe).
+ */
+export function getOfflineUri(trackId) {
+  try {
+    const useDownloadStore = require('../store/downloadStore').default;
+    const useSubscriptionStore = require('../store/subscriptionStore').default;
+    // currentTier is re-derived each session and can be null/unresolved while
+    // offline (the exact scenario downloads exist for), so fall back to the
+    // entitlement last observed with a resolved tier when disconnected.
+    const entitled =
+      useSubscriptionStore.getState().canUseOfflineDownloads() ||
+      (!useConnectionStore.getState().isConnected &&
+        useDownloadStore.getState().lastKnownEntitled);
+    if (!entitled) {
+      return null;
+    }
+    return useDownloadStore.getState().getLocalUri(trackId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a track can play without the desktop server (downloaded + entitled).
+ */
+export function hasOfflineAudio(trackId) {
+  return !!getOfflineUri(trackId);
+}
+
+/**
+ * Local artwork sidecar URI for a downloaded track, or null. Lazy-required to
+ * match getOfflineUri's defensiveness against module-init ordering.
+ */
+function getLocalArtworkUri(trackId) {
+  try {
+    return require('./DownloadService').getArtworkUri(trackId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Convert Recrate track object to TrackPlayer track format.
+ * Prefers downloaded local files (audio and artwork) over live URLs.
  */
 export function formatTrackForPlayer(track) {
   return {
-    url: apiService.getStreamUrl(track.id),
+    url: getOfflineUri(track.id) || apiService.getStreamUrl(track.id),
     title: track.title || 'Unknown Title',
     artist: track.artist || 'Unknown Artist',
-    artwork: track.hasArtwork ? apiService.getArtworkUrl(track.id) : undefined,
+    artwork: track.hasArtwork
+      ? getLocalArtworkUri(track.id) || apiService.getArtworkUrl(track.id)
+      : undefined,
     duration: track.duration || 0,
     // Store custom metadata
     id: track.id,
@@ -147,11 +195,36 @@ export async function addTracksToQueue(tracks) {
 }
 
 /**
+ * Queue entries freeze their URL at queue-build time, so a track downloaded
+ * (or un-downloaded) after setQueue can hold a stale stream/file URL. Re-format
+ * the track and swap the queued entry if the desired URL changed — e.g. so a
+ * track downloaded after queueing plays from disk when offline.
+ */
+export async function refreshQueuedTrackUrl(track) {
+  try {
+    const desired = formatTrackForPlayer(track);
+    const tpQueue = await TrackPlayer.getQueue();
+    const tpIndex = tpQueue.findIndex((t) => t.id === track.id);
+    if (tpIndex >= 0 && tpQueue[tpIndex].url !== desired.url) {
+      await TrackPlayer.remove([tpIndex]);
+      await TrackPlayer.add(desired, tpIndex);
+    }
+  } catch {
+    // Best effort — playback falls back to whatever is queued.
+  }
+}
+
+/**
  * Preload a track by fetching initial bytes to warm up the connection
  * This significantly reduces playback start delay
  */
 export async function preloadTrack(track) {
   try {
+    // Local files need no connection warm-up
+    if (getOfflineUri(track.id)) {
+      return;
+    }
+
     const streamUrl = apiService.getStreamUrl(track.id);
 
     // Fetch first 256KB to warm up connection and start caching
@@ -281,25 +354,42 @@ export function setupEventHandlers(store) {
 
   // Playback error - try to recover by skipping to next working track
   TrackPlayer.addEventListener(Event.PlaybackError, async ({ error }) => {
-    // Offline: every stream fails because the desktop server is unreachable. Don't run
-    // the skip-recovery loop below (it would rapidly cycle through tracks and look broken)
-    // — just stop and surface a clear message.
-    if (!useConnectionStore.getState().isConnected) {
-      isRecoveringFromError = false;
-      try {
-        await TrackPlayer.pause();
-      } catch {
-        // ignore
-      }
-      store.setState({ playerError: 'Streaming isn’t available offline.', isPlaying: false });
-      return;
-    }
-
-    // Debounce: prevent multiple concurrent recovery attempts
-    const now = Date.now();
+    // Re-entrancy guard FIRST: the recovery loop below skips through tracks and
+    // each failed candidate fires another PlaybackError; those re-entrant events
+    // must not reset state or pause against the in-flight loop.
     if (isRecoveringFromError) {
       return;
     }
+
+    const isOffline = !useConnectionStore.getState().isConnected;
+
+    // Offline: streams fail because the desktop server is unreachable. If the failed
+    // track has no downloaded file, don't run the skip-recovery loop below (it would
+    // rapidly cycle through tracks and look broken) — just stop with a clear message.
+    // A downloaded track that errors falls through to normal recovery so a mixed
+    // queue can advance to the next playable track.
+    if (isOffline) {
+      let failedTrackHasLocalFile = false;
+      try {
+        const activeTrack = await TrackPlayer.getActiveTrack();
+        failedTrackHasLocalFile = !!activeTrack?.url?.startsWith?.('file://');
+      } catch {
+        // ignore — treat as streaming
+      }
+
+      if (!failedTrackHasLocalFile) {
+        try {
+          await TrackPlayer.pause();
+        } catch {
+          // ignore
+        }
+        store.setState({ playerError: 'Streaming isn’t available offline.', isPlaying: false });
+        return;
+      }
+    }
+
+    // Debounce: prevent rapid back-to-back recovery attempts
+    const now = Date.now();
     if (now - lastErrorRecoveryTime < ERROR_RECOVERY_COOLDOWN) {
       return;
     }
@@ -327,14 +417,22 @@ export function setupEventHandlers(store) {
         // Reset failed, continuing
       }
 
-      // Try consecutive tracks until one works
-      for (let attempt = 0; attempt < MAX_SKIP_ATTEMPTS; attempt++) {
-        const nextIndex = startIndex + 1 + attempt;
-
-        if (nextIndex >= queue.length) {
-          break;
+      // Candidate tracks to try. Offline, only downloaded (file://) entries can
+      // possibly play — don't burn attempts thrashing through streaming tracks.
+      const candidateIndexes = [];
+      for (
+        let i = startIndex + 1;
+        i < queue.length && candidateIndexes.length < MAX_SKIP_ATTEMPTS;
+        i++
+      ) {
+        if (isOffline && !queue[i]?.url?.startsWith?.('file://')) {
+          continue;
         }
+        candidateIndexes.push(i);
+      }
 
+      // Try candidates until one works
+      for (const nextIndex of candidateIndexes) {
         try {
           await TrackPlayer.skip(nextIndex);
         } catch (skipErr) {

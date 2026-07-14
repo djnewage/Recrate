@@ -16,6 +16,8 @@ import useStore from '../store/useStore';
 import TrackRow from '../components/TrackRow';
 import AlphabetScrollBar from '../components/AlphabetScrollBar';
 import AddToCratesModal from '../components/AddToCratesModal';
+import OfflineCrateToggle from '../components/OfflineCrateToggle';
+import useDownloadStore from '../store/downloadStore';
 import useAlphabetIndex from '../hooks/useAlphabetIndex';
 import { apiService } from '../services/api';
 
@@ -35,6 +37,8 @@ const CrateDetailScreen = ({ route, navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [addToCrateTrack, setAddToCrateTrack] = useState(null);
   const [aggregated, setAggregated] = useState(null); // { tracks, crateCount } | null
+  // Downloaded-audio map for offline badges (live-updates as downloads land)
+  const downloadedFiles = useDownloadStore((s) => s.trackFiles);
 
   const flatListRef = useRef(null);
 
@@ -401,6 +405,12 @@ const CrateDetailScreen = ({ route, navigation }) => {
         </View>
       )}
 
+      {/* Offline downloads toggle — direct tracks only, so hide on aggregated
+          parent views and not-yet-synced local crates */}
+      {!isAggregated && !isLocalCrate && (
+        <OfflineCrateToggle crateId={crateId} navigation={navigation} />
+      )}
+
       {/* Sub-crate aggregation banner */}
       {isAggregated && (
         <View style={[styles.offlineBanner, styles.aggregatedBanner]}>
@@ -475,6 +485,7 @@ const CrateDetailScreen = ({ route, navigation }) => {
                 onLongPress={handleTrackLongPress}
                 onMenuPress={handleTrackMenu}
                 isSelected={selectedTrackIds.includes(item.id)}
+                isDownloaded={!!downloadedFiles[item.id]}
               />
             )}
             ItemSeparatorComponent={() => <View style={styles.separator} />}

@@ -17,6 +17,7 @@ import { useSubscriptionStore } from './src/store/subscriptionStore';
 import { useAuthStore } from './src/store/authStore';
 import * as TrackPlayerService from './src/services/TrackPlayerService';
 import { syncQueue, triggerSyncIfPending } from './src/services/SyncService';
+import DownloadService from './src/services/DownloadService';
 import { initSentry, setUser } from './src/utils/sentry';
 import { logEvent } from './src/config/firebase';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -395,6 +396,11 @@ export default function App() {
       const nowConnected = state.isConnected;
       if (nowConnected && !wasConnected) {
         triggerSyncIfPending();
+        // Resume/refresh offline-crate downloads now that the server is reachable
+        DownloadService.reconcile();
+      } else if (!nowConnected && wasConnected) {
+        // Fast-fail in-flight downloads; partial files resume on reconnect
+        DownloadService.pause();
       }
       wasConnected = nowConnected;
     });
@@ -409,9 +415,26 @@ export default function App() {
       if (nextState === 'active') {
         useConnectionStore.getState().attemptReconnect();
         triggerSyncIfPending();
+        DownloadService.reconcile();
       }
     });
     return () => subscription.remove();
+  }, []);
+
+  // Kick offline-crate downloads when the subscription tier resolves to an
+  // entitled one after startup (currentTier starts null each session, so early
+  // reconcile triggers can be skipped as not-entitled before RevenueCat/server
+  // sync completes).
+  useEffect(() => {
+    let wasEntitled = useSubscriptionStore.getState().canUseOfflineDownloads();
+    const unsubscribe = useSubscriptionStore.subscribe((state) => {
+      const nowEntitled = state.canUseOfflineDownloads();
+      if (nowEntitled && !wasEntitled) {
+        DownloadService.reconcile();
+      }
+      wasEntitled = nowEntitled;
+    });
+    return () => unsubscribe();
   }, []);
 
   // Active reconnection probe: once a write/read drops us to offline mode, nothing else

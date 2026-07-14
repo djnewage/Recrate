@@ -17,6 +17,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import { useConnectionStore } from '../store/connectionStore';
 import useOfflineStore, { OPERATION_TYPES, OPERATION_STATUS } from '../store/offlineStore';
+import useDownloadStore from '../store/downloadStore';
 import apiService from '../services/api';
 import AlphabetScrollBar from '../components/AlphabetScrollBar';
 import useAlphabetIndex from '../hooks/useAlphabetIndex';
@@ -49,6 +50,14 @@ const CrateTreeItem = ({
 
   // Check if this is a locally-created crate or has pending track operations
   const isPendingSync = crate.isLocal || crate.id?.startsWith('temp-') || hasPendingTrackOps;
+
+  // Offline-download status for this crate. The selector returns a primitive
+  // ('done' | 'downloading' | null) so a completed download elsewhere doesn't
+  // re-render every row of the (non-virtualized) crate tree.
+  const offlineStatus = useDownloadStore((s) => {
+    if (!s.offlineCrateIds.includes(crate.id)) return null;
+    return s.isCrateFullyDownloaded(crate.id) ? 'done' : 'downloading';
+  });
 
   return (
     <View>
@@ -85,6 +94,16 @@ const CrateTreeItem = ({
           {isPendingSync && (
             <View style={styles.pendingBadge}>
               <Ionicons name="cloud-upload-outline" size={10} color={COLORS.warning} />
+            </View>
+          )}
+          {/* Offline-download indicator badge (pending-sync badge wins the corner) */}
+          {!isPendingSync && offlineStatus && (
+            <View style={[styles.pendingBadge, styles.downloadBadge]}>
+              <Ionicons
+                name={offlineStatus === 'done' ? 'arrow-down-circle' : 'sync-outline'}
+                size={10}
+                color={COLORS.success}
+              />
             </View>
           )}
         </View>
@@ -944,6 +963,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: COLORS.warning,
+  },
+  downloadBadge: {
+    borderColor: COLORS.success,
   },
   crateCount: {
     fontSize: 13,

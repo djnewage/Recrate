@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import useStore from '../store/useStore';
 import { apiService } from '../services/api';
+import DownloadService from '../services/DownloadService';
 import SpectralWaveformContainer from '../components/SpectralWaveformContainer';
 import CuePointBank from '../components/CuePointBank';
 import AddToCratesModal from '../components/AddToCratesModal';
@@ -109,10 +110,16 @@ const PlayerScreen = ({ route, navigation }) => {
     await seekTo(target);
   };
 
-  // Get artwork URL if available
-  const artworkUrl = track.hasArtwork
-    ? apiService.getArtworkUrl(track.id)
-    : null;
+  // Get artwork URL if available (downloaded local copy first, then live server).
+  // Memoized: this screen re-renders ~20x/sec from useProgress, and the local
+  // check hits the filesystem.
+  const artworkUrl = React.useMemo(
+    () =>
+      track.hasArtwork
+        ? DownloadService.getArtworkUri(track.id) || apiService.getArtworkUrl(track.id)
+        : null,
+    [track.id, track.hasArtwork]
+  );
 
   const displayTitle = isLoadingTrack ? 'Loading…' : track.title;
   const displayArtist = isLoadingTrack ? '' : track.artist;

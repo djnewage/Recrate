@@ -20,6 +20,8 @@ jest.mock('../../services/api', () => ({
     addTracksToCrate: jest.fn(),
     removeTrackFromCrate: jest.fn(),
     deleteCrate: jest.fn(),
+    setCuePoint: jest.fn(),
+    deleteCuePoint: jest.fn(),
   },
 }));
 
@@ -311,6 +313,45 @@ describe('SyncService', () => {
         }
       });
     });
+  });
+
+  describe('cue point operations', () => {
+    it('replays a queued SET_CUE_POINT against the API and dequeues it', async () => {
+      apiService.setCuePoint.mockResolvedValue({ success: true, position: 42.5 });
+      useOfflineStore
+        .getState()
+        .enqueueCueOperation(OPERATION_TYPES.SET_CUE_POINT, 'track-1', 3, { position: 42.5 });
+
+      const result = await syncQueue();
+
+      expect(result).toEqual({ success: true, synced: 1, conflicts: 0, failed: 0 });
+      expect(apiService.setCuePoint).toHaveBeenCalledWith('track-1', 3, 42.5, null);
+      expect(useOfflineStore.getState().operationQueue).toHaveLength(0);
+    });
+
+    it('replays a queued DELETE_CUE_POINT against the API', async () => {
+      apiService.deleteCuePoint.mockResolvedValue({ success: true });
+      useOfflineStore
+        .getState()
+        .enqueueCueOperation(OPERATION_TYPES.DELETE_CUE_POINT, 'track-1', 2);
+
+      const result = await syncQueue();
+
+      expect(result.synced).toBe(1);
+      expect(apiService.deleteCuePoint).toHaveBeenCalledWith('track-1', 2);
+    });
+
+    it('drops a cue op when the track no longer exists on the server (404)', async () => {
+      apiService.deleteCuePoint.mockRejectedValue({ response: { status: 404 } });
+      useOfflineStore
+        .getState()
+        .enqueueCueOperation(OPERATION_TYPES.DELETE_CUE_POINT, 'gone-track', 1);
+
+      await syncQueue();
+
+      expect(useOfflineStore.getState().operationQueue).toHaveLength(0);
+    });
+
   });
 
   describe('triggerSyncIfPending', () => {

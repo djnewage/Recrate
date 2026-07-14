@@ -7,6 +7,7 @@ import * as TrackPlayerService from '../services/TrackPlayerService';
 import { normalizeTitle, normalizeArtist } from '../services/TrackMatchingService';
 import useOfflineStore, { OPERATION_TYPES, generateTempCrateId } from './offlineStore';
 import { useConnectionStore } from './connectionStore';
+import { CUE_COLORS } from '../constants/config';
 import { logEvent } from '../config/firebase';
 
 // Skip cooldown to prevent rapid track changes that corrupt TrackPlayer state
@@ -19,6 +20,37 @@ const SKIP_COOLDOWN = 800; // 800ms minimum between skips
 // offline mode and queue the write instead of surfacing an error to the user.
 const isServerUnreachable = (error) =>
   !error?.response || [502, 503, 504].includes(error.response.status);
+
+// Fire-and-forget kick of the offline-downloads reconciler after crate data changes.
+// Lazy require avoids a module-init cycle (DownloadService reads this store's tracks).
+const triggerDownloadReconcile = () => {
+  try {
+    require('../services/DownloadService').reconcile();
+  } catch {
+    // non-critical — downloads catch up on the next connection/foreground trigger
+  }
+};
+
+// Offline fallback: parsed .meta sidecar written next to a track's downloaded
+// audio (cue points, waveforms, beat grid). Null when not downloaded/missing.
+const readDownloadedMeta = (trackId) => {
+  try {
+    return require('../services/DownloadService').readTrackMetadata(trackId);
+  } catch {
+    return null;
+  }
+};
+
+// Write-through: keep a downloaded track's .meta sidecar in sync after online
+// cue point changes so the next offline session isn't stale. No-op for
+// non-downloaded tracks.
+const writeDownloadedMeta = (trackId, patch) => {
+  try {
+    require('../services/DownloadService').updateTrackMetadata(trackId, patch);
+  } catch {
+    // non-critical
+  }
+};
 
 /**
  * Pre-normalize tracks for faster search matching
@@ -416,6 +448,10 @@ const useStore = create(
         crateTree: crateTree,
         isLoadingCrates: false,
       });
+
+      // Crate membership may have changed on the server (or we just reconnected) —
+      // download newly added tracks for offline crates / clean up removed ones.
+      triggerDownloadReconcile();
     } catch (error) {
       // Server unreachable → flip to offline so writes queue and the offline UI shows.
       if (isServerUnreachable(error)) {
@@ -652,6 +688,7 @@ const useStore = create(
     } catch {
       // best-effort refresh
     }
+    triggerDownloadReconcile();
     logEvent('tracks_added_to_crate', { count: trackIds.length });
     return true;
   },
@@ -728,6 +765,7 @@ const useStore = create(
     } catch {
       // best-effort refresh
     }
+    triggerDownloadReconcile();
     return true;
   },
 
@@ -790,6 +828,12 @@ const useStore = create(
     } catch {
       // best-effort refresh
     }
+    // A deleted crate can't stay marked offline; its now-unreferenced files get cleaned up.
+    try {
+      require('../services/DownloadService').removeCrateDownloads(crateId);
+    } catch {
+      // non-critical
+    }
     logEvent('crate_deleted');
     return true;
   },
@@ -845,10 +889,11 @@ const useStore = create(
 
   // Player actions
   playTrack: async (track) => {
-    // Streaming requires the desktop server. Don't attempt while offline — otherwise the
-    // PlaybackError handler cycles through tracks hunting for one that loads (looks broken).
-    if (!useConnectionStore.getState().isConnected) {
-      set({ playerError: 'Streaming isn’t available offline.', isBuffering: false, isPlaying: false });
+    // Streaming requires the desktop server. While offline, only tracks with a
+    // downloaded local file can play — otherwise the PlaybackError handler cycles
+    // through tracks hunting for one that loads (looks broken).
+    if (!useConnectionStore.getState().isConnected && !TrackPlayerService.hasOfflineAudio(track.id)) {
+      set({ playerError: 'This track isn’t downloaded — streaming isn’t available offline.', isBuffering: false, isPlaying: false });
       return;
     }
     try {
@@ -860,6 +905,10 @@ const useStore = create(
       if (queue.length > 1) {
         const trackIndex = queue.findIndex(t => t.id === track.id);
         if (trackIndex >= 0) {
+          // Queued entries freeze their URL at queue-build time; swap in the
+          // local file if this track was downloaded after the queue was built
+          // (or the stream URL if downloads were removed).
+          await TrackPlayerService.refreshQueuedTrackUrl(track);
           await TrackPlayer.skip(trackIndex);
           await TrackPlayer.play();
           set({
@@ -908,11 +957,29 @@ const useStore = create(
   },
 
   resumeTrack: async () => {
-    if (!useConnectionStore.getState().isConnected) {
-      set({ playerError: 'Streaming isn’t available offline.', isPlaying: false });
+    const { currentTrack } = get();
+    const isOffline = !useConnectionStore.getState().isConnected;
+    if (isOffline && currentTrack && !TrackPlayerService.hasOfflineAudio(currentTrack.id)) {
+      set({ playerError: 'This track isn’t downloaded — streaming isn’t available offline.', isPlaying: false });
       return;
     }
     try {
+      // Offline with a downloaded track: the loaded player item may still hold
+      // the stream URL from when playback started online. Reload it from the
+      // local file (keeping position) instead of resuming a dead stream.
+      if (isOffline && currentTrack) {
+        const activeTrack = await TrackPlayer.getActiveTrack().catch(() => null);
+        if (activeTrack?.id === currentTrack.id && !activeTrack.url?.startsWith?.('file://')) {
+          const { position } = await TrackPlayer.getProgress().catch(() => ({ position: 0 }));
+          const success = await TrackPlayerService.playTrack(currentTrack);
+          if (success && position > 0) {
+            await TrackPlayer.seekTo(position).catch(() => {});
+          }
+          set({ isPlaying: true, queue: [currentTrack], currentQueueIndex: 0 });
+          return;
+        }
+      }
+
       await TrackPlayer.play();
       set({ isPlaying: true });
     } catch (error) {
@@ -1293,6 +1360,18 @@ const useStore = create(
         return waveformData;
       } else {
         set({ isLoadingWaveform: false });
+        // Offline fallback: waveform saved alongside the downloaded audio
+        const meta = readDownloadedMeta(trackId);
+        if (meta?.waveform) {
+          const { waveformCache: currentCache } = get();
+          const entry = {
+            peaks: meta.waveform.peaks,
+            duration: meta.waveform.duration,
+            fetchedAt: meta.savedAt || Date.now(),
+          };
+          set({ waveformCache: { ...currentCache, [trackId]: entry } });
+          return meta.waveform;
+        }
         return null;
       }
     } catch (error) {
@@ -1348,6 +1427,20 @@ const useStore = create(
         return spectralData;
       } else {
         set({ isLoadingSpectralWaveform: false });
+        // Offline fallback: spectral waveform saved alongside the downloaded audio
+        const meta = readDownloadedMeta(trackId);
+        if (meta?.spectralWaveform) {
+          const { spectralWaveformCache: currentCache } = get();
+          const entry = {
+            bands: meta.spectralWaveform.bands,
+            peaks: meta.spectralWaveform.peaks,
+            duration: meta.spectralWaveform.duration,
+            sampleCount: meta.spectralWaveform.sampleCount,
+            fetchedAt: meta.savedAt || Date.now(),
+          };
+          set({ spectralWaveformCache: { ...currentCache, [trackId]: entry } });
+          return meta.spectralWaveform;
+        }
         return null;
       }
     } catch (error) {
@@ -1377,7 +1470,20 @@ const useStore = create(
     }
 
     try {
-      const data = await apiService.getBeatGrid(trackId);
+      let data = await apiService.getBeatGrid(trackId);
+
+      if (data == null) {
+        // Offline fallback: beat grid saved alongside the downloaded audio
+        const meta = readDownloadedMeta(trackId);
+        if (meta?.beatGrid) {
+          data = meta.beatGrid;
+        } else if (!useConnectionStore.getState().isConnected) {
+          // Offline with nothing on disk: don't cache an empty entry — that
+          // would suppress the real fetch for the rest of the session.
+          return null;
+        }
+      }
+
       // Cache even an empty grid so we don't refetch tracks that have none.
       const entry = {
         bpm: data?.bpm ?? null,
@@ -1404,6 +1510,18 @@ const useStore = create(
       return cachedData;
     }
 
+    // Offline: skip the doomed network call and read the sidecar saved next to
+    // the downloaded audio (falling back to whatever is already cached).
+    if (!useConnectionStore.getState().isConnected) {
+      const meta = readDownloadedMeta(trackId);
+      if (meta?.cuePoints) {
+        const { cuePointsCache: currentCache } = get();
+        set({ cuePointsCache: { ...currentCache, [trackId]: meta.cuePoints } });
+        return meta.cuePoints;
+      }
+      return cachedData || {};
+    }
+
     // Try to fetch fresh from server
     set({ isLoadingCuePoints: true });
 
@@ -1420,14 +1538,22 @@ const useStore = create(
           },
           isLoadingCuePoints: false,
         });
+        // Keep the downloaded-track sidecar fresh for the next offline session
+        writeDownloadedMeta(trackId, { cuePoints: data.cuePoints });
         return data.cuePoints;
       } else {
         set({ isLoadingCuePoints: false });
         return cachedData || {};
       }
     } catch (error) {
-      // OFFLINE FALLBACK: Return cached data if server unreachable
+      // OFFLINE FALLBACK: sidecar first (complete data), then in-memory cache
       set({ isLoadingCuePoints: false });
+      const meta = readDownloadedMeta(trackId);
+      if (meta?.cuePoints) {
+        const { cuePointsCache: currentCache } = get();
+        set({ cuePointsCache: { ...currentCache, [trackId]: meta.cuePoints } });
+        return meta.cuePoints;
+      }
       if (cachedData) {
         console.log('[CUE POINTS] Offline - using cached data');
         return cachedData;
@@ -1442,6 +1568,33 @@ const useStore = create(
     if (typeof position !== 'number' || isNaN(position) || position < 0) {
       console.warn(`[CUE] Invalid position rejected: ${position}`);
       return false;
+    }
+
+    // Apply a cue point to the local cache + downloaded-track sidecar. Colors
+    // are fixed per bank (mirrors the server's CUE_COLORS) so the offline
+    // result is identical to what the server will assign on sync.
+    const applyLocalCuePoint = () => {
+      const { cuePointsCache } = get();
+      const updated = {
+        ...(cuePointsCache[trackId] || {}),
+        [bankNumber]: { position, color: CUE_COLORS[bankNumber], label: null },
+      };
+      set({ cuePointsCache: { ...cuePointsCache, [trackId]: updated } });
+      writeDownloadedMeta(trackId, { cuePoints: updated });
+    };
+
+    if (!useConnectionStore.getState().isConnected) {
+      // Offline: only downloaded tracks are editable (they're the only ones
+      // playable, and the sidecar keeps the player consistent). The edit
+      // queues and replays to Serato on reconnect.
+      if (!TrackPlayerService.hasOfflineAudio(trackId)) {
+        return false;
+      }
+      useOfflineStore
+        .getState()
+        .enqueueCueOperation(OPERATION_TYPES.SET_CUE_POINT, trackId, bankNumber, { position });
+      applyLocalCuePoint();
+      return true;
     }
 
     try {
@@ -1465,38 +1618,63 @@ const useStore = create(
             },
           },
         });
+        writeDownloadedMeta(trackId, { cuePoints: get().cuePointsCache[trackId] });
 
         return true;
       }
       return false;
     } catch (error) {
+      // Server unreachable mid-session → drop to offline and queue instead of failing.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+        return get().setCuePoint(trackId, bankNumber, position);
+      }
       console.warn(`Failed to set cue point for ${trackId}:`, error);
       return false;
     }
   },
 
   deleteCuePoint: async (trackId, bankNumber) => {
+    // Remove only the deleted cue point from cache, keeping others intact
+    const removeLocalCuePoint = () => {
+      const { cuePointsCache } = get();
+      const trackCuePoints = cuePointsCache[trackId];
+      if (!trackCuePoints) return;
+      const { [bankNumber]: removed, ...remainingCuePoints } = trackCuePoints;
+      set({
+        cuePointsCache: {
+          ...cuePointsCache,
+          [trackId]: remainingCuePoints,
+        },
+      });
+      writeDownloadedMeta(trackId, { cuePoints: remainingCuePoints });
+    };
+
+    if (!useConnectionStore.getState().isConnected) {
+      if (!TrackPlayerService.hasOfflineAudio(trackId)) {
+        return false;
+      }
+      useOfflineStore
+        .getState()
+        .enqueueCueOperation(OPERATION_TYPES.DELETE_CUE_POINT, trackId, bankNumber);
+      removeLocalCuePoint();
+      return true;
+    }
+
     try {
       const result = await apiService.deleteCuePoint(trackId, bankNumber);
 
       if (result.success) {
-        // Remove only the deleted cue point from cache, keeping others intact
-        const { cuePointsCache } = get();
-        const trackCuePoints = cuePointsCache[trackId];
-        if (trackCuePoints) {
-          const { [bankNumber]: removed, ...remainingCuePoints } = trackCuePoints;
-          set({
-            cuePointsCache: {
-              ...cuePointsCache,
-              [trackId]: remainingCuePoints,
-            },
-          });
-        }
-
+        removeLocalCuePoint();
         return true;
       }
       return false;
     } catch (error) {
+      // Server unreachable mid-session → drop to offline and queue instead of failing.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+        return get().deleteCuePoint(trackId, bankNumber);
+      }
       console.warn(`Failed to delete cue point for ${trackId}:`, error);
       return false;
     }

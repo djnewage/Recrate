@@ -244,6 +244,18 @@ async function executeOperation(operation) {
       return result;
     }
 
+    case OPERATION_TYPES.SET_CUE_POINT: {
+      const { trackId, bankNumber, position, label } = operation.payload;
+      const result = await apiService.setCuePoint(trackId, bankNumber, position, label ?? null);
+      return result;
+    }
+
+    case OPERATION_TYPES.DELETE_CUE_POINT: {
+      const { trackId, bankNumber } = operation.payload;
+      const result = await apiService.deleteCuePoint(trackId, bankNumber);
+      return result;
+    }
+
     default:
       throw new Error(`Unknown operation type: ${operation.type}`);
   }
