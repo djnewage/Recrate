@@ -92,6 +92,14 @@ class File {
     return entries.get(this.uri)?.data ?? new Uint8Array(0);
   }
 
+  text() {
+    return Promise.resolve(this.textSync());
+  }
+
+  textSync() {
+    return new TextDecoder().decode(entries.get(this.uri)?.data ?? new Uint8Array(0));
+  }
+
   delete() {
     if (!entries.has(this.uri)) {
       throw new Error(`File does not exist: ${this.uri}`);

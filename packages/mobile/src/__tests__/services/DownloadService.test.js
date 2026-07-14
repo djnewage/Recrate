@@ -45,14 +45,22 @@ jest.mock('../../services/api', () => ({
   __esModule: true,
   default: {
     getStreamUrl: (trackId) => `http://server/api/stream/${trackId}`,
+    getArtworkUrl: (trackId) => `http://server/api/artwork/${trackId}`,
+    getCuePoints: jest.fn(),
+    getWaveform: jest.fn(),
+    getSpectralWaveform: jest.fn(),
+    getBeatGrid: jest.fn(),
   },
 }));
+
+const apiMock = require('../../services/api').default;
 
 /**
  * fetch mock serving `serverFiles` (trackId -> Uint8Array) with 206 range
  * responses, mirroring the desktop server's streamer.
  */
 let serverFiles = {};
+let artworkFiles = {}; // trackId -> Uint8Array served by /api/artwork/
 let fetchSpy;
 
 const makeResponse = (status, headers = {}, body = new Uint8Array(0)) => ({
@@ -67,6 +75,12 @@ const makeResponse = (status, headers = {}, body = new Uint8Array(0)) => ({
 const installFetchMock = () => {
   fetchSpy = jest.fn(async (url, opts = {}) => {
     const trackId = decodeURIComponent(url.split('/').pop());
+
+    if (url.includes('/api/artwork/')) {
+      const art = artworkFiles[trackId];
+      return art ? makeResponse(200, {}, art) : makeResponse(404);
+    }
+
     const data = serverFiles[trackId];
     if (!data) return makeResponse(404);
 
@@ -94,7 +108,12 @@ const makeBytes = (length, seed = 7) => {
   return data;
 };
 
-const track = (id) => ({ id, filePath: `/Music/${id}.mp3` });
+const track = (id, extra = {}) => ({ id, filePath: `/Music/${id}.mp3`, ...extra });
+
+const sidecarUris = (trackId) => ({
+  meta: `${fsMock.documentUri}/offline-audio/${encodeURIComponent(trackId)}.meta`,
+  art: `${fsMock.documentUri}/offline-audio/${encodeURIComponent(trackId)}.art`,
+});
 
 const seedOfflineCrate = (crateId, trackIds) => {
   useOfflineStore.getState().cacheAllServerCrateTracks([{ id: crateId, trackIds }]);
@@ -120,7 +139,20 @@ describe('DownloadService', () => {
     mockEntitled = true;
     mockLibraryTracks = [];
     serverFiles = {};
+    artworkFiles = {};
     installFetchMock();
+
+    apiMock.getCuePoints.mockResolvedValue({
+      cuePoints: { 1: { position: 12.5, color: '#CC0000', label: null } },
+    });
+    apiMock.getWaveform.mockResolvedValue({ peaks: [0.1, 0.5], duration: 180 });
+    apiMock.getSpectralWaveform.mockResolvedValue({
+      bands: { bass: [0.1], mids: [0.2], highs: [0.3] },
+      peaks: [0.4],
+      duration: 180,
+      sampleCount: 800,
+    });
+    apiMock.getBeatGrid.mockResolvedValue({ bpm: 128, firstBeatSec: 0.2, beats: [0.2, 0.67] });
 
     useDownloadStore.setState({
       offlineCrateIds: [],
@@ -323,6 +355,97 @@ describe('DownloadService', () => {
       const result = await DownloadService.reconcile();
       expect(result).toEqual({ success: true });
       expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('metadata sidecars', () => {
+    it('writes .meta and .art files alongside the downloaded audio', async () => {
+      mockLibraryTracks = [track('t1', { hasArtwork: true })];
+      serverFiles.t1 = makeBytes(500);
+      artworkFiles.t1 = makeBytes(64, 13);
+      seedOfflineCrate('crate-1', ['t1']);
+
+      await DownloadService.reconcile();
+
+      const { meta, art } = sidecarUris('t1');
+      expect(fsMock.getFileData(meta)).not.toBeNull();
+      expect(fsMock.getFileData(art)).not.toBeNull();
+      expectBytesEqual(fsMock.getFileData(art), artworkFiles.t1);
+
+      const parsed = DownloadService.readTrackMetadata('t1');
+      expect(parsed.cuePoints).toEqual({ 1: { position: 12.5, color: '#CC0000', label: null } });
+      expect(parsed.waveform.peaks).toEqual([0.1, 0.5]);
+      expect(parsed.spectralWaveform.sampleCount).toBe(800);
+      expect(parsed.beatGrid.bpm).toBe(128);
+      expect(parsed.savedAt).toBeGreaterThan(0);
+      expect(DownloadService.getArtworkUri('t1')).toBe(art);
+    });
+
+    it('audio download still succeeds when cue points reject and artwork 404s', async () => {
+      apiMock.getCuePoints.mockRejectedValue(new Error('boom'));
+      mockLibraryTracks = [track('t1', { hasArtwork: true })]; // no artworkFiles entry -> 404
+      serverFiles.t1 = makeBytes(300);
+      seedOfflineCrate('crate-1', ['t1']);
+
+      await DownloadService.reconcile();
+
+      expect(useDownloadStore.getState().trackFiles.t1).toBeDefined();
+      const parsed = DownloadService.readTrackMetadata('t1');
+      expect(parsed.cuePoints).toBeNull();
+      expect(parsed.waveform).not.toBeNull();
+      expect(DownloadService.getArtworkUri('t1')).toBeNull();
+    });
+
+    it('deletes sidecars together with the audio when the crate is un-toggled', async () => {
+      mockLibraryTracks = [track('t1', { hasArtwork: true })];
+      serverFiles.t1 = makeBytes(200);
+      artworkFiles.t1 = makeBytes(32);
+      seedOfflineCrate('crate-1', ['t1']);
+      await DownloadService.reconcile();
+
+      await DownloadService.removeCrateDownloads('crate-1');
+
+      const remaining = fsMock.listAll().filter((uri) => uri.includes('t1'));
+      expect(remaining).toEqual([]);
+    });
+
+    it('backfills a missing .meta for an already-downloaded track', async () => {
+      // Simulate a track downloaded before sidecars existed: audio on disk, no .meta
+      mockLibraryTracks = [track('t1')];
+      serverFiles.t1 = makeBytes(400);
+      seedOfflineCrate('crate-1', ['t1']);
+      const dir = new Directory(Paths.document, 'offline-audio');
+      dir.create({ intermediates: true, idempotent: true });
+      fsMock.seedFile(`${dir.uri}/t1.mp3`, serverFiles.t1);
+
+      await DownloadService.reconcile();
+
+      expect(DownloadService.readTrackMetadata('t1')).not.toBeNull();
+    });
+
+    it('readTrackMetadata returns null for a corrupt .meta file', async () => {
+      const dir = new Directory(Paths.document, 'offline-audio');
+      dir.create({ intermediates: true, idempotent: true });
+      fsMock.seedFile(sidecarUris('t1').meta, new TextEncoder().encode('{not json'));
+
+      expect(DownloadService.readTrackMetadata('t1')).toBeNull();
+    });
+
+    it('updateTrackMetadata merges a patch for downloaded tracks and no-ops otherwise', async () => {
+      mockLibraryTracks = [track('t1')];
+      serverFiles.t1 = makeBytes(100);
+      seedOfflineCrate('crate-1', ['t1']);
+      await DownloadService.reconcile();
+
+      const newCues = { 2: { position: 30, color: '#00CC00', label: 'drop' } };
+      expect(DownloadService.updateTrackMetadata('t1', { cuePoints: newCues })).toBe(true);
+      const parsed = DownloadService.readTrackMetadata('t1');
+      expect(parsed.cuePoints).toEqual(newCues);
+      expect(parsed.beatGrid.bpm).toBe(128); // other fields preserved
+
+      // Not downloaded -> refuses to write an orphan sidecar
+      expect(DownloadService.updateTrackMetadata('t9', { cuePoints: newCues })).toBe(false);
+      expect(DownloadService.readTrackMetadata('t9')).toBeNull();
     });
   });
 

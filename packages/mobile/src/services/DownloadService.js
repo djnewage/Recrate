@@ -87,6 +87,117 @@ function trackIdFromFileName(name) {
   }
 }
 
+// Sidecar files for per-track player metadata. Their extensions are ≤5
+// alphanumerics so trackIdFromFileName maps them back to the track ID and the
+// cleanup pass deletes them together with the audio.
+function metaFileForTrack(trackId, dir) {
+  return new File(dir, `${encodeURIComponent(String(trackId))}.meta`);
+}
+
+function artFileForTrack(trackId, dir) {
+  return new File(dir, `${encodeURIComponent(String(trackId))}.art`);
+}
+
+/**
+ * Fetch and store the per-track player metadata (cue points, waveforms, beat
+ * grid, artwork) alongside the downloaded audio so the offline player looks
+ * identical to online. Best-effort: a metadata failure never fails the audio
+ * download — a missing .meta file is backfilled by the next reconcile.
+ */
+export async function prefetchTrackMetadata(track, dir) {
+  try {
+    // getWaveform/getSpectralWaveform/getBeatGrid already return null on error
+    const waveform = await apiService.getWaveform(track.id, 150);
+    const spectralWaveform = await apiService.getSpectralWaveform(track.id, 800);
+    const beatGrid = await apiService.getBeatGrid(track.id);
+    let cuePoints = null;
+    try {
+      const data = await apiService.getCuePoints(track.id);
+      cuePoints = data?.cuePoints ?? null;
+    } catch {
+      // cue points unavailable — leave null
+    }
+
+    const metaFile = metaFileForTrack(track.id, dir);
+    if (!metaFile.exists) {
+      metaFile.create({ overwrite: true });
+    }
+    metaFile.write(
+      JSON.stringify({ cuePoints, waveform, spectralWaveform, beatGrid, savedAt: Date.now() })
+    );
+
+    if (track.hasArtwork) {
+      const artFile = artFileForTrack(track.id, dir);
+      if (!artFile.exists) {
+        try {
+          const response = await fetch(apiService.getArtworkUrl(track.id));
+          if (response.ok) {
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            artFile.create({ overwrite: true });
+            artFile.write(bytes);
+          }
+        } catch {
+          // artwork is cosmetic — skip silently
+        }
+      }
+    }
+  } catch {
+    // Never let metadata problems affect the audio download.
+  }
+}
+
+/**
+ * Parsed .meta sidecar for a downloaded track, or null when missing/corrupt.
+ * Synchronous so store loaders can call it inline as an offline fallback.
+ */
+export function readTrackMetadata(trackId) {
+  try {
+    const dir = new Directory(Paths.document, DOWNLOAD_DIR_NAME);
+    if (!dir.exists) return null;
+    const metaFile = metaFileForTrack(trackId, dir);
+    if (!metaFile.exists) return null;
+    return JSON.parse(metaFile.textSync());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Shallow-merge a patch into a downloaded track's .meta sidecar (write-through
+ * for cue point edits). No-op for tracks without downloaded audio so cleanup
+ * never has orphan sidecars to chase.
+ */
+export function updateTrackMetadata(trackId, patch) {
+  try {
+    if (!useDownloadStore.getState().getLocalUri(trackId)) return false;
+    const dir = getDownloadDirectory();
+    const metaFile = metaFileForTrack(trackId, dir);
+    const existing = readTrackMetadata(trackId) || {};
+    if (!metaFile.exists) {
+      metaFile.create({ overwrite: true });
+    }
+    metaFile.write(JSON.stringify({ ...existing, ...patch, savedAt: Date.now() }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Local artwork file URI for a downloaded track, or null. No entitlement gate —
+ * artwork is cosmetic.
+ */
+export function getArtworkUri(trackId) {
+  try {
+    const dir = new Directory(Paths.document, DOWNLOAD_DIR_NAME);
+    if (!dir.exists) return null;
+    const artFile = artFileForTrack(trackId, dir);
+    return artFile.exists ? artFile.uri : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Union of track IDs needed by all offline crates (from offlineStore's cached
  * crate → trackIds mapping, which is the same data the offline crate view uses).
@@ -261,6 +372,8 @@ async function downloadTrackWithRetries(track, dir) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       await downloadTrack(track, dir);
+      // Covers both the normal download and the dest-exists reclaim path
+      await prefetchTrackMetadata(track, dir);
       return true;
     } catch (error) {
       progressStore.clearTrackProgress(track.id);
@@ -411,24 +524,42 @@ export async function reconcile() {
           // failures) or the file reappears under a different membership refresh.
           failedTracks[trackId]?.reason !== DOWNLOAD_FAILURE_REASONS.NOT_FOUND
       );
-      if (missing.length === 0) continue;
 
-      useDownloadProgressStore.getState().setIsDownloading(true);
-      try {
-        const dir = getDownloadDirectory();
-        let nextIndex = 0;
-        const workers = Array.from(
-          { length: Math.min(CONCURRENCY, missing.length) },
-          async () => {
-            while (nextIndex < missing.length && !cancelRequested) {
-              const track = trackById.get(missing[nextIndex++]);
-              await downloadTrackWithRetries(track, dir);
+      const dir = getDownloadDirectory();
+
+      // Downloaded tracks missing their metadata sidecar (downloaded before the
+      // sidecar existed, or the prefetch was interrupted) — backfill below.
+      const metaMissing = [...needed].filter(
+        (trackId) =>
+          trackFiles[trackId] &&
+          trackById.has(trackId) &&
+          !metaFileForTrack(trackId, dir).exists
+      );
+
+      if (missing.length === 0 && metaMissing.length === 0) continue;
+
+      if (missing.length > 0) {
+        useDownloadProgressStore.getState().setIsDownloading(true);
+        try {
+          let nextIndex = 0;
+          const workers = Array.from(
+            { length: Math.min(CONCURRENCY, missing.length) },
+            async () => {
+              while (nextIndex < missing.length && !cancelRequested) {
+                const track = trackById.get(missing[nextIndex++]);
+                await downloadTrackWithRetries(track, dir);
+              }
             }
-          }
-        );
-        await Promise.all(workers);
-      } finally {
-        useDownloadProgressStore.getState().setIsDownloading(false);
+          );
+          await Promise.all(workers);
+        } finally {
+          useDownloadProgressStore.getState().setIsDownloading(false);
+        }
+      }
+
+      for (const trackId of metaMissing) {
+        if (cancelRequested || !useConnectionStore.getState().isConnected) break;
+        await prefetchTrackMetadata(trackById.get(trackId), dir);
       }
     } while (rerunRequested);
 
@@ -481,4 +612,8 @@ export default {
   cleanupDownloads,
   removeCrateDownloads,
   removeAllDownloads,
+  prefetchTrackMetadata,
+  readTrackMetadata,
+  updateTrackMetadata,
+  getArtworkUri,
 };

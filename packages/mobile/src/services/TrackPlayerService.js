@@ -146,15 +146,29 @@ export function hasOfflineAudio(trackId) {
 }
 
 /**
+ * Local artwork sidecar URI for a downloaded track, or null. Lazy-required to
+ * match getOfflineUri's defensiveness against module-init ordering.
+ */
+function getLocalArtworkUri(trackId) {
+  try {
+    return require('./DownloadService').getArtworkUri(trackId);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Convert Recrate track object to TrackPlayer track format.
- * Prefers a downloaded local file over the stream URL when one exists.
+ * Prefers downloaded local files (audio and artwork) over live URLs.
  */
 export function formatTrackForPlayer(track) {
   return {
     url: getOfflineUri(track.id) || apiService.getStreamUrl(track.id),
     title: track.title || 'Unknown Title',
     artist: track.artist || 'Unknown Artist',
-    artwork: track.hasArtwork ? apiService.getArtworkUrl(track.id) : undefined,
+    artwork: track.hasArtwork
+      ? getLocalArtworkUri(track.id) || apiService.getArtworkUrl(track.id)
+      : undefined,
     duration: track.duration || 0,
     // Store custom metadata
     id: track.id,

@@ -30,6 +30,27 @@ const triggerDownloadReconcile = () => {
   }
 };
 
+// Offline fallback: parsed .meta sidecar written next to a track's downloaded
+// audio (cue points, waveforms, beat grid). Null when not downloaded/missing.
+const readDownloadedMeta = (trackId) => {
+  try {
+    return require('../services/DownloadService').readTrackMetadata(trackId);
+  } catch {
+    return null;
+  }
+};
+
+// Write-through: keep a downloaded track's .meta sidecar in sync after online
+// cue point changes so the next offline session isn't stale. No-op for
+// non-downloaded tracks.
+const writeDownloadedMeta = (trackId, patch) => {
+  try {
+    require('../services/DownloadService').updateTrackMetadata(trackId, patch);
+  } catch {
+    // non-critical
+  }
+};
+
 /**
  * Pre-normalize tracks for faster search matching
  * Adds _normalizedTitle and _normalizedArtist fields
@@ -1338,6 +1359,18 @@ const useStore = create(
         return waveformData;
       } else {
         set({ isLoadingWaveform: false });
+        // Offline fallback: waveform saved alongside the downloaded audio
+        const meta = readDownloadedMeta(trackId);
+        if (meta?.waveform) {
+          const { waveformCache: currentCache } = get();
+          const entry = {
+            peaks: meta.waveform.peaks,
+            duration: meta.waveform.duration,
+            fetchedAt: meta.savedAt || Date.now(),
+          };
+          set({ waveformCache: { ...currentCache, [trackId]: entry } });
+          return meta.waveform;
+        }
         return null;
       }
     } catch (error) {
@@ -1393,6 +1426,20 @@ const useStore = create(
         return spectralData;
       } else {
         set({ isLoadingSpectralWaveform: false });
+        // Offline fallback: spectral waveform saved alongside the downloaded audio
+        const meta = readDownloadedMeta(trackId);
+        if (meta?.spectralWaveform) {
+          const { spectralWaveformCache: currentCache } = get();
+          const entry = {
+            bands: meta.spectralWaveform.bands,
+            peaks: meta.spectralWaveform.peaks,
+            duration: meta.spectralWaveform.duration,
+            sampleCount: meta.spectralWaveform.sampleCount,
+            fetchedAt: meta.savedAt || Date.now(),
+          };
+          set({ spectralWaveformCache: { ...currentCache, [trackId]: entry } });
+          return meta.spectralWaveform;
+        }
         return null;
       }
     } catch (error) {
@@ -1422,7 +1469,20 @@ const useStore = create(
     }
 
     try {
-      const data = await apiService.getBeatGrid(trackId);
+      let data = await apiService.getBeatGrid(trackId);
+
+      if (data == null) {
+        // Offline fallback: beat grid saved alongside the downloaded audio
+        const meta = readDownloadedMeta(trackId);
+        if (meta?.beatGrid) {
+          data = meta.beatGrid;
+        } else if (!useConnectionStore.getState().isConnected) {
+          // Offline with nothing on disk: don't cache an empty entry — that
+          // would suppress the real fetch for the rest of the session.
+          return null;
+        }
+      }
+
       // Cache even an empty grid so we don't refetch tracks that have none.
       const entry = {
         bpm: data?.bpm ?? null,
@@ -1449,6 +1509,18 @@ const useStore = create(
       return cachedData;
     }
 
+    // Offline: skip the doomed network call and read the sidecar saved next to
+    // the downloaded audio (falling back to whatever is already cached).
+    if (!useConnectionStore.getState().isConnected) {
+      const meta = readDownloadedMeta(trackId);
+      if (meta?.cuePoints) {
+        const { cuePointsCache: currentCache } = get();
+        set({ cuePointsCache: { ...currentCache, [trackId]: meta.cuePoints } });
+        return meta.cuePoints;
+      }
+      return cachedData || {};
+    }
+
     // Try to fetch fresh from server
     set({ isLoadingCuePoints: true });
 
@@ -1465,14 +1537,22 @@ const useStore = create(
           },
           isLoadingCuePoints: false,
         });
+        // Keep the downloaded-track sidecar fresh for the next offline session
+        writeDownloadedMeta(trackId, { cuePoints: data.cuePoints });
         return data.cuePoints;
       } else {
         set({ isLoadingCuePoints: false });
         return cachedData || {};
       }
     } catch (error) {
-      // OFFLINE FALLBACK: Return cached data if server unreachable
+      // OFFLINE FALLBACK: sidecar first (complete data), then in-memory cache
       set({ isLoadingCuePoints: false });
+      const meta = readDownloadedMeta(trackId);
+      if (meta?.cuePoints) {
+        const { cuePointsCache: currentCache } = get();
+        set({ cuePointsCache: { ...currentCache, [trackId]: meta.cuePoints } });
+        return meta.cuePoints;
+      }
       if (cachedData) {
         console.log('[CUE POINTS] Offline - using cached data');
         return cachedData;
@@ -1510,6 +1590,7 @@ const useStore = create(
             },
           },
         });
+        writeDownloadedMeta(trackId, { cuePoints: get().cuePointsCache[trackId] });
 
         return true;
       }
@@ -1536,6 +1617,7 @@ const useStore = create(
               [trackId]: remainingCuePoints,
             },
           });
+          writeDownloadedMeta(trackId, { cuePoints: remainingCuePoints });
         }
 
         return true;
