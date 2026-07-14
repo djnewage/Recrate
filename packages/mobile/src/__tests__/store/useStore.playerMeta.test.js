@@ -5,7 +5,9 @@
  */
 
 import useStore from '../../store/useStore';
+import useOfflineStore, { OPERATION_TYPES, OPERATION_STATUS } from '../../store/offlineStore';
 import { useConnectionStore } from '../../store/connectionStore';
+import { CUE_COLORS } from '../../constants/config';
 
 jest.mock('../../services/api', () => ({
   __esModule: true,
@@ -40,6 +42,21 @@ jest.mock('react-native-track-player', () => ({
   Event: { PlaybackState: 'playback-state' },
 }));
 
+// Mock TrackPlayerService — offline cue editing is gated on hasOfflineAudio,
+// whose real implementation pulls in the RevenueCat-backed subscription store
+jest.mock('../../services/TrackPlayerService', () => ({
+  __esModule: true,
+  hasOfflineAudio: jest.fn(),
+  getOfflineUri: jest.fn(),
+  formatTrackForPlayer: jest.fn((t) => ({ id: t.id, url: `http://server/${t.id}` })),
+  playTrack: jest.fn(),
+  preloadTrack: jest.fn(),
+  addTracksToQueue: jest.fn(),
+  refreshQueuedTrackUrl: jest.fn(),
+  setupEventHandlers: jest.fn(),
+  setupPlayer: jest.fn(),
+}));
+
 // Mock DownloadService for both named and default access (useStore lazy-requires
 // named exports; other callers use the default object)
 jest.mock('../../services/DownloadService', () => {
@@ -56,6 +73,7 @@ jest.mock('../../services/DownloadService', () => {
 
 const apiService = require('../../services/api').default;
 const DownloadService = require('../../services/DownloadService').default;
+const TrackPlayerService = require('../../services/TrackPlayerService');
 
 describe('useStore - offline player metadata', () => {
   beforeEach(() => {
@@ -68,6 +86,8 @@ describe('useStore - offline player metadata', () => {
       isLoadingCuePoints: false,
     });
     useConnectionStore.setState({ isConnected: false, serverURL: null });
+    useOfflineStore.setState({ operationQueue: [] });
+    TrackPlayerService.hasOfflineAudio.mockReturnValue(false);
   });
 
   describe('loadCuePoints offline', () => {
@@ -114,6 +134,87 @@ describe('useStore - offline player metadata', () => {
       expect(DownloadService.updateTrackMetadata).toHaveBeenCalledWith('track-1', {
         cuePoints: cues,
       });
+    });
+  });
+
+  describe('offline cue point editing (downloaded tracks)', () => {
+    beforeEach(() => {
+      TrackPlayerService.hasOfflineAudio.mockReturnValue(true);
+    });
+
+    it('setCuePoint queues the edit, updates the cache with the bank color, and writes the sidecar', async () => {
+      const success = await useStore.getState().setCuePoint('track-1', 3, 42.5);
+
+      expect(success).toBe(true);
+      expect(useStore.getState().cuePointsCache['track-1'][3]).toEqual({
+        position: 42.5,
+        color: CUE_COLORS[3],
+        label: null,
+      });
+      expect(DownloadService.updateTrackMetadata).toHaveBeenCalledWith('track-1', {
+        cuePoints: useStore.getState().cuePointsCache['track-1'],
+      });
+
+      const queue = useOfflineStore.getState().operationQueue;
+      expect(queue).toHaveLength(1);
+      expect(queue[0]).toMatchObject({
+        type: OPERATION_TYPES.SET_CUE_POINT,
+        status: OPERATION_STATUS.PENDING,
+        payload: { trackId: 'track-1', bankNumber: 3, position: 42.5 },
+      });
+      expect(apiService.setCuePoint).not.toHaveBeenCalled();
+    });
+
+    it('refuses offline edits on tracks without downloaded audio', async () => {
+      TrackPlayerService.hasOfflineAudio.mockReturnValue(false);
+
+      expect(await useStore.getState().setCuePoint('track-1', 1, 10)).toBe(false);
+      expect(await useStore.getState().deleteCuePoint('track-1', 1)).toBe(false);
+      expect(useOfflineStore.getState().operationQueue).toHaveLength(0);
+    });
+
+    it('deleteCuePoint queues the delete and removes the cue locally', async () => {
+      useStore.setState({
+        cuePointsCache: {
+          'track-1': {
+            1: { position: 5, color: CUE_COLORS[1], label: null },
+            2: { position: 9, color: CUE_COLORS[2], label: null },
+          },
+        },
+      });
+
+      const success = await useStore.getState().deleteCuePoint('track-1', 1);
+
+      expect(success).toBe(true);
+      expect(useStore.getState().cuePointsCache['track-1']).toEqual({
+        2: { position: 9, color: CUE_COLORS[2], label: null },
+      });
+      const queue = useOfflineStore.getState().operationQueue;
+      expect(queue).toHaveLength(1);
+      expect(queue[0]).toMatchObject({
+        type: OPERATION_TYPES.DELETE_CUE_POINT,
+        payload: { trackId: 'track-1', bankNumber: 1 },
+      });
+    });
+
+    it('coalesces repeated edits to the same bank — last edit wins', async () => {
+      await useStore.getState().setCuePoint('track-1', 4, 10);
+      await useStore.getState().setCuePoint('track-1', 4, 20);
+      await useStore.getState().setCuePoint('track-1', 5, 30); // different bank kept
+
+      let queue = useOfflineStore.getState().operationQueue;
+      expect(queue).toHaveLength(2);
+      expect(queue[0].payload).toMatchObject({ bankNumber: 4, position: 20 });
+      expect(queue[1].payload).toMatchObject({ bankNumber: 5, position: 30 });
+
+      // Set then delete: only the delete survives for that bank
+      await useStore.getState().deleteCuePoint('track-1', 4);
+      queue = useOfflineStore.getState().operationQueue;
+      expect(queue).toHaveLength(2);
+      expect(queue.map((op) => op.type)).toEqual([
+        OPERATION_TYPES.SET_CUE_POINT, // bank 5
+        OPERATION_TYPES.DELETE_CUE_POINT, // bank 4
+      ]);
     });
   });
 

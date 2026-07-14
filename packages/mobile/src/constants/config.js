@@ -21,3 +21,17 @@ export const ENDPOINTS = {
   AI: '/api/ai',
   CUEPOINTS: '/api/cuepoints',
 };
+
+// Cue point colors, fixed per bank. Mirrors the server's CUE_COLORS
+// (packages/server/src/api/routes/cuepoints.js) so offline-queued cue edits
+// render identically to server-assigned ones.
+export const CUE_COLORS = {
+  1: '#EF4444', // Red
+  2: '#F97316', // Orange
+  3: '#EAB308', // Yellow
+  4: '#22C55E', // Green
+  5: '#06B6D4', // Cyan
+  6: '#3B82F6', // Blue
+  7: '#A855F7', // Purple
+  8: '#EC4899', // Pink
+};

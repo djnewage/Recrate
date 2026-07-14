@@ -7,6 +7,7 @@ import * as TrackPlayerService from '../services/TrackPlayerService';
 import { normalizeTitle, normalizeArtist } from '../services/TrackMatchingService';
 import useOfflineStore, { OPERATION_TYPES, generateTempCrateId } from './offlineStore';
 import { useConnectionStore } from './connectionStore';
+import { CUE_COLORS } from '../constants/config';
 import { logEvent } from '../config/firebase';
 
 // Skip cooldown to prevent rapid track changes that corrupt TrackPlayer state
@@ -1569,6 +1570,33 @@ const useStore = create(
       return false;
     }
 
+    // Apply a cue point to the local cache + downloaded-track sidecar. Colors
+    // are fixed per bank (mirrors the server's CUE_COLORS) so the offline
+    // result is identical to what the server will assign on sync.
+    const applyLocalCuePoint = () => {
+      const { cuePointsCache } = get();
+      const updated = {
+        ...(cuePointsCache[trackId] || {}),
+        [bankNumber]: { position, color: CUE_COLORS[bankNumber], label: null },
+      };
+      set({ cuePointsCache: { ...cuePointsCache, [trackId]: updated } });
+      writeDownloadedMeta(trackId, { cuePoints: updated });
+    };
+
+    if (!useConnectionStore.getState().isConnected) {
+      // Offline: only downloaded tracks are editable (they're the only ones
+      // playable, and the sidecar keeps the player consistent). The edit
+      // queues and replays to Serato on reconnect.
+      if (!TrackPlayerService.hasOfflineAudio(trackId)) {
+        return false;
+      }
+      useOfflineStore
+        .getState()
+        .enqueueCueOperation(OPERATION_TYPES.SET_CUE_POINT, trackId, bankNumber, { position });
+      applyLocalCuePoint();
+      return true;
+    }
+
     try {
       const result = await apiService.setCuePoint(trackId, bankNumber, position);
 
@@ -1596,34 +1624,57 @@ const useStore = create(
       }
       return false;
     } catch (error) {
+      // Server unreachable mid-session → drop to offline and queue instead of failing.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+        return get().setCuePoint(trackId, bankNumber, position);
+      }
       console.warn(`Failed to set cue point for ${trackId}:`, error);
       return false;
     }
   },
 
   deleteCuePoint: async (trackId, bankNumber) => {
+    // Remove only the deleted cue point from cache, keeping others intact
+    const removeLocalCuePoint = () => {
+      const { cuePointsCache } = get();
+      const trackCuePoints = cuePointsCache[trackId];
+      if (!trackCuePoints) return;
+      const { [bankNumber]: removed, ...remainingCuePoints } = trackCuePoints;
+      set({
+        cuePointsCache: {
+          ...cuePointsCache,
+          [trackId]: remainingCuePoints,
+        },
+      });
+      writeDownloadedMeta(trackId, { cuePoints: remainingCuePoints });
+    };
+
+    if (!useConnectionStore.getState().isConnected) {
+      if (!TrackPlayerService.hasOfflineAudio(trackId)) {
+        return false;
+      }
+      useOfflineStore
+        .getState()
+        .enqueueCueOperation(OPERATION_TYPES.DELETE_CUE_POINT, trackId, bankNumber);
+      removeLocalCuePoint();
+      return true;
+    }
+
     try {
       const result = await apiService.deleteCuePoint(trackId, bankNumber);
 
       if (result.success) {
-        // Remove only the deleted cue point from cache, keeping others intact
-        const { cuePointsCache } = get();
-        const trackCuePoints = cuePointsCache[trackId];
-        if (trackCuePoints) {
-          const { [bankNumber]: removed, ...remainingCuePoints } = trackCuePoints;
-          set({
-            cuePointsCache: {
-              ...cuePointsCache,
-              [trackId]: remainingCuePoints,
-            },
-          });
-          writeDownloadedMeta(trackId, { cuePoints: remainingCuePoints });
-        }
-
+        removeLocalCuePoint();
         return true;
       }
       return false;
     } catch (error) {
+      // Server unreachable mid-session → drop to offline and queue instead of failing.
+      if (isServerUnreachable(error)) {
+        useConnectionStore.getState().setConnected(false);
+        return get().deleteCuePoint(trackId, bankNumber);
+      }
       console.warn(`Failed to delete cue point for ${trackId}:`, error);
       return false;
     }

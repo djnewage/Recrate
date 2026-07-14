@@ -8,6 +8,8 @@ export const OPERATION_TYPES = {
   ADD_TRACKS: 'ADD_TRACKS',
   REMOVE_TRACK: 'REMOVE_TRACK',
   DELETE_CRATE: 'DELETE_CRATE',
+  SET_CUE_POINT: 'SET_CUE_POINT',
+  DELETE_CUE_POINT: 'DELETE_CUE_POINT',
 };
 
 // Operation Status
@@ -89,6 +91,39 @@ const useOfflineStore = create(
         set((state) => ({
           operationQueue: state.operationQueue.filter((op) => op.id !== operationId),
         }));
+      },
+
+      // Enqueue a cue point operation, replacing any still-pending op for the
+      // same track+bank — the last offline edit wins, so superseded writes are
+      // never replayed against the Serato file.
+      enqueueCueOperation: (type, trackId, bankNumber, payload = {}) => {
+        const operation = {
+          id: generateId(),
+          type,
+          payload: { trackId, bankNumber, ...payload },
+          status: OPERATION_STATUS.PENDING,
+          createdAt: Date.now(),
+          retryCount: 0,
+          errorMessage: null,
+        };
+
+        set((state) => ({
+          operationQueue: [
+            ...state.operationQueue.filter(
+              (op) =>
+                !(
+                  (op.type === OPERATION_TYPES.SET_CUE_POINT ||
+                    op.type === OPERATION_TYPES.DELETE_CUE_POINT) &&
+                  op.status === OPERATION_STATUS.PENDING &&
+                  op.payload.trackId === trackId &&
+                  op.payload.bankNumber === bankNumber
+                )
+            ),
+            operation,
+          ],
+        }));
+
+        return operation.id;
       },
 
       updateOperationStatus: (operationId, status, errorMessage = null) => {
