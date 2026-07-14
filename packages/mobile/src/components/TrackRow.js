@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BPMBadge from './BPMBadge';
 
-const TrackRow = React.memo(({ track, onPress, onLongPress, onMenuPress, isSelected, isEditMode }) => {
+const TrackRow = React.memo(({ track, onPress, onLongPress, onMenuPress, isSelected, isEditMode, isDownloaded }) => {
   // Format duration from seconds to MM:SS
   const formatDuration = (seconds) => {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -39,6 +39,16 @@ const TrackRow = React.memo(({ track, onPress, onLongPress, onMenuPress, isSelec
         )}
       </View>
 
+      {/* Downloaded-for-offline indicator */}
+      {isDownloaded && (
+        <Ionicons
+          name="arrow-down-circle"
+          size={16}
+          color="#10B981"
+          style={styles.downloadedIcon}
+        />
+      )}
+
       {/* Selection Checkmark or Menu Button */}
       {isSelected ? (
         <View style={styles.checkmark}>
@@ -66,6 +76,7 @@ const TrackRow = React.memo(({ track, onPress, onLongPress, onMenuPress, isSelec
     prevProps.track.id === nextProps.track.id &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isEditMode === nextProps.isEditMode &&
+    prevProps.isDownloaded === nextProps.isDownloaded &&
     prevProps.track.title === nextProps.track.title &&
     prevProps.track.artist === nextProps.track.artist &&
     prevProps.track.bpm === nextProps.track.bpm
@@ -104,6 +115,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     color: '#667eea',
+  },
+  downloadedIcon: {
+    marginLeft: 8,
   },
   menuButton: {
     paddingLeft: 12,

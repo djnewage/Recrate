@@ -552,6 +552,12 @@ export const useSubscriptionStore = create(
         return TIER_FEATURES[currentTier]?.hasAIAccess ?? false;
       },
 
+      // Check if user can download crates for offline playback
+      canUseOfflineDownloads: () => {
+        const { currentTier } = get();
+        return TIER_FEATURES[currentTier]?.hasOfflineDownloads ?? false;
+      },
+
       // Clear all subscription data (for testing/logout)
       clearSubscriptionData: async () => {
         await SubscriptionService.clearAllData();

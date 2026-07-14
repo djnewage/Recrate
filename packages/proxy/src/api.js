@@ -235,6 +235,14 @@ router.all('/:deviceId/*', async (req, res) => {
           deviceId,
           message: 'Desktop took too long to respond'
         });
+      } else if (error.status) {
+        // Desktop reported a specific HTTP status (e.g. 404 track not found) —
+        // relay it so clients can distinguish permanent from transient failures
+        res.status(error.status).json({
+          error: 'Desktop error',
+          deviceId,
+          message: error.message
+        });
       } else {
         res.status(500).json({
           error: 'Proxy error',

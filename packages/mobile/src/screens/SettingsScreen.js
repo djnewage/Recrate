@@ -9,6 +9,7 @@ import {
   Alert,
   ScrollView,
   Linking,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,6 +23,9 @@ import ACRCloudService from '../services/ACRCloudService';
 import AIKeyService from '../services/AIKeyService';
 import TrialCountdownBadge, { TierBadge, UsageIndicator } from '../components/TrialCountdownBadge';
 import SubscriptionService from '../services/SubscriptionService';
+import useDownloadStore, { useDownloadProgressStore } from '../store/downloadStore';
+import DownloadService from '../services/DownloadService';
+import { formatBytes } from '../utils/format';
 
 const SettingsScreen = ({ navigation }) => {
   const [installations, setInstallations] = useState([]);
@@ -77,6 +81,42 @@ const SettingsScreen = ({ navigation }) => {
   const [isRestoring, setIsRestoring] = useState(false);
 
   const tierFeatures = TIER_FEATURES[currentTier] || TIER_FEATURES[SUBSCRIPTION_TIERS.EXPIRED];
+
+  // Offline downloads state
+  const offlineCrateIds = useDownloadStore((s) => s.offlineCrateIds);
+  const downloadTrackFiles = useDownloadStore((s) => s.trackFiles);
+  const wifiOnly = useDownloadStore((s) => s.wifiOnly);
+  const isDownloading = useDownloadProgressStore((s) => s.isDownloading);
+  const { crates } = useStore();
+  const canUseOfflineDownloads = useSubscriptionStore((s) => s.canUseOfflineDownloads);
+  // downloadTrackFiles is the reactive source; the store helper does the math
+  const totalDownloadBytes = React.useMemo(
+    () => useDownloadStore.getState().getTotalBytes(),
+    [downloadTrackFiles]
+  );
+  const hasDownloads = Object.keys(downloadTrackFiles).length > 0;
+
+  const handleRemoveCrateDownloads = (crateId, crateName) => {
+    Alert.alert(
+      'Remove Downloads',
+      `Remove offline downloads for "${crateName}"? Files not used by another offline crate will be deleted.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => DownloadService.removeCrateDownloads(crateId) },
+      ]
+    );
+  };
+
+  const handleRemoveAllDownloads = () => {
+    Alert.alert(
+      'Remove All Downloads',
+      `Delete all downloaded audio (${formatBytes(totalDownloadBytes)}) and turn off offline access for every crate?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove All', style: 'destructive', onPress: () => DownloadService.removeAllDownloads() },
+      ]
+    );
+  };
 
   const handleRestorePurchases = async () => {
     setIsRestoring(true);
@@ -645,6 +685,83 @@ const SettingsScreen = ({ navigation }) => {
               )}
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Offline Downloads */}
+        <View style={styles.section}>
+          <View style={styles.downloadsHeader}>
+            <View style={styles.downloadsTitleRow}>
+              <Ionicons name="cloud-download-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.advancedToggleText}>Offline Downloads</Text>
+            </View>
+            <Text style={styles.downloadsTotal}>
+              {isDownloading ? 'Downloading…' : formatBytes(totalDownloadBytes)}
+            </Text>
+          </View>
+
+          {!canUseOfflineDownloads() && (
+            <TouchableOpacity
+              style={styles.downloadsUpsell}
+              onPress={() => navigation.navigate('Paywall')}
+            >
+              <Text style={styles.downloadsUpsellText}>
+                Subscribe to Pro to download crates for offline playback
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+
+          {/* Wifi-only toggle */}
+          <View style={styles.downloadsRow}>
+            <Text style={styles.downloadsRowLabel}>Download over Wi-Fi only</Text>
+            <Switch
+              value={wifiOnly}
+              onValueChange={(value) => {
+                useDownloadStore.getState().setWifiOnly(value);
+                if (!value) DownloadService.reconcile();
+              }}
+              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+              thumbColor={COLORS.text}
+            />
+          </View>
+
+          {/* Per-crate storage rows */}
+          {offlineCrateIds.map((crateId) => {
+            const crate = crates.find((c) => c.id === crateId);
+            const bytes = useDownloadStore.getState().getCrateBytes(crateId);
+            const { downloaded, total } = useDownloadStore.getState().getCrateDownloadProgress(crateId);
+            return (
+              <View key={crateId} style={styles.downloadsRow}>
+                <View style={styles.downloadsCrateInfo}>
+                  <Text style={styles.downloadsRowLabel} numberOfLines={1}>
+                    {crate?.name || 'Deleted crate'}
+                  </Text>
+                  <Text style={styles.downloadsCrateDetail}>
+                    {downloaded}/{total} tracks · {formatBytes(bytes)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => handleRemoveCrateDownloads(crateId, crate?.name || 'this crate')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={styles.downloadsRemoveText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+
+          {offlineCrateIds.length === 0 && !hasDownloads && (
+            <Text style={styles.downloadsEmptyText}>
+              No offline crates yet. Open a crate and turn on “Available offline”.
+            </Text>
+          )}
+
+          {/* Remove all */}
+          {hasDownloads && (
+            <TouchableOpacity style={styles.downloadsRemoveAll} onPress={handleRemoveAllDownloads}>
+              <Text style={styles.downloadsRemoveAllText}>Remove All Downloads</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Legal Section */}
@@ -1277,6 +1394,77 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: SPACING.sm,
     textAlign: 'center',
+  },
+  // Offline downloads section styles
+  downloadsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  downloadsTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  downloadsTotal: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  downloadsUpsell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.sm,
+  },
+  downloadsUpsellText: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+  },
+  downloadsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  downloadsRowLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.text,
+  },
+  downloadsCrateInfo: {
+    flex: 1,
+    marginRight: SPACING.md,
+  },
+  downloadsCrateDetail: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  downloadsRemoveText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.error,
+    fontWeight: '600',
+  },
+  downloadsEmptyText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    paddingVertical: SPACING.sm,
+  },
+  downloadsRemoveAll: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  downloadsRemoveAllText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.error,
+    fontWeight: '600',
   },
   // Subscription section styles
   subscriptionSection: {

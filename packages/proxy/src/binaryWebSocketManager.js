@@ -263,7 +263,11 @@ class BinaryWebSocketManager {
     const pending = this.pendingRequests.get(requestId);
     if (pending) {
       clearTimeout(pending.timeout);
-      pending.reject(new Error(error));
+      // Preserve the desktop's HTTP status (e.g. 404 for a missing track file)
+      // so the API layer can relay it instead of collapsing to 500.
+      const err = new Error(error);
+      if (status) err.status = status;
+      pending.reject(err);
       this.pendingRequests.delete(requestId);
       this.binaryChunks.delete(requestId);
     }

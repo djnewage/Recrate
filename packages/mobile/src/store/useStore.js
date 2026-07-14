@@ -20,6 +20,16 @@ const SKIP_COOLDOWN = 800; // 800ms minimum between skips
 const isServerUnreachable = (error) =>
   !error?.response || [502, 503, 504].includes(error.response.status);
 
+// Fire-and-forget kick of the offline-downloads reconciler after crate data changes.
+// Lazy require avoids a module-init cycle (DownloadService reads this store's tracks).
+const triggerDownloadReconcile = () => {
+  try {
+    require('../services/DownloadService').reconcile();
+  } catch {
+    // non-critical — downloads catch up on the next connection/foreground trigger
+  }
+};
+
 /**
  * Pre-normalize tracks for faster search matching
  * Adds _normalizedTitle and _normalizedArtist fields
@@ -416,6 +426,10 @@ const useStore = create(
         crateTree: crateTree,
         isLoadingCrates: false,
       });
+
+      // Crate membership may have changed on the server (or we just reconnected) —
+      // download newly added tracks for offline crates / clean up removed ones.
+      triggerDownloadReconcile();
     } catch (error) {
       // Server unreachable → flip to offline so writes queue and the offline UI shows.
       if (isServerUnreachable(error)) {
@@ -652,6 +666,7 @@ const useStore = create(
     } catch {
       // best-effort refresh
     }
+    triggerDownloadReconcile();
     logEvent('tracks_added_to_crate', { count: trackIds.length });
     return true;
   },
@@ -728,6 +743,7 @@ const useStore = create(
     } catch {
       // best-effort refresh
     }
+    triggerDownloadReconcile();
     return true;
   },
 
@@ -790,6 +806,12 @@ const useStore = create(
     } catch {
       // best-effort refresh
     }
+    // A deleted crate can't stay marked offline; its now-unreferenced files get cleaned up.
+    try {
+      require('../services/DownloadService').removeCrateDownloads(crateId);
+    } catch {
+      // non-critical
+    }
     logEvent('crate_deleted');
     return true;
   },
@@ -845,10 +867,11 @@ const useStore = create(
 
   // Player actions
   playTrack: async (track) => {
-    // Streaming requires the desktop server. Don't attempt while offline — otherwise the
-    // PlaybackError handler cycles through tracks hunting for one that loads (looks broken).
-    if (!useConnectionStore.getState().isConnected) {
-      set({ playerError: 'Streaming isn’t available offline.', isBuffering: false, isPlaying: false });
+    // Streaming requires the desktop server. While offline, only tracks with a
+    // downloaded local file can play — otherwise the PlaybackError handler cycles
+    // through tracks hunting for one that loads (looks broken).
+    if (!useConnectionStore.getState().isConnected && !TrackPlayerService.hasOfflineAudio(track.id)) {
+      set({ playerError: 'This track isn’t downloaded — streaming isn’t available offline.', isBuffering: false, isPlaying: false });
       return;
     }
     try {
@@ -860,6 +883,10 @@ const useStore = create(
       if (queue.length > 1) {
         const trackIndex = queue.findIndex(t => t.id === track.id);
         if (trackIndex >= 0) {
+          // Queued entries freeze their URL at queue-build time; swap in the
+          // local file if this track was downloaded after the queue was built
+          // (or the stream URL if downloads were removed).
+          await TrackPlayerService.refreshQueuedTrackUrl(track);
           await TrackPlayer.skip(trackIndex);
           await TrackPlayer.play();
           set({
@@ -908,11 +935,29 @@ const useStore = create(
   },
 
   resumeTrack: async () => {
-    if (!useConnectionStore.getState().isConnected) {
-      set({ playerError: 'Streaming isn’t available offline.', isPlaying: false });
+    const { currentTrack } = get();
+    const isOffline = !useConnectionStore.getState().isConnected;
+    if (isOffline && currentTrack && !TrackPlayerService.hasOfflineAudio(currentTrack.id)) {
+      set({ playerError: 'This track isn’t downloaded — streaming isn’t available offline.', isPlaying: false });
       return;
     }
     try {
+      // Offline with a downloaded track: the loaded player item may still hold
+      // the stream URL from when playback started online. Reload it from the
+      // local file (keeping position) instead of resuming a dead stream.
+      if (isOffline && currentTrack) {
+        const activeTrack = await TrackPlayer.getActiveTrack().catch(() => null);
+        if (activeTrack?.id === currentTrack.id && !activeTrack.url?.startsWith?.('file://')) {
+          const { position } = await TrackPlayer.getProgress().catch(() => ({ position: 0 }));
+          const success = await TrackPlayerService.playTrack(currentTrack);
+          if (success && position > 0) {
+            await TrackPlayer.seekTo(position).catch(() => {});
+          }
+          set({ isPlaying: true, queue: [currentTrack], currentQueueIndex: 0 });
+          return;
+        }
+      }
+
       await TrackPlayer.play();
       set({ isPlaying: true });
     } catch (error) {
