@@ -96,7 +96,9 @@ describe('useStore - Offline Functionality', () => {
 
       const result = await createCrate('My Offline Crate', '#8B5CF6');
 
-      expect(result).toBe(true);
+      // Returns the temp crate id (truthy) so callers can immediately add tracks
+      expect(typeof result).toBe('string');
+      expect(result.startsWith('temp-')).toBe(true);
 
       // Check crate was added to local state
       const { crates } = useStore.getState();

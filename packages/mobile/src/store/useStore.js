@@ -566,12 +566,16 @@ const useStore = create(
         crateTree: buildCrateTree(updatedCrates),
       });
 
-      return true;
+      // Return the temp crate id (truthy) so callers can immediately add
+      // tracks to the new crate; SyncService maps it to the server id later.
+      return tempId;
     }
 
     // Online mode - original behavior
+    let createdCrateId = null;
     try {
-      await apiService.createCrate(name, color, resolvedParentId);
+      const result = await apiService.createCrate(name, color, resolvedParentId);
+      createdCrateId = result?.crate?.id || null;
     } catch (error) {
       // Server unreachable mid-session → drop to offline and queue instead of failing.
       if (isServerUnreachable(error)) {
@@ -587,7 +591,7 @@ const useStore = create(
       // best-effort refresh
     }
     logEvent('crate_created');
-    return true;
+    return createdCrateId || true;
   },
 
   toggleCrateExpanded: (crateId) => {

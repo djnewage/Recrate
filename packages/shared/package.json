@@ -4,8 +4,10 @@
   "description": "Shared constants and types for Recrate",
   "main": "index.js",
   "exports": {
+    ".": "./index.js",
     "./constants": "./constants.js",
-    "./types": "./types.js"
+    "./types": "./types.js",
+    "./aiCuration": "./aiCuration.js"
   },
   "keywords": ["recrate", "shared", "types", "constants"],
   "author": "",
