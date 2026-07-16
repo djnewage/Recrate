@@ -639,7 +639,13 @@ const useStore = create(
       enqueueOperation(OPERATION_TYPES.ADD_TRACKS, {
         crateId: resolvedCrateId,
         trackIds,
-        serverVersion: crate?.lastModified || null,
+        // Local/temp crates have no server baseline — a captured Date.now()
+        // would always look "older" than the file mtime the sync's own CREATE
+        // produces, guaranteeing a false conflict.
+        serverVersion:
+          crate?.isLocal || String(crateId).startsWith('temp-')
+            ? null
+            : crate?.lastModified || null,
       });
 
       // Store track IDs locally for offline crate viewing
@@ -720,7 +726,11 @@ const useStore = create(
       enqueueOperation(OPERATION_TYPES.REMOVE_TRACK, {
         crateId: resolvedCrateId,
         trackId,
-        serverVersion: crate?.lastModified || null,
+        // See addTracksToCrate: no fake baseline for offline-created crates
+        serverVersion:
+          crate?.isLocal || String(crateId).startsWith('temp-')
+            ? null
+            : crate?.lastModified || null,
       });
 
       // Remove track from local storage for offline crate viewing

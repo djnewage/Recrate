@@ -279,10 +279,17 @@ const AICrateBuilderScreen = ({ navigation }) => {
     setIsSaving(true);
 
     try {
-      // Maintain order if suggestedOrder exists, but only include selected tracks
-      const trackIds = curation.suggestedOrder
-        ? curation.suggestedOrder.filter(id => selectedTrackIds.includes(id))
-        : selectedTrackIds;
+      // Maintain order where the AI suggested one, but NEVER drop a selected
+      // track just because it's missing from a partial suggestedOrder (the
+      // model can truncate the order list under its output-token cap; the
+      // desktop path's parser doesn't backfill it yet).
+      const selectedSet = new Set(selectedTrackIds);
+      const ordered = (curation.suggestedOrder || []).filter(id => selectedSet.has(id));
+      const orderedSet = new Set(ordered);
+      const trackIds = [
+        ...ordered,
+        ...selectedTrackIds.filter(id => !orderedSet.has(id)),
+      ];
 
       // Validate that at least one track is selected
       if (trackIds.length === 0) {

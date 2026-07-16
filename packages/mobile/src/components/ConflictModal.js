@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
@@ -26,9 +27,18 @@ const ConflictModal = () => {
     setIsResolving(true);
 
     try {
-      await applyConflictResolution(activeConflict.id, resolution);
+      const applied = await applyConflictResolution(activeConflict.id, resolution);
+      if (!applied) {
+        Alert.alert(
+          'Sync Conflict',
+          'Couldn’t apply that resolution. Please try again, or choose a different option.'
+        );
+      }
     } catch (error) {
-      // Error resolving conflict
+      Alert.alert(
+        'Sync Conflict',
+        'Couldn’t apply that resolution. Please try again, or choose a different option.'
+      );
     } finally {
       setIsResolving(false);
       setSelectedResolution(null);

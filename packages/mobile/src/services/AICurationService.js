@@ -46,7 +46,15 @@ export async function curateViaProxy({ prompt, tracks, filters = {}, limit = 25,
     maxTokens: 4096,
   });
 
-  const parsed = parseCurationResponse(result.text, sample.map((t) => t.id));
+  let parsed;
+  try {
+    parsed = parseCurationResponse(result.text, sample.map((t) => t.id));
+  } catch (error) {
+    if (result.stopReason === 'max_tokens') {
+      throw new Error('The AI response was cut off — try a smaller track limit.');
+    }
+    throw error;
+  }
 
   // Enrich with full track metadata (same shape the desktop's /api/ai/curate returns)
   const byId = new Map(sample.map((t) => [t.id, t]));

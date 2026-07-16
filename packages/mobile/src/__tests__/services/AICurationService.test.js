@@ -104,6 +104,36 @@ describe('AICurationService', () => {
       expect(result.curation.suggestedOrder).toEqual(['t1']);
     });
 
+    it('completes a partial suggestedOrder so no selected track can be dropped on save', async () => {
+      // Model returns all 5 tracks but truncates suggestedOrder to 2 (output-token cap)
+      const tracks = ['t1', 't2', 't3', 't4', 't5'].map((id) => makeTrack(id));
+      apiService.completeLLMViaProxy.mockResolvedValue(
+        llmResponse({
+          tracks: tracks.map((t) => ({ id: t.id, reason: 'r' })),
+          reasoning: 'ok',
+          suggestedOrder: ['t3', 't1'],
+        })
+      );
+
+      const result = await AICurationService.curateViaProxy({ prompt: 'x', tracks });
+
+      // Model's ordering first, remaining tracks appended — nothing lost
+      expect(result.curation.suggestedOrder).toEqual(['t3', 't1', 't2', 't4', 't5']);
+      expect(result.curation.tracks).toHaveLength(5);
+    });
+
+    it('reports a friendly error when a truncated (max_tokens) response fails to parse', async () => {
+      apiService.completeLLMViaProxy.mockResolvedValue({
+        text: '{"tracks":[{"id":"t1","reason":"cut off mid',
+        stopReason: 'max_tokens',
+        usage: { totalTokens: 4096 },
+      });
+
+      await expect(
+        AICurationService.curateViaProxy({ prompt: 'x', tracks: [makeTrack('t1')] })
+      ).rejects.toThrow('The AI response was cut off — try a smaller track limit.');
+    });
+
     it('parses markdown-wrapped JSON responses', async () => {
       apiService.completeLLMViaProxy.mockResolvedValue({
         text: '```json\n{"tracks":[{"id":"t1","reason":"r"}],"reasoning":"ok","suggestedOrder":["t1"]}\n```',

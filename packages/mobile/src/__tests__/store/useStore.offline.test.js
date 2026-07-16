@@ -157,6 +157,21 @@ describe('useStore - Offline Functionality', () => {
       expect(operationQueue[0].payload.trackIds).toEqual(['track-1', 'track-2']);
     });
 
+    it('should NOT capture a serverVersion for offline-created crates', async () => {
+      // A local crate's lastModified is a client Date.now(); using it as a
+      // conflict baseline guarantees a false conflict once CREATE_CRATE syncs
+      // (the server file mtime is always newer).
+      useStore.setState({
+        crates: [{ id: 'temp-crate-1', name: 'Local Crate', trackCount: 0, isLocal: true, lastModified: Date.now() }],
+      });
+      const { addTracksToCrate } = useStore.getState();
+
+      await addTracksToCrate('temp-crate-1', ['track-1']);
+
+      const { operationQueue } = useOfflineStore.getState();
+      expect(operationQueue[0].payload.serverVersion).toBeNull();
+    });
+
     it('should store tracks locally for offline viewing', async () => {
       const { addTracksToCrate } = useStore.getState();
 
@@ -220,6 +235,15 @@ describe('useStore - Offline Functionality', () => {
       expect(operationQueue[0].type).toBe(OPERATION_TYPES.ADD_TRACKS);
       expect(operationQueue[0].payload.crateId).toBe('server-crate-1');
       expect(operationQueue[0].payload.trackIds).toEqual(['track-2', 'track-3']);
+    });
+
+    it('should still capture serverVersion for real server crates (conflict detection baseline)', async () => {
+      const { addTracksToCrate } = useStore.getState();
+
+      await addTracksToCrate('server-crate-1', ['track-2']);
+
+      const { operationQueue } = useOfflineStore.getState();
+      expect(operationQueue[0].payload.serverVersion).toBe(serverCrate.lastModified);
     });
 
     it('should store tracks locally for server crate', async () => {
