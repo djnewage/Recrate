@@ -2,7 +2,7 @@
   "expo": {
     "name": "Recrate",
     "slug": "recrate",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "orientation": "portrait",
     "icon": "./assets/officialLogo.png",
     "userInterfaceStyle": "light",
@@ -46,7 +46,9 @@
           "packet-tunnel-provider"
         ],
         "com.apple.developer.networking.multipath": true,
-        "com.apple.developer.applesignin": ["Default"]
+        "com.apple.developer.applesignin": [
+          "Default"
+        ]
       },
       "googleServicesFile": "./GoogleService-Info.plist"
     },
