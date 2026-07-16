@@ -109,7 +109,7 @@ const CrateTreeItem = ({
         </View>
         <View style={styles.crateInfo}>
           <View style={styles.crateNameRow}>
-            <Text style={styles.crateName}>{crate.name}</Text>
+            <Text style={styles.crateName} numberOfLines={1}>{crate.name}</Text>
             {isPendingSync && (
               <Text style={styles.pendingLabel}>Pending</Text>
             )}
@@ -953,11 +953,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+    // Long names (e.g. AI-generated crates named after the prompt) must
+    // truncate rather than shove the Pending label off the screen edge
+    flexShrink: 1,
   },
   pendingLabel: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.warning,
     fontWeight: '500',
+    flexShrink: 0,
   },
   pendingBadge: {
     position: 'absolute',
