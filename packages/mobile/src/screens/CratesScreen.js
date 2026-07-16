@@ -211,6 +211,11 @@ const CratesScreen = ({ navigation, route }) => {
 
   // Clear error when offline with cached data
   const { isConnected } = useConnectionStore();
+  // AI crate building no longer needs the desktop — it can run via the cloud
+  // proxy against the cached library as long as the phone has internet.
+  const hasInternet = useConnectionStore((s) => s.networkState?.isConnected ?? false);
+  const hasCachedLibrary = useStore((s) => s.tracks.length > 0);
+  const canUseAIBuilder = isConnected || (hasInternet && hasCachedLibrary);
   useEffect(() => {
     if (!isConnected && crateTree.length > 0 && cratesError) {
       // We have cached data while offline - clear the error to show offline banner instead
@@ -428,17 +433,20 @@ const CratesScreen = ({ navigation, route }) => {
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
-            style={[styles.aiButton, !isConnected && styles.buttonDisabled]}
+            style={[styles.aiButton, !canUseAIBuilder && styles.buttonDisabled]}
             onPress={() => {
-              if (!isConnected) {
-                Alert.alert('Offline', 'AI Crate Builder requires a server connection.');
+              if (!canUseAIBuilder) {
+                Alert.alert(
+                  'Offline',
+                  'AI Crate Builder needs an internet connection (your computer doesn’t have to be running).'
+                );
                 return;
               }
               navigation.navigate('AICrateBuilder');
             }}
           >
-            <Ionicons name="sparkles" size={18} color={isConnected ? COLORS.primary : COLORS.textSecondary} />
-            <Text style={[styles.aiButtonText, !isConnected && styles.textDisabled]}>AI</Text>
+            <Ionicons name="sparkles" size={18} color={canUseAIBuilder ? COLORS.primary : COLORS.textSecondary} />
+            <Text style={[styles.aiButtonText, !canUseAIBuilder && styles.textDisabled]}>AI</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.createButton}
