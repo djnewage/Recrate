@@ -316,7 +316,7 @@ export async function applyConflictResolution(conflictId, resolution) {
     switch (resolution) {
       case 'LOCAL':
         // Force-push local changes (re-attempt the operation)
-        offlineStore.getState().updateOperationStatus(operation.id, OPERATION_STATUS.PENDING);
+        useOfflineStore.getState().updateOperationStatus(operation.id, OPERATION_STATUS.PENDING);
         // Re-process the operation
         await processOperation({
           ...operation,
@@ -339,7 +339,7 @@ export async function applyConflictResolution(conflictId, resolution) {
           await mergeTrackAdditions(conflict, operation);
         } else {
           // For other operations, fall back to LOCAL behavior
-          offlineStore.getState().updateOperationStatus(operation.id, OPERATION_STATUS.PENDING);
+          useOfflineStore.getState().updateOperationStatus(operation.id, OPERATION_STATUS.PENDING);
           await processOperation({
             ...operation,
             status: OPERATION_STATUS.PENDING,

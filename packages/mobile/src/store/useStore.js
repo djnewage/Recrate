@@ -566,12 +566,16 @@ const useStore = create(
         crateTree: buildCrateTree(updatedCrates),
       });
 
-      return true;
+      // Return the temp crate id (truthy) so callers can immediately add
+      // tracks to the new crate; SyncService maps it to the server id later.
+      return tempId;
     }
 
     // Online mode - original behavior
+    let createdCrateId = null;
     try {
-      await apiService.createCrate(name, color, resolvedParentId);
+      const result = await apiService.createCrate(name, color, resolvedParentId);
+      createdCrateId = result?.crate?.id || null;
     } catch (error) {
       // Server unreachable mid-session → drop to offline and queue instead of failing.
       if (isServerUnreachable(error)) {
@@ -587,7 +591,7 @@ const useStore = create(
       // best-effort refresh
     }
     logEvent('crate_created');
-    return true;
+    return createdCrateId || true;
   },
 
   toggleCrateExpanded: (crateId) => {
@@ -635,7 +639,13 @@ const useStore = create(
       enqueueOperation(OPERATION_TYPES.ADD_TRACKS, {
         crateId: resolvedCrateId,
         trackIds,
-        serverVersion: crate?.lastModified || null,
+        // Local/temp crates have no server baseline — a captured Date.now()
+        // would always look "older" than the file mtime the sync's own CREATE
+        // produces, guaranteeing a false conflict.
+        serverVersion:
+          crate?.isLocal || String(crateId).startsWith('temp-')
+            ? null
+            : crate?.lastModified || null,
       });
 
       // Store track IDs locally for offline crate viewing
@@ -716,7 +726,11 @@ const useStore = create(
       enqueueOperation(OPERATION_TYPES.REMOVE_TRACK, {
         crateId: resolvedCrateId,
         trackId,
-        serverVersion: crate?.lastModified || null,
+        // See addTracksToCrate: no fake baseline for offline-created crates
+        serverVersion:
+          crate?.isLocal || String(crateId).startsWith('temp-')
+            ? null
+            : crate?.lastModified || null,
       });
 
       // Remove track from local storage for offline crate viewing

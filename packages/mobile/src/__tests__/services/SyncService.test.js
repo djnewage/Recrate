@@ -3,7 +3,7 @@
  * Tests sync queue processing, conflict detection, and resolution
  */
 
-import { syncQueue, isSyncNeeded, triggerSyncIfPending } from '../../services/SyncService';
+import { syncQueue, isSyncNeeded, triggerSyncIfPending, applyConflictResolution } from '../../services/SyncService';
 import useOfflineStore, {
   OPERATION_TYPES,
   OPERATION_STATUS,
@@ -352,6 +352,51 @@ describe('SyncService', () => {
       expect(useOfflineStore.getState().operationQueue).toHaveLength(0);
     });
 
+  });
+
+  describe('applyConflictResolution', () => {
+    const seedConflictedAddTracks = () => {
+      const store = useOfflineStore.getState();
+      const opId = store.enqueueOperation(OPERATION_TYPES.ADD_TRACKS, {
+        crateId: 'crate-1',
+        trackIds: ['track-1'],
+        serverVersion: 1000,
+      });
+      store.updateOperationStatus(opId, OPERATION_STATUS.CONFLICT);
+      store.addConflict({
+        operationId: opId,
+        crateId: 'crate-1',
+        crateName: 'Test Crate',
+        conflictType: 'CRATE_MODIFIED',
+        localVersion: { lastModified: 1000 },
+        serverVersion: { trackCount: 0, lastModified: 2000 },
+      });
+      return useOfflineStore.getState().conflicts[0].id;
+    };
+
+    it("LOCAL force-pushes the conflicted op (regression: 'Keep Mine' used to TypeError silently)", async () => {
+      apiService.addTracksToCrate.mockResolvedValue({ success: true });
+      const conflictId = seedConflictedAddTracks();
+
+      const applied = await applyConflictResolution(conflictId, 'LOCAL');
+
+      expect(applied).toBe(true);
+      expect(apiService.addTracksToCrate).toHaveBeenCalledWith('crate-1', ['track-1']);
+      expect(useOfflineStore.getState().operationQueue).toHaveLength(0);
+      expect(useOfflineStore.getState().conflicts).toHaveLength(0);
+      expect(useOfflineStore.getState().activeConflict).toBeNull();
+    });
+
+    it('SERVER discards the local op and clears the conflict', async () => {
+      const conflictId = seedConflictedAddTracks();
+
+      const applied = await applyConflictResolution(conflictId, 'SERVER');
+
+      expect(applied).toBe(true);
+      expect(apiService.addTracksToCrate).not.toHaveBeenCalled();
+      expect(useOfflineStore.getState().operationQueue).toHaveLength(0);
+      expect(useOfflineStore.getState().conflicts).toHaveLength(0);
+    });
   });
 
   describe('triggerSyncIfPending', () => {

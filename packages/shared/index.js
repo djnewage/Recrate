@@ -1,4 +1,5 @@
 module.exports = {
   ...require('./constants'),
-  ...require('./types')
+  ...require('./types'),
+  ...require('./aiCuration')
 };

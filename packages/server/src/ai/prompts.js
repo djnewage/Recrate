@@ -128,10 +128,20 @@ function parseResponse(responseText, validTrackIds) {
   let suggestedOrder = parsed.suggestedOrder || [];
   suggestedOrder = suggestedOrder.filter(id => validIdSet.has(id));
 
+  // The LLM sometimes returns a PARTIAL order (all tracks present but a
+  // truncated suggestedOrder under its output-token cap). Consumers treat
+  // suggestedOrder as authoritative, so complete it: model's order first,
+  // remaining tracks appended.
+  const orderedSet = new Set(suggestedOrder);
+  const completeOrder = [
+    ...suggestedOrder,
+    ...validatedTracks.map(t => t.id).filter(id => !orderedSet.has(id)),
+  ];
+
   return {
     tracks: validatedTracks,
     reasoning: parsed.reasoning || "No reasoning provided",
-    suggestedOrder: suggestedOrder.length > 0 ? suggestedOrder : validatedTracks.map(t => t.id),
+    suggestedOrder: completeOrder,
   };
 }
 

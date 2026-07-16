@@ -321,6 +321,19 @@ export const apiService = {
     return response.data;
   },
 
+  // Direct LLM completion via the cloud proxy (no desktop involved). The proxy
+  // enforces entitlement, monthly quota, and rate limits server-side.
+  completeLLMViaProxy: async (systemPrompt, userPrompt, options = {}) => {
+    const response = await proxyApi.post('/api/llm/complete', {
+      systemPrompt,
+      userPrompt,
+      options,
+    }, {
+      timeout: 120000, // 2 minutes for AI curation
+    });
+    return response.data;
+  },
+
   // Cue Points endpoints
   getCuePoints: async (trackId) => {
     const response = await api.get(`${ENDPOINTS.CUEPOINTS}/${trackId}`);

@@ -16,7 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import apiService from '../services/api';
+import AICurationService from '../services/AICurationService';
 import useStore from '../store/useStore';
+import { useConnectionStore } from '../store/connectionStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { SUBSCRIPTION_TIERS } from '../constants/subscription';
 import TrackRow from '../components/TrackRow';
@@ -31,7 +33,7 @@ const MUSICAL_KEYS = [
 
 const AICrateBuilderScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { loadCrates, crates } = useStore();
+  const { loadCrates, crates, createCrate, addTracksToCrate } = useStore();
 
   // Subscription state
   const {
@@ -75,6 +77,10 @@ const AICrateBuilderScreen = ({ navigation }) => {
   // Why the AI screen is unavailable: 'connection' (can't reach the computer)
   // or 'unconfigured' (reached it, but AI isn't available)
   const [aiErrorReason, setAiErrorReason] = useState(null);
+  // 'desktop' (normal path through the computer) or 'proxy' (computer
+  // unreachable but the phone has internet — curate against the cached
+  // library via the cloud proxy; saves queue and sync to Serato later)
+  const [aiMode, setAiMode] = useState('desktop');
 
   // Check AI status on mount
   useEffect(() => {
@@ -86,6 +92,7 @@ const AICrateBuilderScreen = ({ navigation }) => {
   const checkAIStatus = async () => {
     try {
       const status = await apiService.getAIStatus();
+      setAiMode('desktop');
       setAiConfigured(status.configured);
       setAiErrorReason(status.configured ? null : 'unconfigured');
     } catch (err) {
@@ -93,6 +100,27 @@ const AICrateBuilderScreen = ({ navigation }) => {
       // the computer; anything else means the request got through but AI is off.
       const status = err?.response?.status;
       const reachedServer = !!err?.response && status !== 503;
+
+      // Computer unreachable but the phone has internet and a cached library:
+      // fall back to curating via the cloud proxy against the cached metadata.
+      const cachedTracks = useStore.getState().tracks;
+      if (
+        !reachedServer &&
+        useConnectionStore.getState().hasNetworkConnectivity() &&
+        cachedTracks.length > 0
+      ) {
+        setAiMode('proxy');
+        setAiConfigured(true);
+        setAiErrorReason(null);
+        const derived = AICurationService.deriveFilterOptions(cachedTracks);
+        setAvailableGenres(derived.genres);
+        if (derived.bpmStats) {
+          setBpmMin(derived.bpmStats.min);
+          setBpmMax(derived.bpmStats.max);
+        }
+        return;
+      }
+
       setAiConfigured(false);
       setAiErrorReason(reachedServer ? 'unconfigured' : 'connection');
     }
@@ -119,12 +147,19 @@ const AICrateBuilderScreen = ({ navigation }) => {
         selectedKeys,
         selectedGenres,
       };
+      if (aiMode === 'proxy') {
+        // Computer unreachable — count against the cached library locally
+        setMatchingCount(
+          AICurationService.countMatchingTracks(useStore.getState().tracks, filters)
+        );
+        return;
+      }
       const result = await apiService.previewAIFilter(filters);
       setMatchingCount(result.matchingTracks);
     } catch (err) {
       // Failed to preview filter
     }
-  }, [bpmMin, bpmMax, selectedKeys, selectedGenres]);
+  }, [bpmMin, bpmMax, selectedKeys, selectedGenres, aiMode]);
 
   useEffect(() => {
     const debounce = setTimeout(updatePreviewCount, 300);
@@ -191,10 +226,19 @@ const AICrateBuilderScreen = ({ navigation }) => {
         selectedGenres: selectedGenres.length > 0 ? selectedGenres : undefined,
       };
 
-      const result = await apiService.curateWithAI(prompt.trim(), filters, trackLimit, {
-        prioritizeMixability: true,
-        includeVariety: true,
-      });
+      const result =
+        aiMode === 'proxy'
+          ? await AICurationService.curateViaProxy({
+              prompt: prompt.trim(),
+              tracks: useStore.getState().tracks,
+              filters,
+              limit: trackLimit,
+              options: { prioritizeMixability: true, includeVariety: true },
+            })
+          : await apiService.curateWithAI(prompt.trim(), filters, trackLimit, {
+              prioritizeMixability: true,
+              includeVariety: true,
+            });
 
       if (!result.success) {
         setError(result.error || 'Failed to generate crate');
@@ -235,10 +279,17 @@ const AICrateBuilderScreen = ({ navigation }) => {
     setIsSaving(true);
 
     try {
-      // Maintain order if suggestedOrder exists, but only include selected tracks
-      const trackIds = curation.suggestedOrder
-        ? curation.suggestedOrder.filter(id => selectedTrackIds.includes(id))
-        : selectedTrackIds;
+      // Maintain order where the AI suggested one, but NEVER drop a selected
+      // track just because it's missing from a partial suggestedOrder (the
+      // model can truncate the order list under its output-token cap; the
+      // desktop path's parser doesn't backfill it yet).
+      const selectedSet = new Set(selectedTrackIds);
+      const ordered = (curation.suggestedOrder || []).filter(id => selectedSet.has(id));
+      const orderedSet = new Set(ordered);
+      const trackIds = [
+        ...ordered,
+        ...selectedTrackIds.filter(id => !orderedSet.has(id)),
+      ];
 
       // Validate that at least one track is selected
       if (trackIds.length === 0) {
@@ -247,19 +298,46 @@ const AICrateBuilderScreen = ({ navigation }) => {
         return;
       }
 
+      // Save through the store (not raw apiService) so the crate rides the
+      // offline op queue when the computer is unreachable and syncs to Serato
+      // on reconnect.
+      const isConnected = useConnectionStore.getState().isConnected;
+      const syncNote = isConnected
+        ? ''
+        : ' It will sync to your Serato library when your computer reconnects.';
+
       if (saveMode === 'new') {
-        await apiService.saveAICrate(crateName.trim(), trackIds);
+        const newCrateId = await createCrate(crateName.trim(), '#8B5CF6');
+        if (!newCrateId) {
+          throw new Error('Failed to create crate');
+        }
+        // createCrate returns the new crate's id (temp id offline); if an older
+        // server build returned only `true`, locate the crate by name.
+        const targetCrateId =
+          typeof newCrateId === 'string'
+            ? newCrateId
+            : useStore.getState().crates.find((c) => c.name === crateName.trim())?.id;
+        if (!targetCrateId) {
+          throw new Error('Crate created but could not be found to add tracks');
+        }
+        const added = await addTracksToCrate(targetCrateId, trackIds);
+        if (!added) {
+          throw new Error('Crate created but adding tracks failed');
+        }
         Alert.alert(
           'Crate Created!',
-          `"${crateName}" has been added to your Serato library.`,
+          `"${crateName}" has been ${isConnected ? 'added to your Serato library.' : 'saved on your phone.'}${syncNote}`,
           [{ text: 'OK', onPress: () => navigation.goBack() }]
         );
       } else {
-        await apiService.addTracksToCrate(selectedCrateId, trackIds);
+        const added = await addTracksToCrate(selectedCrateId, trackIds);
+        if (!added) {
+          throw new Error('Failed to add tracks to crate');
+        }
         const selectedCrate = crates.find(c => c.id === selectedCrateId);
         Alert.alert(
           'Tracks Added!',
-          `${trackIds.length} tracks added to "${selectedCrate?.name || 'crate'}".`,
+          `${trackIds.length} tracks added to "${selectedCrate?.name || 'crate'}".${syncNote}`,
           [{ text: 'OK', onPress: () => navigation.goBack() }]
         );
       }
@@ -731,7 +809,7 @@ const AICrateBuilderScreen = ({ navigation }) => {
           </Text>
           <Text style={styles.subText}>
             {isConnection
-              ? 'Can’t reach your computer. Make sure Recrate is running on your computer and try again.'
+              ? 'AI crate building needs an internet connection (your computer doesn’t have to be running). Check your connection and try again.'
               : 'The AI service is temporarily unavailable. Please try again later.'}
           </Text>
           <TouchableOpacity
@@ -763,6 +841,16 @@ const AICrateBuilderScreen = ({ navigation }) => {
         <View style={styles.headerSpacer} />
       </View>
 
+      {/* Proxy-mode notice: computer unreachable, running against cached library */}
+      {aiMode === 'proxy' && state !== 'loading' && (
+        <View style={styles.proxyBanner}>
+          <Ionicons name="cloud-outline" size={14} color={COLORS.sync} />
+          <Text style={styles.proxyBannerText}>
+            Computer offline — building from your synced library. Saved crates sync to Serato when it reconnects.
+          </Text>
+        </View>
+      )}
+
       {state === 'builder' && renderBuilder()}
       {state === 'loading' && renderLoading()}
       {state === 'preview' && renderPreview()}
@@ -784,6 +872,25 @@ const styles = StyleSheet.create({
   backButton: { padding: SPACING.xs },
   headerTitle: { fontSize: FONT_SIZES.lg, fontWeight: '600', color: COLORS.text },
   headerSpacer: { width: 44 },
+
+  // Proxy-mode (computer offline) banner
+  proxyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  proxyBannerText: {
+    flex: 1,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.sync,
+  },
 
   // Content
   scroll: { flex: 1 },
