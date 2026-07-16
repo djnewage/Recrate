@@ -101,6 +101,24 @@
       background: var(--accent-green);
     }
 
+    .tunnel-status {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-left: 8px;
+    }
+
+    .tunnel-status.ok {
+      color: var(--accent-green);
+      background: rgba(52, 199, 89, 0.12);
+    }
+
+    .tunnel-status.down {
+      color: var(--accent-red);
+      background: rgba(255, 69, 58, 0.12);
+    }
+
     /* Main Content */
     .main-content {
       flex: 1;
@@ -707,6 +725,7 @@
         <div class="status-indicator">
           <span id="status-dot" class="status-dot"></span>
           <span id="status-text">Stopped</span>
+          <span id="tunnel-status" class="tunnel-status hidden"></span>
         </div>
       </header>
 
@@ -1367,6 +1386,11 @@
       api.onServerLog(() => {});
       api.onServerError(() => {});
 
+      // Live tunnel state pushed from main on every connect/disconnect
+      api.onProxyStatus((status) => {
+        updateTunnelIndicator(status);
+      });
+
       // Listen for indexing progress (also for setup flow)
       api.onIndexingProgress((status) => {
         updateIndexingUI(status);
@@ -1457,6 +1481,9 @@
           connectionType = 'cloud';
         }
 
+        // Show live tunnel state (distinct from the server-process dot)
+        updateTunnelIndicator(proxyStatus);
+
         // Update connection badge
         updateConnectionBadge(connectionType);
 
@@ -1477,6 +1504,7 @@
         // Update status indicator
         statusDot.classList.remove('running');
         statusText.textContent = 'Stopped';
+        document.getElementById('tunnel-status').classList.add('hidden');
 
         // Hide content, show empty state
         qrSection.classList.add('hidden');
@@ -1487,6 +1515,23 @@
         toggleBtn.className = 'btn btn-primary';
         toggleIcon.innerHTML = ICONS.play;
         toggleText.textContent = 'Start';
+      }
+    }
+
+    // Update the cloud tunnel indicator in the header (live state, separate
+    // from the server-process dot)
+    function updateTunnelIndicator(proxyStatus) {
+      const el = document.getElementById('tunnel-status');
+      if (serverStatus !== 'running') {
+        el.classList.add('hidden');
+        return;
+      }
+      if (proxyStatus && proxyStatus.connected) {
+        el.textContent = 'Cloud: Connected';
+        el.className = 'tunnel-status ok';
+      } else {
+        el.textContent = 'Cloud: Reconnecting…';
+        el.className = 'tunnel-status down';
       }
     }
 

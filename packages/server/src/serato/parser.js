@@ -1070,8 +1070,11 @@ class SeratoParser extends EventEmitter {
    */
   _extractField(buffer, marker, startOffset, endOffset) {
     try {
-      const fieldIndex = buffer.indexOf(marker, startOffset);
-      if (fieldIndex === -1 || fieldIndex >= endOffset) return null;
+      // Search only within the chunk; an unbounded indexOf scans to the end of
+      // the whole database buffer for every absent field (O(tracks × fileSize)).
+      const relIndex = buffer.subarray(startOffset, endOffset).indexOf(marker);
+      if (relIndex === -1) return null;
+      const fieldIndex = startOffset + relIndex;
 
       const lengthOffset = fieldIndex + 4;
       if (lengthOffset + 4 > buffer.length) return null;
@@ -1095,8 +1098,9 @@ class SeratoParser extends EventEmitter {
    */
   _extractBoolField(buffer, marker, startOffset, endOffset) {
     try {
-      const fieldIndex = buffer.indexOf(marker, startOffset);
-      if (fieldIndex === -1 || fieldIndex >= endOffset) return null;
+      const relIndex = buffer.subarray(startOffset, endOffset).indexOf(marker);
+      if (relIndex === -1) return null;
+      const fieldIndex = startOffset + relIndex;
 
       const lengthOffset = fieldIndex + 4;
       if (lengthOffset + 4 > buffer.length) return null;
@@ -1158,11 +1162,13 @@ class SeratoParser extends EventEmitter {
 
             if (entryEnd > buffer.length) break;
 
-            // Look for 'adat' marker within this entry
+            // Look for 'adat' marker within this entry (bounded to the entry
+            // so an absent marker doesn't scan the rest of the file)
             const adatMarker = Buffer.from('adat');
-            const adatIndex = buffer.indexOf(adatMarker, entryStart);
+            const adatRel = buffer.subarray(entryStart, entryEnd).indexOf(adatMarker);
+            const adatIndex = adatRel === -1 ? -1 : entryStart + adatRel;
 
-            if (adatIndex !== -1 && adatIndex < entryEnd) {
+            if (adatIndex !== -1) {
               const adatLengthOffset = adatIndex + 4;
               if (adatLengthOffset + 4 <= buffer.length) {
                 const adatLength = buffer.readUInt32BE(adatLengthOffset);
@@ -1201,6 +1207,9 @@ class SeratoParser extends EventEmitter {
         } catch (sessionError) {
           logger.debug(`Error parsing session file ${sessionFile}: ${sessionError.message}`);
         }
+
+        // Yield between session files to keep the event loop responsive
+        await new Promise(resolve => setImmediate(resolve));
       }
 
       logger.success(`Parsed play counts for ${playCounts.size} unique tracks from history`);
@@ -1240,6 +1249,7 @@ class SeratoParser extends EventEmitter {
     const databasePath = path.join(this.seratoPath, 'database V2');
 
     try {
+      const parseStart = Date.now();
       const buffer = await fs.readFile(databasePath);
       const otrkMarker = Buffer.from('otrk');
       const pfilMarker = Buffer.from('pfil');
@@ -1251,6 +1261,7 @@ class SeratoParser extends EventEmitter {
       const bplyMarker = Buffer.from('bply'); // Has been played (boolean)
 
       let offset = 0;
+      let tracksSinceYield = 0;
 
       // Search for 'otrk' (track) chunks
       while (offset < buffer.length - 8) {
@@ -1281,7 +1292,6 @@ class SeratoParser extends EventEmitter {
         if (filePath) {
           // Store the raw Serato path before normalization (for writing back to crate files)
           track.rawSeratoPath = filePath;
-          logger.info(`[PATH DEBUG] Raw path from database V2: "${filePath}"`);
 
           // Normalize path for filesystem operations
           // On Mac: paths like "Users/Music/song.mp3" need leading /
@@ -1290,7 +1300,6 @@ class SeratoParser extends EventEmitter {
           if (!isWindowsPath && !filePath.startsWith('/')) {
             filePath = '/' + filePath;
           }
-          logger.info(`[PATH DEBUG] Normalized filePath: "${filePath}" (isWindowsPath: ${isWindowsPath})`);
           track.filePath = filePath;
         }
 
@@ -1349,9 +1358,15 @@ class SeratoParser extends EventEmitter {
 
         // Move to next track chunk
         offset = otrkDataEnd;
+
+        // Yield periodically so the event loop (UI, WebSocket pings) keeps breathing
+        if (++tracksSinceYield >= 500) {
+          tracksSinceYield = 0;
+          await new Promise(resolve => setImmediate(resolve));
+        }
       }
 
-      logger.success(`Extracted ${trackMetadata.length} tracks from database V2`);
+      logger.success(`Extracted ${trackMetadata.length} tracks from database V2 in ${Date.now() - parseStart}ms`);
       return trackMetadata;
     } catch (error) {
       logger.warn(`Could not parse database V2: ${error.message}`);

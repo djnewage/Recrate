@@ -1,7 +1,7 @@
 // Load environment variables first
 require('dotenv').config();
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, powerMonitor } = require('electron');
 const path = require('path');
 const { exec, spawn } = require('child_process');
 const util = require('util');
@@ -237,31 +237,39 @@ async function connectToProxy() {
       log
     );
 
+    // Push live tunnel state to the renderer on every connect/disconnect,
+    // attached before start() so the initial 'connected' event isn't missed
+    proxyClient.on('connected', sendProxyStatus);
+    proxyClient.on('disconnected', sendProxyStatus);
+
     await proxyClient.start();
 
     log.info('Connected to proxy successfully');
     log.info('Device ID:', deviceId);
 
-    // Update UI
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('proxy-status', {
-        connected: true,
-        deviceId: deviceId,
-        url: getProxyURL()
-      });
-    }
+    sendProxyStatus();
 
   } catch (error) {
     log.error('Failed to connect to proxy:', error.message);
 
-    // Continue without proxy - local network still works
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('proxy-status', {
-        connected: false,
-        error: error.message
-      });
-    }
+    // Continue without proxy - local network still works. The client keeps
+    // reconnecting in the background and will push status when it succeeds.
+    sendProxyStatus(error.message);
   }
+}
+
+/**
+ * Send current tunnel state to the renderer (live, not a startup snapshot)
+ */
+function sendProxyStatus(errorMessage) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const connected = !!(proxyClient && proxyClient.isConnected());
+  mainWindow.webContents.send('proxy-status', {
+    connected,
+    deviceId: proxyClient ? proxyClient.getDeviceId() : null,
+    url: connected ? getProxyURL() : null,
+    error: errorMessage || undefined
+  });
 }
 
 /**
@@ -291,14 +299,11 @@ function getProxyURL() {
 function disconnectFromProxy() {
   if (proxyClient) {
     log.info('Disconnecting from proxy...');
+    proxyClient.removeAllListeners();
     proxyClient.shutdown();
     proxyClient = null;
 
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('proxy-status', {
-        connected: false
-      });
-    }
+    sendProxyStatus();
   }
 }
 
@@ -788,6 +793,22 @@ app.whenReady().then(() => {
 
   // Background auto-update (packaged builds only). Refresh the tray when state changes.
   initAutoUpdater({ onStatus: () => updateTrayMenu() });
+
+  // After sleep/resume the proxy WebSocket is often half-open (no close event
+  // ever fires) — proactively tear it down and reconnect. Debounced because
+  // Windows fires 'resume' and 'unlock-screen' back-to-back.
+  const RESUME_RECONNECT_DEBOUNCE_MS = 5000;
+  let lastResumeKick = 0;
+  const kickProxyOnWake = (source) => {
+    const now = Date.now();
+    if (now - lastResumeKick < RESUME_RECONNECT_DEBOUNCE_MS) return;
+    lastResumeKick = now;
+    log.info(`System ${source} — forcing proxy reconnect`);
+    if (proxyClient) proxyClient.forceReconnect();
+  };
+  powerMonitor.on('resume', () => kickProxyOnWake('resume'));
+  powerMonitor.on('unlock-screen', () => kickProxyOnWake('unlock-screen'));
+  powerMonitor.on('suspend', () => log.info('System suspending'));
 
   // Auto-start server if configured
   const autoStart = store.get('autoStart', true);

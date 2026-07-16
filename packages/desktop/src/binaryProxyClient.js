@@ -5,9 +5,17 @@
 
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
+const { EventEmitter } = require('events');
 
-class BinaryProxyClient {
+// Protocol-level ping keeps half-open sockets (Windows sleep/resume, Wi-Fi
+// power-save) from lingering forever: a missed pong terminates the socket,
+// which fires 'close' and drives the normal reconnect path.
+const PROXY_PING_INTERVAL_MS = 25000;
+const LOCAL_RECONNECT_DELAY_MS = 2000;
+
+class BinaryProxyClient extends EventEmitter {
   constructor(proxyURL, localServerURL, deviceId, logger) {
+    super();
     this.proxyURL = proxyURL; // wss://recrate-proxy.railway.app
     this.localServerURL = localServerURL; // ws://127.0.0.1:3000/ws/audio
     this.deviceId = deviceId;
@@ -25,6 +33,12 @@ class BinaryProxyClient {
     this.isShuttingDown = false;
     this.reconnectDelay = 1000;
     this.maxReconnectDelay = 30000;
+
+    // Heartbeat / reconnect bookkeeping
+    this.proxyPingInterval = null;
+    this.proxyIsAlive = false;
+    this.proxyReconnectTimer = null;
+    this.localReconnectTimer = null;
   }
 
   async start() {
@@ -58,10 +72,7 @@ class BinaryProxyClient {
       this.localWs.on('close', () => {
         this.logger.warn('Local server connection closed');
         this.localWs = null;  // Clear reference to allow GC
-        if (!this.isShuttingDown) {
-          this.logger.info('Reconnecting to local server...');
-          setTimeout(() => this.connectToLocalServer(), 2000);
-        }
+        this._scheduleLocalReconnect();
       });
 
       this.localWs.on('error', (error) => {
@@ -69,6 +80,18 @@ class BinaryProxyClient {
         reject(error);
       });
     });
+  }
+
+  _scheduleLocalReconnect() {
+    if (this.isShuttingDown || this.localReconnectTimer) return;
+    this.logger.info('Reconnecting to local server...');
+    this.localReconnectTimer = setTimeout(() => {
+      this.localReconnectTimer = null;
+      this.connectToLocalServer().catch((err) => {
+        this.logger.error('Local server reconnect failed:', err.message);
+        this._scheduleLocalReconnect();
+      });
+    }, LOCAL_RECONNECT_DELAY_MS);
   }
 
   handleLocalServerMessage(data, isBinary) {
@@ -133,6 +156,7 @@ class BinaryProxyClient {
 
     return new Promise((resolve, reject) => {
       this.logger.info(`Connecting to Railway Proxy: ${this.proxyURL}`);
+      let settled = false;
 
       this.proxyWs = new WebSocket(this.proxyURL, {
         perMessageDeflate: false,
@@ -151,7 +175,13 @@ class BinaryProxyClient {
           protocol: 'binary' // Indicate binary protocol support
         }), false);
 
-        resolve();
+        this._startProxyHeartbeat();
+        this.emit('connected', { deviceId: this.deviceId });
+
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
       });
 
       this.proxyWs.on('message', (data, isBinary) => {
@@ -160,22 +190,89 @@ class BinaryProxyClient {
 
       this.proxyWs.on('close', () => {
         this.logger.warn('Railway Proxy connection closed');
+        this._stopProxyHeartbeat();
         this.proxyWs = null;  // Clear reference to allow GC
         this.isConnecting = false;
         this.rejectAllPending('Connection to Railway closed');
-        if (!this.isShuttingDown) {
-          this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
-          this.logger.info(`Reconnecting to Railway in ${this.reconnectDelay}ms...`);
-          setTimeout(() => this.connectToProxy(), this.reconnectDelay);
-        }
+        this.emit('disconnected');
+        this._scheduleProxyReconnect();
       });
 
       this.proxyWs.on('error', (error) => {
         this.logger.error('Railway Proxy WebSocket error:', error);
         this.isConnecting = false;
-        reject(error);
+        // 'close' usually follows 'error', but not on every failure mode —
+        // the double-schedule guard makes calling from both safe.
+        this._scheduleProxyReconnect();
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
       });
     });
+  }
+
+  _startProxyHeartbeat() {
+    this._stopProxyHeartbeat();
+    const ws = this.proxyWs;
+    if (!ws) return;
+
+    this.proxyIsAlive = true;
+    ws.on('pong', () => { this.proxyIsAlive = true; });
+
+    this.proxyPingInterval = setInterval(() => {
+      if (this.proxyWs !== ws || ws.readyState !== WebSocket.OPEN) {
+        this._stopProxyHeartbeat();
+        return;
+      }
+      if (!this.proxyIsAlive) {
+        this.logger.warn(`Proxy heartbeat: no pong in ${PROXY_PING_INTERVAL_MS}ms — terminating half-open socket`);
+        // terminate() (not close()) — a half-open socket never ACKs a close
+        // frame; terminate destroys TCP and fires 'close' immediately.
+        ws.terminate();
+        return;
+      }
+      this.proxyIsAlive = false;
+      ws.ping();
+    }, PROXY_PING_INTERVAL_MS);
+  }
+
+  _stopProxyHeartbeat() {
+    if (this.proxyPingInterval) {
+      clearInterval(this.proxyPingInterval);
+      this.proxyPingInterval = null;
+    }
+  }
+
+  _scheduleProxyReconnect() {
+    if (this.isShuttingDown || this.proxyReconnectTimer || this.isConnecting) return;
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+    this.logger.info(`Reconnecting to Railway in ${this.reconnectDelay}ms...`);
+    this.proxyReconnectTimer = setTimeout(() => {
+      this.proxyReconnectTimer = null;
+      this.connectToProxy().catch((err) => {
+        this.logger.error('Proxy reconnect failed:', err.message);
+      });
+    }, this.reconnectDelay);
+  }
+
+  /**
+   * Immediately tear down and re-establish the proxy connection.
+   * Used on system resume, when the old socket is likely half-open.
+   */
+  forceReconnect() {
+    if (this.isShuttingDown) return;
+    this.logger.info('Force reconnect requested');
+    if (this.proxyReconnectTimer) {
+      clearTimeout(this.proxyReconnectTimer);
+      this.proxyReconnectTimer = null;
+    }
+    this.reconnectDelay = 500; // doubled by _scheduleProxyReconnect → 1s retry
+    if (this.proxyWs) {
+      this.proxyWs.terminate(); // 'close' handler schedules the reconnect
+    } else if (!this.isConnecting) {
+      this._scheduleProxyReconnect();
+    }
   }
 
   handleProxyMessage(data, isBinary) {
@@ -290,6 +387,15 @@ class BinaryProxyClient {
   shutdown() {
     this.logger.info('Shutting down Binary Proxy Client...');
     this.isShuttingDown = true;  // Prevent reconnection attempts
+    this._stopProxyHeartbeat();
+    if (this.proxyReconnectTimer) {
+      clearTimeout(this.proxyReconnectTimer);
+      this.proxyReconnectTimer = null;
+    }
+    if (this.localReconnectTimer) {
+      clearTimeout(this.localReconnectTimer);
+      this.localReconnectTimer = null;
+    }
     this.rejectAllPending('Client shutting down');
 
     if (this.localWs) {

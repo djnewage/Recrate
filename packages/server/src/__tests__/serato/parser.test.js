@@ -332,6 +332,167 @@ describe('SeratoParser', () => {
     });
   });
 
+  // Helpers for building synthetic Serato binary structures
+  const utf16be = (str) => {
+    const buf = Buffer.alloc(str.length * 2);
+    for (let i = 0; i < str.length; i++) {
+      buf.writeUInt16BE(str.charCodeAt(i), i * 2);
+    }
+    return buf;
+  };
+
+  const binField = (marker, dataBuffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(dataBuffer.length, 0);
+    return Buffer.concat([Buffer.from(marker), len, dataBuffer]);
+  };
+
+  const byteField = (marker, value) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(1, 0);
+    return Buffer.concat([Buffer.from(marker), len, Buffer.from([value])]);
+  };
+
+  const otrkChunk = (fields) => {
+    const data = Buffer.concat(fields);
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    return Buffer.concat([Buffer.from('otrk'), len, data]);
+  };
+
+  describe('_extractField bounded search', () => {
+    it('should return null when marker exists only beyond endOffset', () => {
+      const chunk = Buffer.from('xxxxxxxxxxxxxxxx');
+      const beyondChunk = binField('tbpm', utf16be('128'));
+      const buffer = Buffer.concat([chunk, beyondChunk]);
+
+      // Search bounded to the chunk — the tbpm after it must not be found
+      const result = parser._extractField(buffer, Buffer.from('tbpm'), 0, chunk.length);
+
+      expect(result).toBeNull();
+    });
+
+    it('should extract the field when the marker is inside the chunk', () => {
+      const fieldBuf = binField('tbpm', utf16be('128'));
+      const buffer = Buffer.concat([fieldBuf, Buffer.from('trailing data')]);
+
+      const result = parser._extractField(buffer, Buffer.from('tbpm'), 0, fieldBuf.length);
+
+      expect(result).toBe('128');
+    });
+
+    it('should not bleed a field from the next track chunk into the current one', () => {
+      // Track 1 has no tbpm; track 2 does. Track 1's extraction must return null.
+      const track1 = binField('pfil', utf16be('Users/test/Music/song1.mp3'));
+      const track2 = binField('tbpm', utf16be('140'));
+      const buffer = Buffer.concat([track1, track2]);
+
+      const result = parser._extractField(buffer, Buffer.from('tbpm'), 0, track1.length);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('_extractBoolField bounded search', () => {
+    it('should return null when marker exists only beyond endOffset', () => {
+      const chunk = Buffer.from('xxxxxxxxxxxxxxxx');
+      const beyondChunk = byteField('bply', 1);
+      const buffer = Buffer.concat([chunk, beyondChunk]);
+
+      const result = parser._extractBoolField(buffer, Buffer.from('bply'), 0, chunk.length);
+
+      expect(result).toBeNull();
+    });
+
+    it('should extract a single-byte field inside the chunk', () => {
+      const fieldBuf = byteField('bply', 1);
+      const buffer = Buffer.concat([fieldBuf, Buffer.from('trailing')]);
+
+      const result = parser._extractBoolField(buffer, Buffer.from('bply'), 0, fieldBuf.length);
+
+      expect(result).toBe(1);
+    });
+  });
+
+  describe('_parseDatabaseV2', () => {
+    it('should extract track metadata from synthetic database V2 chunks', async () => {
+      const db = Buffer.concat([
+        otrkChunk([
+          binField('pfil', utf16be('Users/test/Music/song1.mp3')),
+          binField('tbpm', utf16be('128')),
+          binField('tsng', utf16be('First Song')),
+          binField('tart', utf16be('Artist One')),
+          binField('tlen', utf16be('03:45.50')),
+          byteField('bply', 1),
+        ]),
+        otrkChunk([
+          binField('pfil', utf16be('Users/test/Music/song2.flac')),
+          binField('tsng', utf16be('Second Song')),
+        ]),
+        otrkChunk([
+          binField('pfil', utf16be('Users/test/Music/song3.wav')),
+          binField('tbpm', utf16be('90')),
+          byteField('bply', 0),
+        ]),
+      ]);
+      fs.readFile.mockResolvedValue(db);
+
+      const tracks = await parser._parseDatabaseV2();
+
+      expect(tracks).toHaveLength(3);
+
+      expect(tracks[0].filePath).toBe('/Users/test/Music/song1.mp3');
+      expect(tracks[0].bpm).toBe(128);
+      expect(tracks[0].title).toBe('First Song');
+      expect(tracks[0].artist).toBe('Artist One');
+      expect(tracks[0].duration).toBeCloseTo(225.5);
+      expect(tracks[0].hasBeenPlayed).toBe(true);
+
+      // Missing fields must stay null — not be filled from neighboring chunks
+      expect(tracks[1].filePath).toBe('/Users/test/Music/song2.flac');
+      expect(tracks[1].bpm).toBeNull();
+      expect(tracks[1].title).toBe('Second Song');
+      expect(tracks[1].hasBeenPlayed).toBe(false);
+
+      expect(tracks[2].bpm).toBe(90);
+      expect(tracks[2].hasBeenPlayed).toBe(false);
+    });
+
+    it('should skip non-audio file paths', async () => {
+      const db = otrkChunk([
+        binField('pfil', utf16be('Users/test/Music/notes.txt')),
+      ]);
+      fs.readFile.mockResolvedValue(db);
+
+      const tracks = await parser._parseDatabaseV2();
+
+      expect(tracks).toHaveLength(0);
+    });
+
+    it('should parse a large synthetic library quickly (perf regression)', async () => {
+      // 5,000 tracks padded to ~4KB each (~20MB total). Before the bounded-
+      // search fix this took minutes (O(tracks × fileSize)); now sub-second.
+      const filler = binField('uuuu', Buffer.alloc(3500, 0x41));
+      const chunks = [];
+      for (let i = 0; i < 5000; i++) {
+        chunks.push(otrkChunk([
+          binField('pfil', utf16be(`Users/test/Music/song${i}.mp3`)),
+          binField('tbpm', utf16be('128')),
+          binField('tsng', utf16be(`Song ${i}`)),
+          filler,
+        ]));
+      }
+      fs.readFile.mockResolvedValue(Buffer.concat(chunks));
+
+      const start = Date.now();
+      const tracks = await parser._parseDatabaseV2();
+      const elapsed = Date.now() - start;
+
+      expect(tracks).toHaveLength(5000);
+      expect(elapsed).toBeLessThan(2000);
+    }, 15000);
+  });
+
   describe('Error classes', () => {
     it('should create SeratoNotFoundError with correct name', () => {
       const error = new SeratoNotFoundError('test');

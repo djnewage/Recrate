@@ -8,6 +8,11 @@ const { v4: uuidv4 } = require('uuid');
 const logger = require('./utils/logger');
 const { trackEvent } = require('./utils/analytics');
 
+// Sweep interval for dead-connection detection. A desktop that stops
+// answering protocol pings (half-open TCP after sleep/network loss) is
+// terminated within two intervals so mobile health checks reflect reality.
+const HEARTBEAT_INTERVAL_MS = 30000;
+
 class BinaryWebSocketManager {
   constructor(server) {
     // WebSocket server for Desktop connections
@@ -31,7 +36,28 @@ class BinaryWebSocketManager {
       this.handleConnection(ws, req);
     });
 
+    // Heartbeat sweep: terminate sockets that missed a ping cycle.
+    // terminate() fires 'close', which deregisters the device.
+    this.heartbeatInterval = setInterval(() => {
+      for (const ws of this.wss.clients) {
+        if (ws.isAlive === false) {
+          logger.warn('Heartbeat: terminating unresponsive desktop connection');
+          ws.terminate();
+          continue;
+        }
+        ws.isAlive = false;
+        ws.ping();
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+
+    this.wss.on('close', () => clearInterval(this.heartbeatInterval));
+
     logger.info('Binary WebSocket server initialized on /ws/desktop');
+  }
+
+  shutdown() {
+    clearInterval(this.heartbeatInterval);
+    this.wss.close();
   }
 
   handleConnection(ws, req) {
@@ -39,6 +65,10 @@ class BinaryWebSocketManager {
     const tempId = `temp-${Date.now()}`;
 
     logger.info(`[${tempId}] Desktop device connecting from ${req.socket.remoteAddress}`);
+
+    // Liveness tracking for the heartbeat sweep
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
 
     ws.on('message', (data, isBinary) => {
       if (isBinary) {
@@ -71,6 +101,16 @@ class BinaryWebSocketManager {
 
           if (message.type === 'register') {
             deviceId = message.deviceId;
+
+            // A reconnecting desktop may register while its old half-open
+            // socket still lingers — terminate the stale one so it can't
+            // shadow the fresh connection.
+            const existing = this.devices.get(deviceId);
+            if (existing && existing.connection !== ws) {
+              logger.warn(`[${deviceId}] Replacing stale connection with new registration`);
+              existing.connection.terminate();
+            }
+
             this.devices.set(deviceId, {
               connection: ws,
               protocol: message.protocol || 'legacy',
@@ -112,10 +152,17 @@ class BinaryWebSocketManager {
 
     ws.on('close', () => {
       if (deviceId) {
-        trackEvent(deviceId, 'device_disconnected', { device_id: deviceId }, null);
-        logger.warn(`[${deviceId}] Desktop disconnected`);
-        this.devices.delete(deviceId);
-        this.rejectPendingForDevice(deviceId);
+        // Only deregister if this socket still owns the registry entry —
+        // a stale socket's delayed close must not evict a fresh reconnect.
+        const current = this.devices.get(deviceId);
+        if (current && current.connection === ws) {
+          trackEvent(deviceId, 'device_disconnected', { device_id: deviceId }, null);
+          logger.warn(`[${deviceId}] Desktop disconnected`);
+          this.devices.delete(deviceId);
+          this.rejectPendingForDevice(deviceId);
+        } else {
+          logger.info(`[${deviceId}] Stale connection closed (already replaced)`);
+        }
       }
     });
 

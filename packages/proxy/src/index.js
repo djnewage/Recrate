@@ -89,6 +89,7 @@ server.listen(PORT, HOST, () => {
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, closing server...');
   await flushSentry();
+  wsManager.shutdown();
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);
@@ -98,6 +99,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, closing server...');
   await flushSentry();
+  wsManager.shutdown();
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);
