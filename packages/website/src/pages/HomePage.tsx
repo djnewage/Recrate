@@ -397,7 +397,7 @@ export default function HomePage() {
                 icon: Play,
                 title: 'Full Playback',
                 description: 'Preview any track with colored waveforms, beat grids, and cue points. Set cue points from your phone — even offline — and they sync back to Serato.',
-                screenshot: '/screenshots/player.png',
+                screenshot: '/screenshots/offline-player.png',
               },
               {
                 icon: FolderOpen,
