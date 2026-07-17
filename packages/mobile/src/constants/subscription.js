@@ -43,7 +43,9 @@ export const TIER_FEATURES = {
     aiCrateBuilds: 15,
     trackIdentifications: 10,
     hasAIAccess: true,
-    hasOfflineDownloads: false,
+    // Trial includes offline so users experience the flagship feature before
+    // the paywall (their downloaded crates then depend on subscribing).
+    hasOfflineDownloads: true,
     price: 'Free',
     priceValue: 0,
     description: '7-day full access',
@@ -51,6 +53,7 @@ export const TIER_FEATURES = {
       'Full library sync',
       'Crate management',
       'Audio streaming',
+      'Offline crate downloads',
       'AI Crate Builder (15 builds)',
       'Track Identification (10 IDs)',
     ],
