@@ -32,7 +32,7 @@ const layers = [
     icon: Smartphone,
     title: 'Mobile app',
     description:
-      'Browse, search, preview, and build crates from your pocket. Crate changes sync straight back to Serato DJ.',
+      'Browse, search, preview, and build crates from your pocket — and download crates for full offline playback. Changes sync straight back to Serato DJ.',
   },
 ]
 
@@ -60,7 +60,7 @@ const steps = [
     icon: Radio,
     title: 'Start the server',
     body: [
-      'Recrate starts a local server and shows a QR code. Keep the app running while you play — your phone streams from it.',
+      'Recrate starts a local server and shows a QR code. Your phone streams from it while it’s running — and crates you’ve downloaded keep playing even when it’s not.',
       'Same Wi-Fi is fastest. Away from home? It still works over 5G / mobile data.',
     ],
     image: null,
@@ -100,6 +100,15 @@ const steps = [
     ],
     image: '/screenshots/crates.png',
   },
+  {
+    icon: Download,
+    title: 'Take crates offline',
+    body: [
+      'Open any crate and flip on “Available offline.” Its tracks download to your phone — cue points, waveforms, beat grids, and artwork included.',
+      'Downloaded crates play with no laptop and no signal at all. Cue points you set offline sync back into Serato when you reconnect.',
+    ],
+    image: '/screenshots/offline-crate.png',
+  },
 ]
 
 // Highlighted power features, shown after the core walk-through.
@@ -124,8 +133,8 @@ const powerFeatures = [
 const tips = [
   {
     icon: Wifi,
-    title: 'Keep the desktop running',
-    description: 'Streaming needs the desktop app open. Close it and playback stops.',
+    title: 'Streaming vs. offline',
+    description: 'Live streaming of your full library needs the desktop app open. Crates marked “Available offline” play from your phone with no desktop at all.',
   },
   {
     icon: ShieldCheck,
@@ -154,8 +163,8 @@ export default function GuidePage() {
               How to <span className="gradient-text">Use Recrate</span>
             </h1>
             <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-              Stream your Serato library to your phone and build crates from anywhere.
-              Here’s the whole flow, start to finish.
+              Stream your Serato library, download crates for offline playback, and
+              build sets from anywhere. Here’s the whole flow, start to finish.
             </p>
           </motion.div>
         </div>

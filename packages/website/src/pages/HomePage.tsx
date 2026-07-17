@@ -263,8 +263,9 @@ export default function HomePage() {
             transition={{ duration: 0.8, delay: 0.4 }}
             className="text-lg md:text-xl text-gray-300 mb-10 max-w-xl mx-auto lg:mx-0"
           >
-            Stream your entire DJ library to your phone. Browse tracks, manage crates,
-            and preview music — all from your mobile device.
+            Take your Serato library with you. Download crates for full offline
+            playback, manage your library, and prep sets from your phone — even
+            with your laptop closed.
           </motion.p>
 
           <motion.div
@@ -307,7 +308,7 @@ export default function HomePage() {
                 Free 7-day trial
               </p>
               <p className="mt-1 text-gray-300">
-                Recrate works as a pair — the desktop app reads your Serato library, the phone app streams it. You'll need both.
+                The desktop app syncs your Serato library to your phone. Stream everything live, or download crates once and play them anywhere — no laptop, no signal, no problem.
               </p>
               <p className="mt-1">
                 Available on Mac, Windows & iOS — Android coming soon
@@ -327,8 +328,9 @@ export default function HomePage() {
               className="w-full max-w-[230px] rounded-[2rem] overflow-hidden border border-white/[0.08] shadow-2xl shadow-purple-500/20"
               images={[
                 { src: '/screenshots/library.png', alt: 'Recrate library view on iPhone' },
+                { src: '/screenshots/offline-crate.png', alt: 'Crate downloaded for offline playback in airplane mode' },
+                { src: '/screenshots/offline-player.png', alt: 'Track player with cue points and waveform, fully offline' },
                 { src: '/screenshots/crates.png', alt: 'Crate management on iPhone' },
-                { src: '/screenshots/player.png', alt: 'Track player with streaming preview' },
                 { src: '/screenshots/recrate-builder.png', alt: 'AI crate builder' },
                 { src: '/screenshots/track-identify.png', alt: 'Track identification' },
               ]}
@@ -380,6 +382,12 @@ export default function HomePage() {
                 screenshot: '/screenshots/library.png',
               },
               {
+                icon: Download,
+                title: 'Works Offline',
+                description: 'Mark any crate "Available offline" and its tracks download to your phone — cue points, waveforms, and beat grids included. Play them anywhere: no laptop, no signal, no problem.',
+                screenshot: '/screenshots/offline-crate.png',
+              },
+              {
                 icon: SlidersHorizontal,
                 title: 'Smart Filters',
                 description: 'Find the perfect track fast. Filter by BPM range, musical key (major/minor), and genre to match your mix.',
@@ -388,7 +396,7 @@ export default function HomePage() {
               {
                 icon: Play,
                 title: 'Full Playback',
-                description: 'Preview any track with waveform display and cue points. Set and jump to cue points, scrub through tracks, and see BPM and key at a glance.',
+                description: 'Preview any track with colored waveforms, beat grids, and cue points. Set cue points from your phone — even offline — and they sync back to Serato.',
                 screenshot: '/screenshots/player.png',
               },
               {
@@ -406,7 +414,7 @@ export default function HomePage() {
               {
                 icon: Wifi,
                 title: 'Instant Connection',
-                description: 'Connect locally over WiFi or remotely via mobile data/5G. No cloud uploads — your music streams directly from your desktop.',
+                description: 'Connect locally over WiFi or remotely via mobile data/5G. No cloud uploads — your music moves directly between your own devices.',
                 screenshot: '/screenshots/connect.png',
               },
               {
@@ -418,7 +426,7 @@ export default function HomePage() {
               {
                 icon: Sparkles,
                 title: 'Recrate Builder',
-                description: 'Describe your ideal set and let AI curate it. Set BPM range, select keys, and generate perfectly curated crates in seconds.',
+                description: 'Describe your ideal set and let AI curate it. Set BPM range, select keys, and generate crates in seconds — it even works with your laptop off.',
                 screenshot: '/screenshots/recrate-builder.png',
               },
               {
@@ -608,12 +616,16 @@ export default function HomePage() {
           <div className="space-y-4">
             {[
               {
+                question: 'Does it work without my laptop running?',
+                answer: 'Yes. Mark any crate "Available offline" and its tracks download to your phone — cue points, waveforms, beat grids, and artwork included. Downloaded crates play with no laptop and no internet at all. You can even set and move cue points offline, and they sync back into Serato the next time the app sees your computer.',
+              },
+              {
                 question: 'Is my music uploaded to the cloud?',
-                answer: 'No. Your music stays on your computer. Recrate streams directly from your desktop to your phone — nothing is uploaded anywhere.',
+                answer: 'No. Your music stays on your own devices. Recrate streams directly from your desktop to your phone, and downloaded crates live only on your phone — nothing is uploaded anywhere.',
               },
               {
                 question: 'Do I need to be on the same WiFi network?',
-                answer: "Not necessarily! You can connect locally via WiFi, or use mobile data/5G to access your library from anywhere (requires the desktop server to be online).",
+                answer: 'Not necessarily! You can connect locally via WiFi, or use mobile data/5G to access your library from anywhere. And crates you’ve downloaded don’t need any connection at all.',
               },
               {
                 question: 'What devices are supported?',
@@ -629,7 +641,7 @@ export default function HomePage() {
               },
               {
                 question: 'Does the desktop server need to be running?',
-                answer: "For streaming music, yes — the desktop app must be online. However, Recrate also has an offline mode where you can browse your cached library and make changes (like organizing crates). Streaming won't be available until you reconnect, but any changes you make while offline will automatically sync once the server comes back online.",
+                answer: 'Only for live streaming of your full library. Downloaded crates play entirely from your phone, the AI crate builder works without the desktop, and anything you change while disconnected — crates, cue points — queues up and syncs back to Serato automatically when the desktop comes back online.',
               },
               {
                 question: 'What audio formats are supported?',
