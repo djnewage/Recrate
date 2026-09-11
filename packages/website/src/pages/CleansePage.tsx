@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Loader2, Check, Monitor } from 'lucide-react';
 import { trackEvent } from '../utils/metaPixel';
 import Slideshow from '../components/Slideshow';
+import CleanseSendLink from '../components/CleanseSendLink';
+import { captureUtm, getDevicePlatform, isMobileDevice, utmForTracking, type UtmParams } from '../utils/cleanseAttribution';
 
 interface ReleaseAsset {
   name: string;
@@ -73,8 +75,15 @@ export default function CleansePage() {
   const [winAsset, setWinAsset] = useState<ReleaseAsset | null>(null);
   const [downloadState, setDownloadState] = useState<DownloadState>('loading');
   const [isSilicon, setIsSilicon] = useState(true);
+  // Phone visitors (the bulk of ad traffic) can't install a desktop app, so
+  // they get an "email me the link" form instead of a dead-end download button.
+  const [isMobile] = useState(() => isMobileDevice());
+  const [platform] = useState(() => getDevicePlatform());
+  const [utm, setUtm] = useState<UtmParams>({});
+  const pixelUtm = utmForTracking(utm);
 
   useEffect(() => { setIsSilicon(isAppleSilicon()); }, []);
+  useEffect(() => { setUtm(captureUtm()); }, []);
 
   // Meta Pixel: track product page view
   useEffect(() => {
@@ -150,21 +159,25 @@ export default function CleansePage() {
             </motion.p>
 
             <motion.div
-              className="flex flex-col gap-3 items-start"
+              className="flex flex-col gap-3 items-start w-full max-w-md"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              <button
-                onClick={() => {
-                  trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD' });
-                  scrollToDownload();
-                }}
-                className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow"
-              >
-                <Download className="w-5 h-5" />
-                Download
-              </button>
+              {isMobile ? (
+                <CleanseSendLink utm={utm} platform={platform} placement="hero" />
+              ) : (
+                <button
+                  onClick={() => {
+                    trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', ...pixelUtm });
+                    scrollToDownload();
+                  }}
+                  className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow"
+                >
+                  <Download className="w-5 h-5" />
+                  Download
+                </button>
+              )}
               <span className="text-sm text-gray-600">
                 2 free exports &middot; Upgrade when you need more
               </span>
@@ -336,6 +349,14 @@ export default function CleansePage() {
             </div>
             <p className="text-gray-500 text-sm mb-8">macOS 13.3 (Ventura) or later &middot; Windows 10/11 (x64)</p>
 
+            {isMobile && (
+              <div className="max-w-xs mx-auto mb-10 text-left">
+                <p className="text-white text-sm font-medium mb-3 text-center">On your phone? Send the link to your computer.</p>
+                <CleanseSendLink utm={utm} platform={platform} placement="download" />
+                <p className="text-gray-600 text-xs font-mono mt-6 text-center">or download directly</p>
+              </div>
+            )}
+
             <AnimatePresence mode="wait">
               {downloadState === 'loading' && (
                 <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-3">
@@ -348,21 +369,21 @@ export default function CleansePage() {
                 <motion.div key="ready" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4">
                   <div className="flex flex-col items-center gap-3 w-full max-w-xs">
                     {armAsset && (
-                      <a href={armAsset.browser_download_url} onClick={() => trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', platform: 'macos_apple_silicon' })} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow text-sm">
+                      <a href={armAsset.browser_download_url} onClick={() => trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', platform: 'macos_apple_silicon', ...pixelUtm })} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-cyan-500 hover:from-orange-400 hover:to-cyan-400 transition-all duration-300 cleanse-btn-glow text-sm">
                         <Download className="w-4 h-4 shrink-0" />
                         Apple Silicon
                         <span className="text-white/60 font-normal">{formatBytes(armAsset.size)}</span>
                       </a>
                     )}
                     {intelAsset && (
-                      <a href={intelAsset.browser_download_url} onClick={() => trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', platform: 'macos_intel' })} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-white/[0.05] border border-white/[0.1] hover:border-cyan-500/50 hover:bg-white/[0.08] transition-all duration-300 text-sm">
+                      <a href={intelAsset.browser_download_url} onClick={() => trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', platform: 'macos_intel', ...pixelUtm })} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-white/[0.05] border border-white/[0.1] hover:border-cyan-500/50 hover:bg-white/[0.08] transition-all duration-300 text-sm">
                         <Download className="w-4 h-4 shrink-0" />
                         Intel Mac
                         <span className="text-white/40 font-normal">{formatBytes(intelAsset.size)}</span>
                       </a>
                     )}
                     {winAsset && (
-                      <a href={winAsset.browser_download_url} onClick={() => trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', platform: 'windows_x64' })} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-white/[0.05] border border-white/[0.1] hover:border-cyan-500/50 hover:bg-white/[0.08] transition-all duration-300 text-sm">
+                      <a href={winAsset.browser_download_url} onClick={() => trackEvent('InitiateCheckout', { content_name: 'Cleanse', value: 9.99, currency: 'USD', platform: 'windows_x64', ...pixelUtm })} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-white/[0.05] border border-white/[0.1] hover:border-cyan-500/50 hover:bg-white/[0.08] transition-all duration-300 text-sm">
                         <Monitor className="w-4 h-4 shrink-0" />
                         Windows
                         <span className="text-white/40 font-normal">{formatBytes(winAsset.size)}</span>
